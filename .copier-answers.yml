@@ -1,0 +1,11 @@
+# Do not edit - changes here will be overwritten by Copier
+_commit: v1
+_src_path: gh:pydev-guide/pyrepo-copier
+author_email: jdickerson@berkeley.edu
+author_name: Josh Dickerson
+github_username: jdickerson95
+mode: tooling
+module_name: tt2dtm
+project_name: tt2DTM
+project_short_description: 2DTM in pyTorch
+
