@@ -1,0 +1,51 @@
+input_files:
+  micrograph_ctf_star: "path/to/micrograph_ctf.star"
+  pdb_file: "path/to/pdb.pdb"
+  mrc_map: "path/to/mrc_map.mrc"
+  
+outputs:
+  output_directory: "path/to/output_directory"
+
+angular_sampling:
+  out_of_plane_step: 2.5
+  in_plane_step: 1.5
+  phi_range: [-180.0, 180.0]
+  theta_range: [0.0, 180.0]
+  psi_range: [-180.0, 180.0]
+  symmetry: "C1"
+
+extra_searches:
+  defocus_search:
+    enabled: true
+    range: 0.5
+    step_size: 0.1
+  pixel_size_search:
+    enabled: false
+    range: 0.0
+    step_size: 0.0
+
+filters:
+  whitening_filter:
+    enabled: true
+    power_spec: true
+    smoothing: false
+  bandpass_filter:
+    enabled: false
+    upper_resolution: 2.0
+    lower_resolution: 30.0
+  phase_randomize:
+    enabled: false
+    cuton_resolution: 20.0
+  pad:
+    enabled: true
+
+simulate_params:
+  mtf:
+    enabled: false
+    mtf_filename: "path/to/mtf.star"
+  dose_weight:
+    enabled: true
+    b_damage: -1
+
+computational:
+  gpus: 2
