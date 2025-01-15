@@ -3,11 +3,7 @@
 from typing import Literal
 
 import torch
-from torch_fourier_slice.dft_utils import (
-    fftshift_2d,
-)
-
-# Functions to apply mode
+from torch_fourier_slice.dft_utils import fftshift_2d
 
 # TODO: Normalized cross correlation
 
@@ -17,7 +13,19 @@ def handle_correlation_mode(
     out_shape: tuple[int, ...],
     mode: Literal["valid", "full"],
 ) -> torch.Tensor:
-    """Handle cropping for cross correlation mode."""
+    """Handle cropping for cross correlation mode.
+
+    Parameters
+    ----------
+    cross_correlation : torch.Tensor
+        The cross correlation result.
+    out_shape : tuple[int, ...]
+        The desired shape of the output.
+    mode : Literal["valid", "full"]
+        The mode of the cross correlation. Either 'valid' or 'full'. See
+        [numpy.correlate](https://numpy.org/doc/2.1/reference/generated/numpy.convolve.html#numpy.convolve)
+        for more details.
+    """
     # Crop the result to the valid bounds
     if mode == "valid":
         slices = [slice(0, os) for os in out_shape]

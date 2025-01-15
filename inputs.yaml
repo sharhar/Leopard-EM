@@ -1,51 +1,90 @@
-input_files:
-  micrograph_ctf_star: "path/to/micrograph_ctf.star"
-  pdb_file: "path/to/pdb.pdb"
-  mrc_map: "path/to/mrc_map.mrc"
-  
-outputs:
-  output_directory: "path/to/output_directory"
+----  # Top level pydantic model
+MatchTemplateManager:
+  - version: <str>  # Version of MatchTemplateManager, for future compatibility
+  - micrograph_path: <str, Path>
+  - template_volume_path: <str, Path>
+  - optics_group: <OpticsGroup>
+  - defocus_search_config: <DefocusSearchConfig>
+  - orientation_search_config: <OrientationSearchConfig>
+  - preprocessing_filters: <PreprocessingFilters>
+  - match_template_result: <MatchTemplateResult>
+  - computational_config: <ComputationalConfig>
 
-angular_sampling:
-  out_of_plane_step: 2.5
-  in_plane_step: 1.5
-  phi_range: [-180.0, 180.0]
-  theta_range: [0.0, 180.0]
-  psi_range: [-180.0, 180.0]
-  symmetry: "C1"
+----  # OpticsGroup pydantic model for imaging parameters
+OpticsGroup:
+  # Required parameters for running 2DTM
+  - pixel_size: <float>  # Angstroms
+  - voltage: <float>  # kV
+  - spherical_aberration: <float>  # mm
+  - amplitude_contrast_ratio: <float>  # unitless
+  - phase_shift: <float>  # radians
+  - defocus_u: <float>  # Angstroms
+  - defocus_v: <float>  # Angstroms
+  - astigmatism_angle: <float>  # degrees
+  # Other optional (and unused) parameters
+  - label: <str, unique>
+  - chromatic_aberration: <float>  # mm?
+  - mtf_reference_path: <str, Path>  # Path to MTF reference STAR file
+  - mtf_frequencies: <list[float]>  # Inverse pixels from [0, ..., 0.5]
+  - mtf_amplitudes: <list[float]>  # Amplitudes at each frequency
+  - beam_tilt_x: <float>  # degrees
+  - beam_tilt_y: <float>  # degrees
+  - odd_zernike_amplitudes: <list[float]>  # Amplitudes of odd Zernike modes
+  - even_zernike_amplitudes: <list[float]>  # Amplitudes of even Zernike modes
+  - zernike_moments: <list[float]>  # Zernike moments
 
-extra_searches:
-  defocus_search:
-    enabled: true
-    range: 0.5
-    step_size: 0.1
-  pixel_size_search:
-    enabled: false
-    range: 0.0
-    step_size: 0.0
+----  # DefocusSearchConfig pydantic model for defocus search parameters
+DefocusSearchConfig:
+  - defocus_min: <float>  # Angstroms, relative to defocus_u and defocus_v
+  - defocus_max: <float>  # Angstroms, relative to defocus_u and defocus_v
+  - defocus_step: <float>  # Angstroms
 
-filters:
-  whitening_filter:
-    enabled: true
-    power_spec: true
-    smoothing: false
-  bandpass_filter:
-    enabled: false
-    upper_resolution: 2.0
-    lower_resolution: 30.0
-  phase_randomize:
-    enabled: false
-    cuton_resolution: 20.0
-  pad:
-    enabled: true
+---- # OrientationSearchConfig pydantic model for orientation search parameters
+OrientationSearchConfig:
+  - orientation_sampling_method: <str, enum>  # 'Hopf Fibration' currently only supported
+  - template_symmetry: <str>  # Symmetry group
+  - psi_range: <tuple[float, float]>  # degrees, default to (0, 360)
+  - theta_range: <tuple[float, float]>  # degrees, default to (0, 180)
+  - phi_range: <tuple[float, float]>  # degrees, default to (0, 360)
+  - in_plane_angular_step: <float, greater than 0>  # degrees
+  - out_of_plane_angular_step: <float, greater than 0>  # degrees
 
-simulate_params:
-  mtf:
-    enabled: false
-    mtf_filename: "path/to/mtf.star"
-  dose_weight:
-    enabled: true
-    b_damage: -1
+---- # PreprocessingFilters pydantic model for preprocessing filters
+PreprocessingFilters:  # NOTE: This could also be named correlation filters since applied to correlations
+  - whitening_filter_config: <WhiteningFilterConfig>
+  - bandpass_filter_config: <BandpassFilterConfig>
+  - phase_randomization_filter_config: <PhaseRandomizationFilterConfig>
 
-computational:
-  gpus: 2
+---- # WhiteningFilterConfig pydantic model for whitening filter parameters
+WhiteningFilterConfig:
+  - enabled: <bool>  # Choice to apply whitening filter, default True
+  - power_spectrum: <bool>  # Choice if whitening filter calculated from power spectrum (if True) or from amplitude spectrum (if False), default True
+  - smoothing: <float>  # Smoothing factor for whitening filter, default 0.0 which is no smoothing
+
+---- # BandpassFilterConfig pydantic model for bandpass filter parameters
+BandpassFilterConfig:
+  - enabled: <bool>  # Choice to apply bandpass filter, default False
+  - low_pass: <float>  # Low pass filter cutoff frequency, default None which is no low pass filter
+  - high_pass: <float>  # High pass filter cutoff frequency, default None which is no high pass filter
+  - falloff: <float>  # Falloff factor for bandpass filter, default 0.0 which is no falloff
+
+---- # PhaseRandomizationFilterConfig pydantic model for phase randomization filter parameters
+PhaseRandomizationFilterConfig:
+  - enabled: <bool>  # Choice to apply phase randomization filter, default False
+
+---- # MatchTemplateResult pydantic model for storing results
+MatchTemplateResult:
+  - allow_file_overwrite: <bool>  # Choice to allow overwriting of existing files, default False
+  - mip_path: <str, Path>
+  - scaled_mip_path: <str, Path>
+  - correlation_average_path: <str, Path>
+  - correlation_variance_path: <str, Path>
+  - orientation_psi_path: <str, Path>
+  - orientation_theta_path: <str, Path>
+  - orientation_phi_path: <str, Path>
+  - relative_defocus_path: <str, Path>
+
+---- # ComputationalConfig pydantic model for computational parameters
+ComputationalConfig:  # NOTE: this will probably change a lot
+  - gpu_ids: <list[int]>  # List of GPU IDs to use, default to [0]
+  - num_cpus: <int>  # Number of CPUs to use, default to 1
