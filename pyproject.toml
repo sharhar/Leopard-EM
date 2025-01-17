@@ -37,6 +37,7 @@ classifiers = [
 dependencies = [
     "torch",
     "numpy",
+    "mrcfile",
     "pydantic",
     "pyyaml",
     "types-PyYAML",

@@ -46,6 +46,7 @@ def write_mrc_from_numpy(
     data: np.ndarray,
     mrc_path: str | os.PathLike | Path,
     mrc_header: Optional[dict] = None,
+    overwrite: bool = False,
 ) -> None:
     """Writes a numpy array to an MRC file.
 
@@ -59,15 +60,22 @@ def write_mrc_from_numpy(
         Path to the MRC file.
     mrc_header : Optional[dict]
         Dictionary containing header information. Default is None.
+    overwrite : bool
+        Overwrite argument passed to mrcfile.new. Default is False.
     """
     # TODO: Figure out how to set info in the header
-    raise NotImplementedError()
+    if mrc_header is not None:
+        raise NotImplementedError("Setting header info is not yet implemented.")
+
+    with mrcfile.new(mrc_path, overwrite=overwrite) as mrc:
+        mrc.set_data(data)
 
 
 def write_mrc_from_tensor(
     data: torch.Tensor,
     mrc_path: str | os.PathLike | Path,
     mrc_header: Optional[dict] = None,
+    overwrite: bool = False,
 ) -> None:
     """Writes a tensor array to an MRC file.
 
@@ -81,6 +89,8 @@ def write_mrc_from_tensor(
         Path to the MRC file.
     mrc_header : Optional[dict]
         Dictionary containing header information. Default is None.
+    overwrite : bool
+        Overwrite argument passed to mrcfile.new. Default is False.
     """
     # TODO: Figure out how to set info in the header
     write_mrc_from_numpy(data.numpy(), mrc_path, mrc_header)
@@ -109,7 +119,7 @@ def load_mrc_image(file_path: str | os.PathLike | Path) -> torch.Tensor:
     # Check that tensor is 2D, squeezing if necessary
     tensor = tensor.squeeze()
     if len(tensor.shape) != 2:
-        raise ValueError("MRC file is not two-dimensional. Got shape: {tmp.shape}")
+        raise ValueError(f"MRC file is not two-dimensional. Got shape: {tensor.shape}")
 
     return tensor
 
@@ -137,6 +147,8 @@ def load_mrc_volume(file_path: str | os.PathLike | Path) -> torch.Tensor:
     # Check that tensor is 3D, squeezing if necessary
     tensor = tensor.squeeze()
     if len(tensor.shape) != 3:
-        raise ValueError("MRC file is not three-dimensional. Got shape: {tmp.shape}")
+        raise ValueError(
+            f"MRC file is not three-dimensional. Got shape: {tensor.shape}"
+        )
 
     return tensor

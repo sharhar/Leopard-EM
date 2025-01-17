@@ -49,6 +49,12 @@ OrientationSearchConfig:
   - in_plane_angular_step: <float, greater than 0>  # degrees
   - out_of_plane_angular_step: <float, greater than 0>  # degrees
 
+----
+PixelSizeSearchConfig:
+  - pixel_size_min: <float>  # Angstroms
+  - pixel_size_max: <float>  # Angstroms
+  - pixel_size_step: <float>  # Angstroms
+
 ---- # PreprocessingFilters pydantic model for preprocessing filters
 PreprocessingFilters:  # NOTE: This could also be named correlation filters since applied to correlations
   - whitening_filter_config: <WhiteningFilterConfig>
@@ -83,6 +89,7 @@ MatchTemplateResult:
   - orientation_theta_path: <str, Path>
   - orientation_phi_path: <str, Path>
   - relative_defocus_path: <str, Path>
+  - pixel_size_path: <str, Path>
 
 ---- # ComputationalConfig pydantic model for computational parameters
 ComputationalConfig:  # NOTE: this will probably change a lot

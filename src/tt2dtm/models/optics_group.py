@@ -3,10 +3,12 @@
 from os import PathLike
 from typing import Annotated, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from tt2dtm.models.types import BaseModel2DTM
 
 
-class OpticsGroup(BaseModel):
+class OpticsGroup(BaseModel2DTM):
     """Stores optics group parameters for the imaging system on a microscope.
 
     Currently utilizes the minimal set of parameters for calculating a
@@ -20,7 +22,7 @@ class OpticsGroup(BaseModel):
     pixel_size : float
         Pixel size in Angstrom.
     voltage : float
-        Voltage in keV.
+        Voltage in kV.
     spherical_aberration : float
         Spherical aberration in mm. Default is 2.7.
     amplitude_contrast_ratio : float
@@ -80,10 +82,10 @@ class OpticsGroup(BaseModel):
     ctf_B_factor: Annotated[float, Field(ge=0.0, default=0.0)] = 0.0
 
     chromatic_aberration: Optional[Annotated[float, Field(ge=0.0)]] = 0.0
-    mtf_reference: Optional[Union[str, PathLike]]
-    mtf_values: Optional[list[float]]
-    beam_tilt_x: Optional[float]
-    beam_tilt_y: Optional[float]
-    odd_zernike: Optional[list[float]]
-    even_zernike: Optional[list[float]]
-    zernike_moments: Optional[list[float]]
+    mtf_reference: Optional[Union[str, PathLike]] = None
+    mtf_values: Optional[list[float]] = None
+    beam_tilt_x: Optional[float] = None
+    beam_tilt_y: Optional[float] = None
+    odd_zernike: Optional[list[float]] = None
+    even_zernike: Optional[list[float]] = None
+    zernike_moments: Optional[list[float]] = None

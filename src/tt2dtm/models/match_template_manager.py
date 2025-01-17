@@ -1,43 +1,40 @@
 """Root-level model for serialization and validation of 2DTM parameters."""
 
-import json
 import os
-from pathlib import Path
-from typing import Annotated, Any
+from typing import Any, ClassVar
 
-import torch
-import yaml  # type: ignore
-from pydantic import BaseModel, Field, field_validator
+from pydantic import ConfigDict, field_validator
 
 from tt2dtm.models.computational_config import ComputationalConfig
+from tt2dtm.models.correlation_filters import PreprocessingFilters
 from tt2dtm.models.defocus_search_config import DefocusSearchConfig
 from tt2dtm.models.match_template_result import MatchTemplateResult
 from tt2dtm.models.optics_group import OpticsGroup
 from tt2dtm.models.orientation_search_config import OrientationSearchConfig
-from tt2dtm.models.preprocessing_filters import PreprocessingFilters
+from tt2dtm.models.pixel_size_search_config import PixelSizeSearchConfig
+from tt2dtm.models.types import BaseModel2DTM, ExcludedTensor
 from tt2dtm.utils.data_io import load_mrc_image, load_mrc_volume
 
-# Pydantic type-hint to exclude tensor from JSON schema/dump (still attribute)
-ExcludedTensor = Annotated[torch.Tensor, Field(default=None, exclude=True)]
 
-
-class MatchTemplateManager(BaseModel):
+class MatchTemplateManager(BaseModel2DTM):
     """Model holding parameters necessary for running full orientation 2DTM.
 
     Attributes
     ----------
-    micrograph_path : Path
+    micrograph_path : str
         Path to the micrograph .mrc file.
-    template_volume_path : Path
+    template_volume_path : str
         Path to the template volume .mrc file.
-    micrograph : torch.Tensor
+    micrograph : ExcludedTensor
         Image to run template matching on. Not serialized.
-    template_volume : torch.Tensor
+    template_volume : ExcludedTensor
         Template volume to match against. Not serialized.
     optics_group : OpticsGroup
         Optics group parameters for the imaging system on the microscope.
     defocus_search_config : DefocusSearchConfig
         Parameters for searching over defocus values.
+    pixel_size_search_config : PixelSizeSearchConfig
+        Parameters for searching over pixel sizes.
     orientation_search_config : OrientationSearchConfig
         Parameters for searching over orientation angles.
     preprocessing_filters : PreprocessingFilters
@@ -57,12 +54,15 @@ class MatchTemplateManager(BaseModel):
         TODO: Implement this method.
     """
 
+    model_config: ClassVar = ConfigDict(arbitrary_types_allowed=True)
+
     # Serialized attributes
-    micrograph_path: Path
+    micrograph_path: str
     template_volume_path: str
     optics_group: OpticsGroup
     defocus_search_config: DefocusSearchConfig
     orientation_search_config: OrientationSearchConfig
+    pixel_size_search_config: PixelSizeSearchConfig
     preprocessing_filters: PreprocessingFilters
     match_template_result: MatchTemplateResult
     computational_config: ComputationalConfig
@@ -91,29 +91,10 @@ class MatchTemplateManager(BaseModel):
 
         return str(v)
 
-    #######################################
-    ### Class methods for instantiation ###
-    #######################################
-
-    @classmethod
-    def from_json(cls, json_path: str | Path) -> "MatchTemplateManager":
-        """Load a MatchTemplateManager from a serialized JSON file."""
-        with open(json_path) as f:
-            data = json.load(f)
-
-        return cls(**data)
-
-    @classmethod
-    def from_yaml(cls, yaml_path: str | Path) -> "MatchTemplateManager":
-        """Load a MatchTemplateManager from a serialized YAML file."""
-        with open(yaml_path) as f:
-            data = yaml.safe_load(f)
-
-        return cls(**data)
-
     def __init__(self, **data: Any):
         super().__init__(**data)
 
+        # Load the data from the MRC files
         self.micrograph = load_mrc_image(self.micrograph_path)
         self.template_volume = load_mrc_volume(self.template_volume_path)
 
@@ -135,17 +116,3 @@ class MatchTemplateManager(BaseModel):
         """
         self.apply_preprocessing_filters()
         raise NotImplementedError
-
-    ######################
-    ### Export methods ###
-    ######################
-
-    def to_json(self, json_path: str | Path) -> None:
-        """Serialize the MatchTemplateManager to a JSON file."""
-        with open(json_path, "w") as f:
-            json.dump(self.dict(), f)
-
-    def to_yaml(self, yaml_path: str | Path) -> None:
-        """Serialize the MatchTemplateManager to a YAML file."""
-        with open(yaml_path, "w") as f:
-            yaml.dump(self.dict(), f)
