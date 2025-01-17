@@ -2,10 +2,12 @@
 
 from typing import Annotated, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from tt2dtm.models.types import BaseModel2DTM
 
 
-class PhaseRandomizationFilterConfig(BaseModel):
+class PhaseRandomizationFilterConfig(BaseModel2DTM):
     """Configuration for phase randomization filter.
 
     Attributes
@@ -18,7 +20,7 @@ class PhaseRandomizationFilterConfig(BaseModel):
     enabled: Annotated[bool, Field(...)] = False
 
 
-class WhiteningFilterConfig(BaseModel):
+class WhiteningFilterConfig(BaseModel2DTM):
     """Configuration for the whitening filter.
 
     Attributes
@@ -39,7 +41,7 @@ class WhiteningFilterConfig(BaseModel):
     smoothing: Annotated[float, Field(ge=0.0)] = 0.0
 
 
-class BandpassFilterConfig(BaseModel):
+class BandpassFilterConfig(BaseModel2DTM):
     """Configuration for the bandpass filter.
 
     Attributes
@@ -64,7 +66,7 @@ class BandpassFilterConfig(BaseModel):
     falloff: Optional[Annotated[float, Field(ge=0.0)]] = None
 
 
-class PreprocessingFilters(BaseModel):
+class PreprocessingFilters(BaseModel2DTM):
     """Configuration class for all preprocessing filters.
 
     Attributes
