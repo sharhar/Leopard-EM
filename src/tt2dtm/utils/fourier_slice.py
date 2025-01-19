@@ -1,8 +1,7 @@
 """Useful functions for extracting and filtering Fourier slices."""
 
-import numpy as np
+import roma
 import torch
-from scipy.spatial.transform import Rotation
 from torch_fourier_slice import extract_central_slices_rfft_3d
 from torch_fourier_slice.dft_utils import fftshift_3d, ifftshift_2d
 from torch_grid_utils import fftfreq_grid
@@ -30,7 +29,6 @@ def _rfft_slices_to_real_projections(
     fourier_slices : torch.Tensor
         The Fourier slices to convert. Inverse Fourier transform is applied
         across the last two dimensions.
-
 
     Returns
     -------
@@ -77,21 +75,14 @@ def get_rfft_slices_from_volume(
     volume_rfft = torch.fft.fftn(volume_rfft, dim=(-3, -2, -1))
     volume_rfft = fftshift_3d(volume_rfft, rfft=True)
 
-    # TODO: Keep all rotation computation in PyTorch
-    psi_np = psi.cpu().numpy()
-    theta_np = theta.cpu().numpy()
-    phi_np = phi.cpu().numpy()
-
-    angles = np.stack([phi_np, theta_np, psi_np], axis=-1)
-
-    rot_np = Rotation.from_euler("zyz", angles, degrees=degrees)
-    rot = torch.Tensor(rot_np.as_matrix())
+    # Use roma to keep angles on same device
+    rot_matrix = roma.euler_to_rotmat("zyz", (phi, theta, psi), degrees=degrees)
 
     # Use torch_fourier_slice to take the Fourier slice
     fourier_slices = extract_central_slices_rfft_3d(
         volume_rfft=volume_rfft,
         image_shape=shape,
-        rotation_matrices=rot,
+        rotation_matrices=rot_matrix,
     )
 
     # Invert contrast to match image
