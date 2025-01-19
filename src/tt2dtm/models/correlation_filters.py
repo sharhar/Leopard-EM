@@ -15,12 +15,12 @@ class PhaseRandomizationFilterConfig(BaseModel2DTM):
     enabled : bool
         If True, apply a phase randomization filter to the input image. Default
         is False.
-    cutonn : float
+    cuton : float
         Spatial resolution, in Angstroms, above which to randomize the phase.
     """
 
     enabled: Annotated[bool, Field(...)] = False
-    cutonn: Optional[Annotated[float, Field(ge=0.0)]] = None
+    cuton: Optional[Annotated[float, Field(ge=0.0)]] = None
 
 
 class WhiteningFilterConfig(BaseModel2DTM):

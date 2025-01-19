@@ -64,6 +64,7 @@ preprocessing_filters:
     high_pass: 2.5
     low_pass: 50.0
   phase_randomization_filter_config:
+    cuton: 2.5
     enabled: false
   whitening_filter_config:
     enabled: true
