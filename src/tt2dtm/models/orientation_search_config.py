@@ -7,7 +7,6 @@ from pydantic import Field, field_validator
 from tt2dtm.models.types import BaseModel2DTM
 
 ALLOWED_ORIENTATION_SAMPLING_METHODS = ["Hopf Fibration"]
-ALLOWED_SYMMETRY_GROUPS = ["C1"]
 
 
 class OrientationSearchConfig(BaseModel2DTM):
@@ -69,13 +68,13 @@ class OrientationSearchConfig(BaseModel2DTM):
 
         return value
 
-    @field_validator("template_symmetry")
-    def validate_template_symmetry(cls, value):  # type: ignore
-        """Validate from allowed symmetry groups."""
-        if value not in ALLOWED_SYMMETRY_GROUPS:
-            raise ValueError(
-                f"Currently only supports the following symmetry "
-                f"group(s):\n\t {ALLOWED_SYMMETRY_GROUPS}"
-            )
+        # @field_validator("template_symmetry")
+        # def validate_template_symmetry(cls, value):  # type: ignore
+        #     """Validate from allowed symmetry groups."""
+        #     if value not in ALLOWED_SYMMETRY_GROUPS:
+        #         raise ValueError(
+        #             f"Currently only supports the following symmetry "
+        #             f"group(s):\n\t {ALLOWED_SYMMETRY_GROUPS}"
+        #         )
 
         return value
