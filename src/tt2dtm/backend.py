@@ -4,13 +4,14 @@ import roma
 import torch
 import tqdm
 from torch_fourier_slice import extract_central_slices_rfft_3d
+import torch.multiprocessing as mp
 
 COMPILE_BACKEND = "inductor"
 DEFAULT_STATISTIC_DTYPE = torch.float32
 
 # Turn off gradient calculations by default
 torch.set_grad_enabled(False)
-
+########test#######33##3
 ######################################################
 ### Helper functions called at the end of the loop ###
 ######################################################
@@ -160,6 +161,48 @@ def sum_and_squared_sum_to_variance(
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Helper function to calculate total variance from mean and squared sum."""
     raise NotImplementedError("Not implemented yet.")
+
+
+def scale_mip(
+        mip: torch.Tensor,
+        correlation_sum: torch.Tensor,
+        correlation_squared_sum: torch.Tensor,
+        total_correlation_positions: int,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Scale the MIP by the mean and variance of the correlation values.
+    
+    Parameters
+    ----------
+    mip : torch.Tensor
+        MIP of the correlation values.
+    correlation_sum : torch.Tensor
+        Sum of the correlation values.
+    correlation_squared_sum : torch.Tensor
+        Sum of the squared correlation values.
+    total_projections : int
+        Total number of projections.
+
+    Returns
+    -------
+    tuple[torch.Tensor, torch.Tensor]
+        Tuple containing the MIP and scaled MIP
+    """
+    num_pixels = torch.tensor(mip.shape[0] * mip.shape[1])
+    mip_mult = mip * num_pixels
+
+    correlation_sum = correlation_sum / total_correlation_positions
+    correlation_squared_sum = correlation_squared_sum / total_correlation_positions - (correlation_sum ** 2)
+    correlation_squared_sum = torch.sqrt(torch.clamp(correlation_squared_sum, min=0)) * torch.sqrt(num_pixels)
+    correlation_sum = correlation_sum * torch.sqrt(num_pixels)
+    
+    # Calculate normalized MIP
+    mip_normalized = mip_mult - correlation_sum
+    mip_normalized = torch.where(
+        correlation_squared_sum == 0,
+        torch.zeros_like(mip_normalized),
+        mip_normalized / correlation_squared_sum
+    )
+    return mip_mult, mip_normalized
 
 
 ###########################################################################
@@ -385,12 +428,66 @@ def core_match_template(
         devices=device,
     )
 
-    results = []
-    for kwargs in kwargs_per_device:
-        results.append(_core_match_template_single_gpu(**kwargs))
+    ########################################
+    ### Initialize multiprocessing queue ###
+    ########################################
+    mp.set_start_method('spawn', force=True)
+    queue = mp.Queue()
+    processes = []
+
+    ########################################
+    ### Start multiprocessing processes ###
+    ######################################## 
+
+
+    # Initialize multiprocessing
+    mp.set_start_method('spawn', force=True)
+    queue = mp.Queue()
+    processes = []
+
+    try:
+        # Start processes
+        for kwargs in kwargs_per_device:
+            p = mp.Process(
+                target=_core_match_template_single_gpu,
+                kwargs=kwargs
+            )
+            p.start()
+            processes.append(p)
+
+        # Collect results with timeout
+        partial_results = []
+        for _ in range(len(kwargs_per_device)):
+            try:
+                result = queue.get(timeout=604800)  # 1 week timeout
+                if result is None:
+                    raise RuntimeError(f"GPU process reported failure")
+                # Convert numpy arrays back to torch tensors
+                result = {
+                    k: torch.from_numpy(v) for k, v in result.items()
+                }
+                partial_results.append(result)
+            except Exception as e:
+                print(f"Error collecting results: {str(e)}")
+                raise
+
+    except Exception as e:
+        print(f"Error in multi-GPU processing: {str(e)}")
+        raise
+
+    finally:
+        # Cleanup
+        for p in processes:
+            if p.is_alive():
+                p.terminate()
+            p.join()
+
+    # Verify we got all results
+    if len(partial_results) != len(kwargs_per_device):
+        raise RuntimeError(f"Expected {len(kwargs_per_device)} results, but got {len(partial_results)}")
 
     # Get the aggregated results
-    aggregated_results = aggregate_distributed_results(results)
+    aggregated_results = aggregate_distributed_results(partial_results)
     mip = aggregated_results["mip"]
     best_phi = aggregated_results["best_phi"]
     best_theta = aggregated_results["best_theta"]
@@ -401,14 +498,21 @@ def core_match_template(
     total_projections = aggregated_results["total_projections"]
 
     # Find the correlation mean and variance
-    mean, variance = sum_and_squared_sum_to_variance(
-        correlation_sum, correlation_squared_sum, total_projections
+    #mean, variance = sum_and_squared_sum_to_variance(
+    #    correlation_sum, correlation_squared_sum, total_projections
+    #)
+
+    #scaled_mip = (mip - mean) / torch.sqrt(variance)
+
+    mip_mult, scaled_mip = scale_mip(
+        mip=mip,
+        correlation_sum=correlation_sum,
+        correlation_squared_sum=correlation_squared_sum,
+        total_correlation_positions=total_projections
     )
 
-    scaled_mip = (mip - mean) / torch.sqrt(variance)
-
     return {
-        "mip": mip,
+        "mip": mip_mult,
         "scaled_mip": scaled_mip,
         "best_phi": best_phi,
         "best_theta": best_theta,
@@ -541,7 +645,7 @@ def _core_match_template_single_gpu(
     )
 
     total_projections = 0  # orientations * defocus values
-
+    #total_projections = torch.mul(euler_angles.shape[0], defocus_values.shape[0])
     ##################################
     ### Start the orientation loop ###
     ##################################
@@ -602,15 +706,16 @@ def _core_match_template_single_gpu(
             W,
         )
 
-        total_projections += torch.mul(*cross_correlation.shape[-2:])
+        #Is this really necessary?
+        total_projections += torch.mul(cross_correlation.shape[0], cross_correlation.shape[1])
 
     return {
-        "mip": mip,
-        "best_phi": best_phi,
-        "best_theta": best_theta,
-        "best_psi": best_psi,
-        "best_defocus": best_defocus,
-        "correlation_sum": correlation_sum,
-        "correlation_squared_sum": correlation_squared_sum,
+        "mip": mip.cpu().numpy(),
+        "best_phi": best_phi.cpu().numpy(),
+        "best_theta": best_theta.cpu().numpy(),
+        "best_psi": best_psi.cpu().numpy(),
+        "best_defocus": best_defocus.cpu().numpy(),
+        "correlation_sum": correlation_sum.cpu().numpy(),
+        "correlation_squared_sum": correlation_squared_sum.cpu().numpy(),
         "total_projections": total_projections,
     }
