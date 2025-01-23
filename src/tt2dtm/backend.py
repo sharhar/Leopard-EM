@@ -1,20 +1,17 @@
 """Pure PyTorch implementation of whole orientation search backend."""
 
+import numpy as np
 import roma
 import torch
+import torch.multiprocessing as mp
 import tqdm
 from torch_fourier_slice import extract_central_slices_rfft_3d
-import torch.multiprocessing as mp
 
 COMPILE_BACKEND = "inductor"
 DEFAULT_STATISTIC_DTYPE = torch.float32
 
 # Turn off gradient calculations by default
 torch.set_grad_enabled(False)
-########test#######33##3
-######################################################
-### Helper functions called at the end of the loop ###
-######################################################
 
 
 def construct_multi_gpu_match_template_kwargs(
@@ -101,6 +98,11 @@ def construct_multi_gpu_match_template_kwargs(
     return kwargs_per_device
 
 
+######################################################
+### Helper functions called at the end of the loop ###
+######################################################
+
+
 def aggregate_distributed_results(
     results: list[dict[str, torch.Tensor]],
 ) -> dict[str, torch.Tensor]:
@@ -164,13 +166,13 @@ def sum_and_squared_sum_to_variance(
 
 
 def scale_mip(
-        mip: torch.Tensor,
-        correlation_sum: torch.Tensor,
-        correlation_squared_sum: torch.Tensor,
-        total_correlation_positions: int,
+    mip: torch.Tensor,
+    correlation_sum: torch.Tensor,
+    correlation_squared_sum: torch.Tensor,
+    total_correlation_positions: int,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Scale the MIP by the mean and variance of the correlation values.
-    
+
     Parameters
     ----------
     mip : torch.Tensor
@@ -179,8 +181,8 @@ def scale_mip(
         Sum of the correlation values.
     correlation_squared_sum : torch.Tensor
         Sum of the squared correlation values.
-    total_projections : int
-        Total number of projections.
+    total_correlation_positions : int
+        Total number cross-correlograms calculated.
 
     Returns
     -------
@@ -191,16 +193,20 @@ def scale_mip(
     mip_mult = mip * num_pixels
 
     correlation_sum = correlation_sum / total_correlation_positions
-    correlation_squared_sum = correlation_squared_sum / total_correlation_positions - (correlation_sum ** 2)
-    correlation_squared_sum = torch.sqrt(torch.clamp(correlation_squared_sum, min=0)) * torch.sqrt(num_pixels)
+    correlation_squared_sum = correlation_squared_sum / total_correlation_positions - (
+        correlation_sum**2
+    )
+    correlation_squared_sum = torch.sqrt(
+        torch.clamp(correlation_squared_sum, min=0)
+    ) * torch.sqrt(num_pixels)
     correlation_sum = correlation_sum * torch.sqrt(num_pixels)
-    
+
     # Calculate normalized MIP
     mip_normalized = mip_mult - correlation_sum
     mip_normalized = torch.where(
         correlation_squared_sum == 0,
         torch.zeros_like(mip_normalized),
-        mip_normalized / correlation_squared_sum
+        mip_normalized / correlation_squared_sum,
     )
     return mip_mult, mip_normalized
 
@@ -428,63 +434,48 @@ def core_match_template(
         devices=device,
     )
 
-    ########################################
-    ### Initialize multiprocessing queue ###
-    ########################################
-    mp.set_start_method('spawn', force=True)
-    queue = mp.Queue()
-    processes = []
-
-    ########################################
-    ### Start multiprocessing processes ###
-    ######################################## 
-
-
-    # Initialize multiprocessing
-    mp.set_start_method('spawn', force=True)
+    ##################################################
+    ### Initialize and start multiprocessing queue ###
+    ##################################################
+    mp.set_start_method("spawn", force=True)
     queue = mp.Queue()
     processes = []
 
     try:
         # Start processes
         for kwargs in kwargs_per_device:
-            p = mp.Process(
-                target=_core_match_template_single_gpu,
-                kwargs=kwargs
-            )
+            p = mp.Process(target=_core_match_template_single_gpu, kwargs=kwargs)
             p.start()
             processes.append(p)
 
-        # Collect results with timeout
+        # Collect results
         partial_results = []
         for _ in range(len(kwargs_per_device)):
-            try:
-                result = queue.get(timeout=604800)  # 1 week timeout
-                if result is None:
-                    raise RuntimeError(f"GPU process reported failure")
-                # Convert numpy arrays back to torch tensors
-                result = {
-                    k: torch.from_numpy(v) for k, v in result.items()
-                }
-                partial_results.append(result)
-            except Exception as e:
-                print(f"Error collecting results: {str(e)}")
-                raise
+            result = queue.get()  # Blocking call, waits for result
+            if result is None:
+                raise RuntimeError("GPU process reported failure")
+
+            # Convert numpy arrays back to torch tensors
+            result = {
+                k: torch.from_numpy(v)
+                for k, v in result.items()
+                if isinstance(v, np.ndarray)
+            }
+            partial_results.append(result)
 
     except Exception as e:
-        print(f"Error in multi-GPU processing: {str(e)}")
+        print(f"Error in multi-GPU processing: {e!s}")
         raise
 
     finally:
         # Cleanup
         for p in processes:
-            if p.is_alive():
-                p.terminate()
-            p.join()
+            p.terminate() if p.is_alive() else None
+            p.join()  # Ensure all processes have finished
 
     # Verify we got all results
     if len(partial_results) != len(kwargs_per_device):
-        raise RuntimeError(f"Expected {len(kwargs_per_device)} results, but got {len(partial_results)}")
+        raise RuntimeError("Not all GPU processes returned results")
 
     # Get the aggregated results
     aggregated_results = aggregate_distributed_results(partial_results)
@@ -498,17 +489,17 @@ def core_match_template(
     total_projections = aggregated_results["total_projections"]
 
     # Find the correlation mean and variance
-    #mean, variance = sum_and_squared_sum_to_variance(
+    # mean, variance = sum_and_squared_sum_to_variance(
     #    correlation_sum, correlation_squared_sum, total_projections
-    #)
+    # )
 
-    #scaled_mip = (mip - mean) / torch.sqrt(variance)
+    # scaled_mip = (mip - mean) / torch.sqrt(variance)
 
     mip_mult, scaled_mip = scale_mip(
         mip=mip,
         correlation_sum=correlation_sum,
         correlation_squared_sum=correlation_squared_sum,
-        total_correlation_positions=total_projections
+        total_correlation_positions=total_projections,
     )
 
     return {
@@ -644,8 +635,7 @@ def _core_match_template_single_gpu(
         position=device.index,
     )
 
-    total_projections = 0  # orientations * defocus values
-    #total_projections = torch.mul(euler_angles.shape[0], defocus_values.shape[0])
+    total_projections = euler_angles.shape[0] * defocus_values.shape[0]
     ##################################
     ### Start the orientation loop ###
     ##################################
@@ -705,9 +695,6 @@ def _core_match_template_single_gpu(
             H,
             W,
         )
-
-        #Is this really necessary?
-        total_projections += torch.mul(cross_correlation.shape[0], cross_correlation.shape[1])
 
     return {
         "mip": mip.cpu().numpy(),
