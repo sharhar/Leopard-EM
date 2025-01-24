@@ -38,6 +38,8 @@ def select_gpu_devices(gpu_ids: int | list[int]) -> list[torch.device]:
     list[torch.device]
     """
     if isinstance(gpu_ids, int):
+        if gpu_ids < -1:  # -2 or lower means CPU
+            return [torch.device("cpu")]
         gpu_ids = [gpu_ids]
 
     devices = [torch.device(f"cuda:{gpu_id}") for gpu_id in gpu_ids]
@@ -133,8 +135,8 @@ class MatchTemplateManager(BaseModel2DTM):
 
     def make_backend_core_function_kwargs(self) -> dict[str, Any]:
         """Generates the keyword arguments for backend call from held parameters."""
-        image = self.micrograph
-        template = self.template_volume
+        image = torch.from_numpy(self.micrograph)
+        template = torch.from_numpy(self.template_volume)
         image_shape = image.shape
         template_shape = template.shape[-2:]
 
@@ -146,20 +148,20 @@ class MatchTemplateManager(BaseModel2DTM):
         ctf_filters = calculate_ctf_filter_stack(
             pixel_size=self.optics_group.pixel_size,
             template_shape=template_shape,
-            defocus_u=self.defocus_search_config.defocus_u * 1e-4,  # A to um
-            defocus_v=self.defocus_search_config.defocus_v * 1e-4,  # A to um
-            astigmatism_angle=self.defocus_search_config.defocus_astigmatism_angle,
+            defocus_u=self.optics_group.defocus_u * 1e-4,  # A to um
+            defocus_v=self.optics_group.defocus_v * 1e-4,  # A to um
+            astigmatism_angle=self.optics_group.defocus_astigmatism_angle,
             defocus_min=self.defocus_search_config.defocus_min * 1e-4,  # A to um
             defocus_max=self.defocus_search_config.defocus_max * 1e-4,  # A to um
             defocus_step=self.defocus_search_config.defocus_step * 1e-4,  # A to um
-            amplitude_contrast_ratio=self.optics_group.amplitude_contrast,
+            amplitude_contrast_ratio=self.optics_group.amplitude_contrast_ratio,
             spherical_aberration=self.optics_group.spherical_aberration,
             phase_shift=self.optics_group.phase_shift,
             voltage=self.optics_group.voltage,
             ctf_B_factor=self.optics_group.ctf_B_factor,
         )
 
-        orientations = calculate_searched_orientations(
+        euler_angles = calculate_searched_orientations(
             in_plane_angular_step=self.orientation_search_config.in_plane_angular_step,
             out_of_plane_angular_step=self.orientation_search_config.out_of_plane_angular_step,
             phi_min=self.orientation_search_config.phi_min,
@@ -170,7 +172,7 @@ class MatchTemplateManager(BaseModel2DTM):
             psi_max=self.orientation_search_config.psi_max,
             template_symmetry=self.orientation_search_config.template_symmetry,
         )
-        orientations = orientations.to(torch.float32)
+        euler_angles = euler_angles.to(torch.float32)
 
         device_list = select_gpu_devices(self.computational_config.gpu_ids)
 
@@ -184,7 +186,7 @@ class MatchTemplateManager(BaseModel2DTM):
             "ctf_filters": ctf_filters,
             "whitening_filter_template": whitening_filter,
             "defocus_values": defocus_values,
-            "orientations": orientations,
+            "euler_angles": euler_angles,
             "image_shape": image_shape,
             "template_shape": template_shape,
             "device": device_list,
