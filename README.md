@@ -38,8 +38,22 @@ pip install -e '.[dev,test]'
 
 Inputs to the template matching programs are contained within Pydantic model objects which run validation on the input data. These inputs can be set in a Python script like below:
 
-```python
-TODO
-```
+*TODO*: Add example
 
 Alternatively, configurations can be set in a YAML file and loaded into the `MatchTemplateManager` object. See the notebook `examples/01-config_import_export.ipynb` further information on configuration fields and import/export functionality.
+
+```python
+from tt2dtm.models import MatchTemplateManager
+
+YAML_CONFIG_PATH = "path/to/config.yaml"
+ORIENTATION_BATCH_SIZE = 8
+
+def main():
+    mtm = MatchTemplateManager.from_yaml(YAML_CONFIG_PATH)
+    mtm.run_match_template(ORIENTATION_BATCH_SIZE)
+
+# NOTE: invoking from `if __name__ == "__main__"` is necessary
+# for proper multiprocessing/GPU-distribution behavior
+if __name__ == "__main__":
+    main()
+```
