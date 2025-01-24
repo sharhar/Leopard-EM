@@ -83,6 +83,11 @@ class MatchTemplateResult(BaseModel2DTM):
         Best orientation angle phi.
     relative_defocus : ExcludedTensor
         Best relative defocus.
+    pixel_size : ExcludedTensor
+        Best pixel size.
+    total_correlations : int, optional
+        Total number of correlations computed. Default is 0, and this field is updated
+        automatically after a match_template run.
 
     Methods
     -------
@@ -120,6 +125,7 @@ class MatchTemplateResult(BaseModel2DTM):
     orientation_phi: ExcludedTensor
     relative_defocus: ExcludedTensor
     pixel_size: ExcludedTensor
+    total_correlations: int = 0
 
     ###########################
     ### Pydantic Validators ###

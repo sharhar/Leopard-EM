@@ -200,5 +200,21 @@ class MatchTemplateManager(BaseModel2DTM):
         core_kwargs = self.make_backend_core_function_kwargs()
         results = core_match_template(**core_kwargs)
 
-        # TODO: Place results into the `MatchTemplateResult` object and save it.
-        _ = results
+        # Place results into the `MatchTemplateResult` object and save it.
+        self.match_template_result.mip = results["mip"]
+        self.match_template_result.scaled_mip = results["scaled_mip"]
+
+        # TODO: Grab the average and variance, not sum
+        self.match_template_result.correlation_average = results["correlation_sum"]
+        self.match_template_result.correlation_variance = results[
+            "correlation_squared_sum"
+        ]
+        self.match_template_result.orientation_psi = results["best_psi"]
+        self.match_template_result.orientation_theta = results["best_theta"]
+        self.match_template_result.orientation_phi = results["best_phi"]
+        self.match_template_result.relative_defocus = results["best_defocus"]
+
+        # TODO: Implement pixel size calculation
+        self.match_template_result.pixel_size = torch.zeros(1)
+        self.match_template_result.total_correlations = results["total_correlations"]
+        self.match_template_result.export_results()
