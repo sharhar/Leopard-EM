@@ -42,8 +42,16 @@ dependencies = [
     "pyyaml",
     "types-PyYAML",
     "torch-fourier-slice",
+    "torch-fourier-filter",
     "roma",
+    "tqdm",
+    # Temporary hard-links to github repos
+    "torch_angular_search@git+https://github.com/teamtomo/torch-angular-search",
+    "torch_image_lerp@git+https://github.com/teamtomo/torch-image-lerp",
 ]
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 # https://peps.python.org/pep-0621/#dependencies-optional-dependencies
 # "extras" (e.g. for `pip install .[test]`)

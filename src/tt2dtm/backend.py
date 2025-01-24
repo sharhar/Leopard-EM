@@ -1,9 +1,11 @@
 """Pure PyTorch implementation of whole orientation search backend."""
 
+# import torch.multiprocessing as mp
+from multiprocessing import Manager, Process, set_start_method
+
 import numpy as np
 import roma
 import torch
-import torch.multiprocessing as mp
 import tqdm
 from torch_fourier_slice import extract_central_slices_rfft_3d
 
@@ -12,6 +14,9 @@ DEFAULT_STATISTIC_DTYPE = torch.float32
 
 # Turn off gradient calculations by default
 torch.set_grad_enabled(False)
+
+# Set multiprocessing start method to spawn
+set_start_method("spawn", force=True)
 
 
 def construct_multi_gpu_match_template_kwargs(
@@ -65,11 +70,10 @@ def construct_multi_gpu_match_template_kwargs(
         and all tensors in the dictionary have been allocated to that device.
     """
     num_devices = len(devices)
-    num_orientations_per_device = euler_angles.shape[0] // num_devices + 1
     kwargs_per_device = []
 
     # Split the euler angles across devices
-    euler_angles_split = euler_angles.split(num_orientations_per_device)
+    euler_angles_split = euler_angles.chunk(num_devices)
 
     for device, euler_angles_device in zip(devices, euler_angles_split):
         # Allocate all tensors to the device
@@ -104,45 +108,71 @@ def construct_multi_gpu_match_template_kwargs(
 
 
 def aggregate_distributed_results(
-    results: list[dict[str, torch.Tensor]],
+    results: list[dict[str, torch.Tensor | np.ndarray]],
 ) -> dict[str, torch.Tensor]:
-    """Combine the 2DTM results from multiple devices."""
-    # Pass all tensors back to the CPU
+    """Combine the 2DTM results from multiple devices.
+
+    NOTE: This assumes that all tensors have been passed back to the CPU and are in
+    the form of numpy arrays.
+
+    Parameters
+    ----------
+    results : list[dict[str, np.ndarray]]
+        List of dictionaries containing the results from each device. Each dictionary
+        contains the following keys:
+            - "mip": Maximum intensity projection of the cross-correlation values.
+            - "best_phi": Best phi angle for each pixel.
+            - "best_theta": Best theta angle for each pixel.
+            - "best_psi": Best psi angle for each pixel.
+            - "best_defocus": Best defocus value for each pixel.
+            - "correlation_sum": Sum of cross-correlation values for each pixel.
+            - "correlation_squared_sum": Sum of squared cross-correlation values for
+              each pixel.
+            - "total_projections": Total number of projections calculated.
+    """
+    # Ensure all the tensors are passed back to CPU as numpy arrays
+    # Not sure why cannot sync across devices, but this is a workaround
     results = [
         {
-            key: value.cpu()
+            key: value.cpu().numpy() if isinstance(value, torch.Tensor) else value
             for key, value in result.items()
-            if isinstance(value, torch.Tensor)
         }
         for result in results
     ]
 
-    # Construct stack of MIPs and find the maximum
-    mips = torch.stack([result["mip"] for result in results], dim=0)
-    mip_max, mip_argmax = torch.max(mips, dim=0)
+    mips = np.stack([result["mip"] for result in results], axis=0)
+    best_phi = np.stack([result["best_phi"] for result in results], axis=0)
+    best_theta = np.stack([result["best_theta"] for result in results], axis=0)
+    best_psi = np.stack([result["best_psi"] for result in results], axis=0)
+    best_defocus = np.stack([result["best_defocus"] for result in results], axis=0)
 
-    # Construct stack of best angles and defocus values
-    best_phi = torch.stack([result["best_phi"] for result in results], dim=0)
-    best_phi = best_phi.gather(dim=0, index=mip_argmax[None, ...])
+    mip_max = mips.max(axis=0)
+    mip_argmax = mips.argmax(axis=0)
+    indices = np.unravel_index(mip_argmax, mips.shape)
 
-    best_theta = torch.stack([result["best_theta"] for result in results], dim=0)
-    best_theta = best_theta.gather(dim=0, index=mip_argmax[None, ...])
-
-    best_psi = torch.stack([result["best_psi"] for result in results], dim=0)
-    best_psi = best_psi.gather(dim=0, index=mip_argmax[None, ...])
-
-    best_defocus = torch.stack([result["best_defocus"] for result in results], dim=0)
-    best_defocus = best_defocus.gather(dim=0, index=mip_argmax[None, ...])
+    best_phi = best_phi[indices]
+    best_theta = best_theta[indices]
+    best_psi = best_psi[indices]
+    best_defocus = best_defocus[indices]
 
     # Sum the sums and squared sums of the cross-correlation values
-    correlation_sum = torch.stack(
-        [result["correlation_sum"] for result in results], dim=0
-    ).sum(dim=0)
-    correlation_squared_sum = torch.stack(
-        [result["correlation_squared_sum"] for result in results], dim=0
-    ).sum(dim=0)
+    correlation_sum = np.stack(
+        [result["correlation_sum"] for result in results], axis=0
+    ).sum(axis=0)
+    correlation_squared_sum = np.stack(
+        [result["correlation_squared_sum"] for result in results], axis=0
+    ).sum(axis=0)
 
     total_projections = sum(result["total_projections"] for result in results)
+
+    # Cast back to torch tensors on the CPU
+    mip_max = torch.from_numpy(mip_max)
+    best_phi = torch.from_numpy(best_phi)
+    best_theta = torch.from_numpy(best_theta)
+    best_psi = torch.from_numpy(best_psi)
+    best_defocus = torch.from_numpy(best_defocus)
+    correlation_sum = torch.from_numpy(correlation_sum)
+    correlation_squared_sum = torch.from_numpy(correlation_squared_sum)
 
     return {
         "mip": mip_max,
@@ -437,47 +467,28 @@ def core_match_template(
     ##################################################
     ### Initialize and start multiprocessing queue ###
     ##################################################
-    mp.set_start_method("spawn", force=True)
-    queue = mp.Queue()
+    manager = Manager()
+    result_dict = manager.dict()
+
+    # lists to track processes
     processes = []
 
-    try:
-        # Start processes
-        for kwargs in kwargs_per_device:
-            p = mp.Process(target=_core_match_template_single_gpu, kwargs=kwargs)
-            p.start()
-            processes.append(p)
+    # Start processes
+    for i, kwargs in enumerate(kwargs_per_device):
+        p = Process(
+            target=_core_match_template_single_gpu,
+            args=(result_dict, i),
+            kwargs=kwargs,
+        )
+        processes.append(p)
+        p.start()
 
-        # Collect results
-        partial_results = []
-        for _ in range(len(kwargs_per_device)):
-            result = queue.get()  # Blocking call, waits for result
-            if result is None:
-                raise RuntimeError("GPU process reported failure")
-
-            # Convert numpy arrays back to torch tensors
-            result = {
-                k: torch.from_numpy(v)
-                for k, v in result.items()
-                if isinstance(v, np.ndarray)
-            }
-            partial_results.append(result)
-
-    except Exception as e:
-        print(f"Error in multi-GPU processing: {e!s}")
-        raise
-
-    finally:
-        # Cleanup
-        for p in processes:
-            p.terminate() if p.is_alive() else None
-            p.join()  # Ensure all processes have finished
-
-    # Verify we got all results
-    if len(partial_results) != len(kwargs_per_device):
-        raise RuntimeError("Not all GPU processes returned results")
+    # Wait for all processes to complete
+    for p in processes:
+        p.join()
 
     # Get the aggregated results
+    partial_results = [result_dict[i] for i in range(len(processes))]
     aggregated_results = aggregate_distributed_results(partial_results)
     mip = aggregated_results["mip"]
     best_phi = aggregated_results["best_phi"]
@@ -516,6 +527,8 @@ def core_match_template(
 
 
 def _core_match_template_single_gpu(
+    result_dict: dict,
+    device_id: int,
     image_dft: torch.Tensor,
     template_dft: torch.Tensor,
     euler_angles: torch.Tensor,
@@ -526,14 +539,22 @@ def _core_match_template_single_gpu(
     h: int,
     w: int,
     projection_batch_size: int,
-) -> dict[str, torch.Tensor]:
+) -> None:
     """Single-GPU call for template matching.
 
     NOTE: All tensors *must* be allocated on the same device. By calling the
     user-facing `core_match_template` function this is handled automatically.
 
+    NOTE: The result_dict is a shared dictionary between processes and updated in-place
+    with this processes's results under the 'device_id' key.
+
     Parameters
     ----------
+    result_dict : dict
+        Dictionary to store the results in.
+    device_id : int
+        ID of the device which computation is running on. Results will be stored
+        in the dictionary with this key.
     image_dft : torch.Tensor
         Real-fourier transform (RFFT) of the image with large image filters
         already applied. Has shape (H, W // 2 + 1).
@@ -564,19 +585,7 @@ def _core_match_template_single_gpu(
 
     Returns
     -------
-    dict[str, torch.Tensor]
-        Dictionary containing the following (keys, value) pairs:
-          - 'mip': Maximum intensity projection of the cross-correlation.
-          - 'best_phi': Best phi angle for each pixel.
-          - 'best_theta': Best theta angle for each pixel.
-          - 'best_psi': Best psi angle for each pixel.
-          - 'best_defocus': Best defocus value for each pixel.
-          - 'correlation_sum': Sum of cross-correlation values for each pixel.
-          - 'correlation_squared_sum': Sum of squared cross-correlation values
-            for each pixel.
-          - 'total_projections': Total number of projections calculated.
-
-        These values will be contained on the same device as the input tensors.
+    None
     """
     device = image_dft.device
 
@@ -625,10 +634,10 @@ def _core_match_template_single_gpu(
     ### Setup iterator object with tqdm for progress bar ###
     ########################################################
 
-    num_batches = euler_angles.shape[0] // projection_batch_size + 1
+    num_batches = euler_angles.shape[0] // projection_batch_size
     orientation_batch_iterator = tqdm.tqdm(
         range(num_batches),
-        desc=f"search on dev. {device.index}",
+        desc=f"Progress on device: {device.index}",
         leave=True,
         total=num_batches,
         dynamic_ncols=True,
@@ -645,7 +654,7 @@ def _core_match_template_single_gpu(
             i * projection_batch_size : (i + 1) * projection_batch_size
         ]
         rot_matrix = roma.euler_to_rotmat(
-            "zyz", euler_angles, degrees=True, device=device
+            "zyz", euler_angles_batch, degrees=True, device=device
         )
 
         # Extract central slice(s) from the template volume
@@ -691,12 +700,13 @@ def _core_match_template_single_gpu(
             best_defocus,
             correlation_sum,
             correlation_squared_sum,
-            projection_batch_size,
             H,
             W,
         )
 
-    return {
+    # NOTE: Need to send all tensors back to the CPU as numpy arrays for the shared
+    # process dictionary. This is a workaround for now
+    result = {
         "mip": mip.cpu().numpy(),
         "best_phi": best_phi.cpu().numpy(),
         "best_theta": best_theta.cpu().numpy(),
@@ -706,3 +716,5 @@ def _core_match_template_single_gpu(
         "correlation_squared_sum": correlation_squared_sum.cpu().numpy(),
         "total_projections": total_projections,
     }
+
+    result_dict[device_id] = result

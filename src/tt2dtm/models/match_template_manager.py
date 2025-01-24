@@ -198,7 +198,9 @@ class MatchTemplateManager(BaseModel2DTM):
         NOTE: not yet implemented.
         """
         core_kwargs = self.make_backend_core_function_kwargs()
-        results = core_match_template(**core_kwargs)
+        results = core_match_template(
+            **core_kwargs, projection_batch_size=projection_batch_size
+        )
 
         # Place results into the `MatchTemplateResult` object and save it.
         self.match_template_result.mip = results["mip"]
@@ -215,6 +217,6 @@ class MatchTemplateManager(BaseModel2DTM):
         self.match_template_result.relative_defocus = results["best_defocus"]
 
         # TODO: Implement pixel size calculation
-        self.match_template_result.pixel_size = torch.zeros(1)
-        self.match_template_result.total_correlations = results["total_correlations"]
+        self.match_template_result.pixel_size = torch.zeros(1, 1)
+        self.match_template_result.total_correlations = results["total_projections"]
         self.match_template_result.export_results()
