@@ -253,6 +253,10 @@ def normalize_template_projection(
 ) -> torch.Tensor:
     """Subtract mean of edge values and set variance to 1 (in large shape).
 
+    This function uses the fact that variance of a sequence, Var(X), is only scaled
+    by the relative size of the small (unpadded) and large (padded) projection and the
+    squared mean for each zero-padded pixel.
+
     Parameters
     ----------
     projections : torch.Tensor
@@ -268,31 +272,27 @@ def normalize_template_projection(
         Edge-mean subtracted projections, still in small space, but normalized
         so variance of zero-padded projection is 1.
     """
+    # Constants related to scaling the variance
+    npix_padded = large_shape[0] * large_shape[1] - small_shape[0] * small_shape[1]
+    relative_size = small_shape[0] * small_shape[1] / (large_shape[0] * large_shape[1])
+
     # Extract edges while preserving batch dimensions
     top_edge = projections[..., 0, :]  # shape: (..., W)
     bottom_edge = projections[..., -1, :]  # shape: (..., W)
-    left_edge = projections[..., :, 0]  # shape: (..., H)
-    right_edge = projections[..., :, -1]  # shape: (..., H)
+    left_edge = projections[..., 1:-1, 0]  # shape: (..., H)
+    right_edge = projections[..., 1:-1, -1]  # shape: (..., H)
+    edge_pixels = torch.concatenate(
+        [top_edge, bottom_edge, left_edge, right_edge], dim=-1
+    )
 
-    # Stack all edges along a new dimension
-    edge_pixels = torch.stack(
-        [
-            top_edge.flatten(-1),  # flatten last dim (W) to combine with H
-            bottom_edge.flatten(-1),
-            left_edge.flatten(-1),
-            right_edge.flatten(-1),
-        ],
-        dim=-1,
-    )  # shape: (..., num_edge_pixels, 4)
+    # Subtract the edge pixel mean and calculate variance of small, unpadded projection
+    edge_mean = edge_pixels.mean(dim=-1)
+    projections -= edge_mean[..., None, None]
+    variance, mean = torch.var_mean(projections, dim=(-1, -2), keepdim=True)
 
-    edge_mean = torch.mean(edge_pixels, dim=(-2, -1), keepdim=True)
-    projections -= edge_mean
-
-    relative_size = float(small_shape[0] * small_shape[1])
-    relative_size /= float(large_shape[0] * large_shape[1])
-
-    squared_sum = torch.sum(projections**2, dim=(-1, -2), keepdim=True)
-    variance = squared_sum * relative_size - (edge_mean * relative_size) ** 2
+    # Scale the variance such that the larger padded space has variance of 1
+    variance *= relative_size
+    variance += (1 / npix_padded) * mean**2
 
     return projections / torch.sqrt(variance)
 
@@ -355,14 +355,18 @@ def do_iteration_statistics_updates(
 
     # using torch.where directly
     update_mask = max_values > mip
-    mip = torch.where(update_mask, max_values, mip)
-    best_phi = torch.where(update_mask, euler_angles[max_orientation_idx, 0], best_phi)
-    best_theta = torch.where(
-        update_mask, euler_angles[max_orientation_idx, 1], best_theta
+    torch.where(update_mask, max_values, mip, out=mip)
+    torch.where(
+        update_mask, euler_angles[max_orientation_idx, 0], best_phi, out=best_phi
     )
-    best_psi = torch.where(update_mask, euler_angles[max_orientation_idx, 2], best_psi)
-    best_defocus = torch.where(
-        update_mask, defocus_values[max_defocus_idx], best_defocus
+    torch.where(
+        update_mask, euler_angles[max_orientation_idx, 1], best_theta, out=best_theta
+    )
+    torch.where(
+        update_mask, euler_angles[max_orientation_idx, 2], best_psi, out=best_psi
+    )
+    torch.where(
+        update_mask, defocus_values[max_defocus_idx], best_defocus, out=best_defocus
     )
 
     correlation_sum += cross_correlation.view(-1, H, W).sum(dim=0)
@@ -645,6 +649,7 @@ def _core_match_template_single_gpu(
     )
 
     total_projections = euler_angles.shape[0] * defocus_values.shape[0]
+
     ##################################
     ### Start the orientation loop ###
     ##################################
@@ -664,6 +669,7 @@ def _core_match_template_single_gpu(
             rotation_matrices=rot_matrix,
         )
         fourier_slice = torch.fft.ifftshift(fourier_slice, dim=(-2,))
+        fourier_slice[..., 0, 0] = 0 + 0j  # zero out the DC component (mean zero)
         fourier_slice *= -1  # flip contrast
 
         # Apply the projective filters on a new batch dimension
