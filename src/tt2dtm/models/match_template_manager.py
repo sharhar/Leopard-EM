@@ -140,7 +140,7 @@ class MatchTemplateManager(BaseModel2DTM):
         image_shape = image.shape
         template_shape = template.shape[-2:]
 
-        whitening_filter = calculate_whitening_filter_template(image, template.shape)
+        whitening_filter = calculate_whitening_filter_template(image, template_shape)
         image_preprocessed_dft = do_image_preprocessing(image)
 
         defocus_values = self.defocus_search_config.defocus_values
@@ -179,6 +179,16 @@ class MatchTemplateManager(BaseModel2DTM):
         template_dft = fftshift_3d(template, rfft=False)
         template_dft = torch.fft.rfftn(template_dft, dim=(-3, -2, -1))
         template_dft = fftshift_3d(template_dft, rfft=True)
+
+        # print("Image dft shape", image_preprocessed_dft.shape)
+        # print("Template dft shape", template_dft.shape)
+        # print("CTF filters shape", ctf_filters.shape)
+        # print("Whitening filter shape", whitening_filter.shape)
+        # print("Defocus values shape", defocus_values.shape)
+        # print("Euler angles shape", euler_angles.shape)
+        # print("Image shape", image_shape)
+        # print("Template shape", template_shape)
+        # print("Device list", device_list)
 
         return {
             "image_dft": image_preprocessed_dft,

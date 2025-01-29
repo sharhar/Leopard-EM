@@ -148,12 +148,11 @@ def aggregate_distributed_results(
 
     mip_max = mips.max(axis=0)
     mip_argmax = mips.argmax(axis=0)
-    indices = np.unravel_index(mip_argmax, mips.shape)
 
-    best_phi = best_phi[indices]
-    best_theta = best_theta[indices]
-    best_psi = best_psi[indices]
-    best_defocus = best_defocus[indices]
+    best_phi = np.take_along_axis(best_phi, mip_argmax[None, ...], axis=0)
+    best_theta = np.take_along_axis(best_theta, mip_argmax[None, ...], axis=0)
+    best_psi = np.take_along_axis(best_psi, mip_argmax[None, ...], axis=0)
+    best_defocus = np.take_along_axis(best_defocus, mip_argmax[None, ...], axis=0)
 
     # Sum the sums and squared sums of the cross-correlation values
     correlation_sum = np.stack(
@@ -186,17 +185,9 @@ def aggregate_distributed_results(
     }
 
 
-def sum_and_squared_sum_to_variance(
-    correlation_sum: torch.Tensor,
-    correlation_squared_sum: torch.Tensor,
-    total_projections: int,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    """Helper function to calculate total variance from mean and squared sum."""
-    raise NotImplementedError("Not implemented yet.")
-
-
 def scale_mip(
     mip: torch.Tensor,
+    mip_scaled: torch.Tensor,
     correlation_sum: torch.Tensor,
     correlation_squared_sum: torch.Tensor,
     total_correlation_positions: int,
@@ -207,6 +198,8 @@ def scale_mip(
     ----------
     mip : torch.Tensor
         MIP of the correlation values.
+    mip_scaled : torch.Tensor
+        Scaled MIP of the correlation values.
     correlation_sum : torch.Tensor
         Sum of the correlation values.
     correlation_squared_sum : torch.Tensor
@@ -220,25 +213,24 @@ def scale_mip(
         Tuple containing the MIP and scaled MIP
     """
     num_pixels = torch.tensor(mip.shape[0] * mip.shape[1])
-    mip_mult = mip * num_pixels
+    mip = mip * num_pixels
 
     correlation_sum = correlation_sum / total_correlation_positions
-    correlation_squared_sum = correlation_squared_sum / total_correlation_positions - (
-        correlation_sum**2
-    )
-    correlation_squared_sum = torch.sqrt(
-        torch.clamp(correlation_squared_sum, min=0)
-    ) * torch.sqrt(num_pixels)
-    correlation_sum = correlation_sum * torch.sqrt(num_pixels)
+    correlation_squared_sum = correlation_squared_sum / total_correlation_positions
+    correlation_squared_sum -= correlation_sum**2
+    correlation_squared_sum = torch.sqrt(torch.clamp(correlation_squared_sum, min=0))
+    correlation_squared_sum *= torch.sqrt(num_pixels)
 
     # Calculate normalized MIP
-    mip_normalized = mip_mult - correlation_sum
-    mip_normalized = torch.where(
+    mip_scaled = mip - correlation_sum
+    torch.where(
         correlation_squared_sum == 0,
-        torch.zeros_like(mip_normalized),
-        mip_normalized / correlation_squared_sum,
+        torch.zeros_like(mip_scaled),
+        mip_scaled / correlation_squared_sum,
+        out=mip_scaled,
     )
-    return mip_mult, mip_normalized
+
+    return mip, mip_scaled
 
 
 ###########################################################################
@@ -253,9 +245,9 @@ def normalize_template_projection(
 ) -> torch.Tensor:
     """Subtract mean of edge values and set variance to 1 (in large shape).
 
-    This function uses the fact that variance of a sequence, Var(X), is only scaled
-    by the relative size of the small (unpadded) and large (padded) projection and the
-    squared mean for each zero-padded pixel.
+    This function uses the fact that variance of a sequence, Var(X), is scaled by the
+    relative size of the small (unpadded) and large (padded with zeros) space. Some
+    negligible error is introduced into the variance (~1e-4) due to this routine.
 
     Parameters
     ----------
@@ -291,6 +283,7 @@ def normalize_template_projection(
     variance, mean = torch.var_mean(projections, dim=(-1, -2), keepdim=True)
 
     # Scale the variance such that the larger padded space has variance of 1
+    mean += relative_size
     variance *= relative_size
     variance += (1 / npix_padded) * mean**2
 
@@ -355,6 +348,7 @@ def do_iteration_statistics_updates(
 
     # using torch.where directly
     update_mask = max_values > mip
+
     torch.where(update_mask, max_values, mip, out=mip)
     torch.where(
         update_mask, euler_angles[max_orientation_idx, 0], best_phi, out=best_phi
@@ -503,23 +497,18 @@ def core_match_template(
     correlation_squared_sum = aggregated_results["correlation_squared_sum"]
     total_projections = aggregated_results["total_projections"]
 
-    # Find the correlation mean and variance
-    # mean, variance = sum_and_squared_sum_to_variance(
-    #    correlation_sum, correlation_squared_sum, total_projections
-    # )
-
-    # scaled_mip = (mip - mean) / torch.sqrt(variance)
-
-    mip_mult, scaled_mip = scale_mip(
+    mip_scaled = torch.empty_like(mip)
+    mip, mip_scaled = scale_mip(
         mip=mip,
+        mip_scaled=mip_scaled,
         correlation_sum=correlation_sum,
         correlation_squared_sum=correlation_squared_sum,
         total_correlation_positions=total_projections,
     )
 
     return {
-        "mip": mip_mult,
-        "scaled_mip": scaled_mip,
+        "mip": mip,
+        "scaled_mip": mip_scaled,
         "best_phi": best_phi,
         "best_theta": best_theta,
         "best_psi": best_psi,
@@ -691,7 +680,7 @@ def _core_match_template_single_gpu(
         projections_dft = torch.fft.rfftn(projections, dim=(-2, -1), s=(H, W))
 
         ### Cross correlation step by element-wise multiplication ###
-        projections_dft = image_dft[None, None, ...] * projections_dft
+        projections_dft = image_dft[None, None, ...] * projections_dft.conj()
         cross_correlation = torch.fft.irfftn(projections_dft, dim=(-2, -1))
 
         # Update the tracked statistics through compiled function
