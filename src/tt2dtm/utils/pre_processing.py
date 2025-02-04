@@ -8,7 +8,7 @@ from torch_fourier_filter.whitening import whitening_filter
 
 def calculate_whitening_filter_template(
     image: torch.Tensor,
-    template_shape: tuple[int, int],
+    output_shape: tuple[int, int],
     smoothing: bool = False,
 ) -> torch.Tensor:
     """Calculation of the whitening filter for the template.
@@ -17,9 +17,9 @@ def calculate_whitening_filter_template(
     ----------
     image : torch.Tensor
         The image to use as a reference (power spectrum calculated from here).
-    template_shape : tuple[int, int]
-        Desired output shape for the filter, in real space. Note that RFFT here cause
-        resulting filter to *not* be this passed tuple.
+    output_shape : tuple[int, int]
+        Desired output shape for the filter. Argument should take into account RFFT
+        half dimension (e.g. (h, w // 2 + 1) for RFFT template).
     smoothing : bool, optional
         If True, apply smoothing to the filter, by default False.
 
@@ -28,19 +28,17 @@ def calculate_whitening_filter_template(
     torch.Tensor
         The whitening filter for the template.
     """
-    image_shape = image.shape
     image_dft = torch.fft.rfftn(image)
 
     return whitening_filter(
         image_dft=image_dft,
-        image_shape=image_shape,
-        output_shape=template_shape,
         rfft=True,
         fftshift=False,
-        dimensions_output=2,
-        smoothing=smoothing,
-        power_spec=True,
-    )
+        do_power_spectrum=True,
+        output_shape=output_shape,
+        output_rfft=True,
+        output_fftshift=False,
+    )[0]
 
 
 def calculate_ctf_filter_stack(
@@ -142,8 +140,13 @@ def do_image_preprocessing(image: torch.Tensor) -> torch.Tensor:
     """
     image_dft = torch.fft.rfftn(image)
     image_dft[0, 0] = 0 + 0j
-    whitening_filter = calculate_whitening_filter_template(image, image.shape)
-    image_dft *= whitening_filter
+    wf_image = whitening_filter(
+        image_dft=image_dft,
+        rfft=True,
+        fftshift=False,
+        do_power_spectrum=True,
+    )[0]
+    image_dft *= wf_image
     image_dft[0, 0] = 0 + 0j  # superfluous, but following cisTEM
     image_dft /= torch.sqrt(
         torch.sum(torch.abs(image_dft) ** 2, dim=(-1, -2), keepdim=True)

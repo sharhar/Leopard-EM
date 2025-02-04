@@ -213,22 +213,22 @@ def scale_mip(
         Tuple containing the MIP and scaled MIP
     """
     num_pixels = torch.tensor(mip.shape[0] * mip.shape[1])
-    mip = mip * num_pixels
 
     correlation_sum = correlation_sum / total_correlation_positions
     correlation_squared_sum = correlation_squared_sum / total_correlation_positions
     correlation_squared_sum -= correlation_sum**2
     correlation_squared_sum = torch.sqrt(torch.clamp(correlation_squared_sum, min=0))
-    correlation_squared_sum *= torch.sqrt(num_pixels)
 
     # Calculate normalized MIP
     mip_scaled = mip - correlation_sum
     torch.where(
-        correlation_squared_sum == 0,
-        torch.zeros_like(mip_scaled),
+        correlation_squared_sum != 0,
         mip_scaled / correlation_squared_sum,
+        torch.zeros_like(mip_scaled),
         out=mip_scaled,
     )
+
+    mip = mip * (num_pixels**0.5)
 
     return mip, mip_scaled
 
@@ -441,6 +441,12 @@ def core_match_template(
     # filter_batch_size = ctf_filters.shape[0]
     # batch_size = projection_batch_size * filter_batch_size
 
+    ##############################################################
+    ### Pre-multiply the whitening filter with the CTF filters ###
+    ##############################################################
+
+    projective_filters = ctf_filters * whitening_filter_template[None, ...]
+
     #########################################
     ### Split orientations across devices ###
     #########################################
@@ -452,7 +458,7 @@ def core_match_template(
         image_dft=image_dft,
         template_dft=template_dft,
         euler_angles=euler_angles,
-        projective_filters=ctf_filters,
+        projective_filters=projective_filters,
         defocus_values=defocus_values,
         H=H,
         W=W,

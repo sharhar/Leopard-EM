@@ -140,14 +140,16 @@ class MatchTemplateManager(BaseModel2DTM):
         image_shape = image.shape
         template_shape = template.shape[-2:]
 
-        whitening_filter = calculate_whitening_filter_template(image, template_shape)
+        whitening_filter = calculate_whitening_filter_template(
+            image, (template_shape[0], template_shape[1] // 2 + 1)
+        )
         image_preprocessed_dft = do_image_preprocessing(image)
 
         defocus_values = self.defocus_search_config.defocus_values
         defocus_values = torch.tensor(defocus_values, dtype=torch.float32)
         ctf_filters = calculate_ctf_filter_stack(
             pixel_size=self.optics_group.pixel_size,
-            template_shape=template_shape,
+            template_shape=(template_shape[0], template_shape[0]),
             defocus_u=self.optics_group.defocus_u * 1e-4,  # A to um
             defocus_v=self.optics_group.defocus_v * 1e-4,  # A to um
             astigmatism_angle=self.optics_group.defocus_astigmatism_angle,
@@ -179,16 +181,6 @@ class MatchTemplateManager(BaseModel2DTM):
         template_dft = fftshift_3d(template, rfft=False)
         template_dft = torch.fft.rfftn(template_dft, dim=(-3, -2, -1))
         template_dft = fftshift_3d(template_dft, rfft=True)
-
-        # print("Image dft shape", image_preprocessed_dft.shape)
-        # print("Template dft shape", template_dft.shape)
-        # print("CTF filters shape", ctf_filters.shape)
-        # print("Whitening filter shape", whitening_filter.shape)
-        # print("Defocus values shape", defocus_values.shape)
-        # print("Euler angles shape", euler_angles.shape)
-        # print("Image shape", image_shape)
-        # print("Template shape", template_shape)
-        # print("Device list", device_list)
 
         return {
             "image_dft": image_preprocessed_dft,
