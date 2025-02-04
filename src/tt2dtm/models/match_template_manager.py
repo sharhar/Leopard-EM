@@ -5,7 +5,6 @@ from typing import Any, ClassVar
 
 import torch
 from pydantic import ConfigDict, field_validator
-from torch_fourier_slice.dft_utils import fftshift_3d
 
 from tt2dtm.backend import core_match_template
 from tt2dtm.models.computational_config import ComputationalConfig
@@ -137,7 +136,6 @@ class MatchTemplateManager(BaseModel2DTM):
         """Generates the keyword arguments for backend call from held parameters."""
         image = torch.from_numpy(self.micrograph)
         template = torch.from_numpy(self.template_volume)
-        image_shape = image.shape
         template_shape = template.shape[-2:]
 
         whitening_filter = calculate_whitening_filter_template(
@@ -178,26 +176,31 @@ class MatchTemplateManager(BaseModel2DTM):
 
         device_list = select_gpu_devices(self.computational_config.gpu_ids)
 
-        template_dft = fftshift_3d(template, rfft=False)
+        template_dft = torch.fft.fftshift(template, dim=(-3, -2, -1))
         template_dft = torch.fft.rfftn(template_dft, dim=(-3, -2, -1))
-        template_dft = fftshift_3d(template_dft, rfft=True)
+        template_dft = torch.fft.fftshift(template_dft, dim=(-3, -2))  # skip rfft dim
 
         return {
             "image_dft": image_preprocessed_dft,
             "template_dft": template_dft,
             "ctf_filters": ctf_filters,
             "whitening_filter_template": whitening_filter,
-            "defocus_values": defocus_values,
             "euler_angles": euler_angles,
-            "image_shape": image_shape,
-            "template_shape": template_shape,
+            "defocus_values": defocus_values,
             "device": device_list,
         }
 
     def run_match_template(self, projection_batch_size: int = 1) -> None:
         """Runs the base match template in pytorch.
 
-        NOTE: not yet implemented.
+        Parameters
+        ----------
+        projection_batch_size : int
+            The number of projections to process in a single batch. Default is 1.
+
+        Returns
+        -------
+        None
         """
         core_kwargs = self.make_backend_core_function_kwargs()
         results = core_match_template(
@@ -208,7 +211,6 @@ class MatchTemplateManager(BaseModel2DTM):
         self.match_template_result.mip = results["mip"]
         self.match_template_result.scaled_mip = results["scaled_mip"]
 
-        # TODO: Grab the average and variance, not sum
         self.match_template_result.correlation_average = results["correlation_sum"]
         self.match_template_result.correlation_variance = results[
             "correlation_squared_sum"
@@ -220,5 +222,7 @@ class MatchTemplateManager(BaseModel2DTM):
 
         # TODO: Implement pixel size calculation
         self.match_template_result.pixel_size = torch.zeros(1, 1)
-        self.match_template_result.total_correlations = results["total_projections"]
+        self.match_template_result.total_projections = results["total_projections"]
+        self.match_template_result.total_orientations = results["total_orientations"]
+        self.match_template_result.total_defocus = results["total_defocus"]
         self.match_template_result.export_results()

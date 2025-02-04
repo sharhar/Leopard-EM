@@ -85,13 +85,27 @@ class MatchTemplateResult(BaseModel2DTM):
         Best relative defocus.
     pixel_size : ExcludedTensor
         Best pixel size.
-    total_correlations : int, optional
-        Total number of correlations computed. Default is 0, and this field is updated
+    total_projections : int, optional
+        Total number of cross-correlograms of projections computed. Should be
+        'total_orientations x total_defocus' Default is 0, and this field is updated
+        automatically after a match_template run.
+    total_orientations : int, optional
+        Total number of orientations searched. Default is 0, and this field is updated
+        automatically after a match_template run.
+    total_defocus : int, optional
+        Total number of defocus values searched. Default is 0, and this field is updated
         automatically after a match_template run.
 
     Methods
     -------
-    TODO: annotate methods
+    validate_paths()
+        Validates the output paths for write permissions and overwriting.
+
+    load_tensors_from_paths()
+        Load tensors from the specified (held) paths into memory.
+
+    export_results()
+        Export the torch.Tensor results to the specified mrc files.
     """
 
     model_config: ClassVar = ConfigDict(arbitrary_types_allowed=True)
@@ -115,6 +129,11 @@ class MatchTemplateResult(BaseModel2DTM):
     relative_defocus_path: str
     pixel_size_path: str
 
+    # Scalar (non-tensor) attributes
+    total_projections: int = 0
+    total_orientations: int = 0
+    total_defocus: int = 0
+
     # Large array-like attributes saved to individual files (not in JSON)
     mip: ExcludedTensor
     scaled_mip: ExcludedTensor
@@ -125,7 +144,6 @@ class MatchTemplateResult(BaseModel2DTM):
     orientation_phi: ExcludedTensor
     relative_defocus: ExcludedTensor
     pixel_size: ExcludedTensor
-    total_correlations: int = 0
 
     ###########################
     ### Pydantic Validators ###

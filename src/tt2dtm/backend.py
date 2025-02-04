@@ -1,6 +1,5 @@
 """Pure PyTorch implementation of whole orientation search backend."""
 
-# import torch.multiprocessing as mp
 from multiprocessing import Manager, Process, set_start_method
 
 import numpy as np
@@ -25,13 +24,9 @@ def construct_multi_gpu_match_template_kwargs(
     euler_angles: torch.Tensor,
     projective_filters: torch.Tensor,
     defocus_values: torch.Tensor,
-    H: int,
-    W: int,
-    h: int,
-    w: int,
     projection_batch_size: int,
     devices: list[torch.device],
-) -> list[dict[str, torch.Tensor]]:
+) -> list[dict[str, torch.Tensor | int]]:
     """Split orientations between requested devices.
 
     See the `core_match_template` function for further descriptions of the
@@ -49,14 +44,6 @@ def construct_multi_gpu_match_template_kwargs(
         filters to apply to each projection
     defocus_values : torch.Tensor
         corresponding defocus values for each filter
-    H : int
-        height of image in real space
-    W : int
-        width of image in real space
-    h : int
-        height of projection in real space
-    w : int
-        width of projection in real space
     projection_batch_size : int
         number of projections to calculate at once
     devices : list[torch.device]
@@ -64,9 +51,9 @@ def construct_multi_gpu_match_template_kwargs(
 
     Returns
     -------
-    list[dict[str, torch.Tensor]]
+    list[dict[str, torch.Tensor | int]]
         List of dictionaries containing the kwargs to call the single-GPU
-        function. Each element in the list corresponds to a different device,
+        function. Each index in the list corresponds to a different device,
         and all tensors in the dictionary have been allocated to that device.
     """
     num_devices = len(devices)
@@ -90,10 +77,6 @@ def construct_multi_gpu_match_template_kwargs(
             "euler_angles": euler_angles_device,
             "projective_filters": projective_filters_device,
             "defocus_values": defocus_values_device,
-            "H": H,
-            "W": W,
-            "h": h,
-            "w": w,
             "projection_batch_size": projection_batch_size,
         }
 
@@ -162,6 +145,9 @@ def aggregate_distributed_results(
         [result["correlation_squared_sum"] for result in results], axis=0
     ).sum(axis=0)
 
+    # NOTE: Currently only tracking total number of projections for statistics,
+    # but could be future case where number of projections calculated on each
+    # device is necessary for some statistical computation.
     total_projections = sum(result["total_projections"] for result in results)
 
     # Cast back to torch tensors on the CPU
@@ -192,7 +178,15 @@ def scale_mip(
     correlation_squared_sum: torch.Tensor,
     total_correlation_positions: int,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Scale the MIP by the mean and variance of the correlation values.
+    """Scale the MIP to Z-score map by the mean and variance of the correlation values.
+
+    Z-score is accounting for the variation in image intensity and spurious correlations
+    by subtracting the mean and dividing by the standard deviation pixel-wise. Since
+    cross-correlation values are roughly normally distributed for pure noise, Z-score
+    effectively becomes a measure of how unexpected (highly correlated to the reference
+    template) a region is in the image. Note that we are looking at maxima of millions
+    of Gaussian distributions, so Z-score has to be compared with a generalized extreme
+    value distribution (GEV) to determine significance (done elsewhere).
 
     Parameters
     ----------
@@ -222,7 +216,7 @@ def scale_mip(
     # Calculate normalized MIP
     mip_scaled = mip - correlation_sum
     torch.where(
-        correlation_squared_sum != 0,
+        correlation_squared_sum != 0,  # preventing zero division error, albeit unlikely
         mip_scaled / correlation_squared_sum,
         torch.zeros_like(mip_scaled),
         out=mip_scaled,
@@ -271,8 +265,8 @@ def normalize_template_projection(
     # Extract edges while preserving batch dimensions
     top_edge = projections[..., 0, :]  # shape: (..., W)
     bottom_edge = projections[..., -1, :]  # shape: (..., W)
-    left_edge = projections[..., 1:-1, 0]  # shape: (..., H)
-    right_edge = projections[..., 1:-1, -1]  # shape: (..., H)
+    left_edge = projections[..., 1:-1, 0]  # shape: (..., H-2)
+    right_edge = projections[..., 1:-1, -1]  # shape: (..., H-2)
     edge_pixels = torch.concatenate(
         [top_edge, bottom_edge, left_edge, right_edge], dim=-1
     )
@@ -379,6 +373,12 @@ do_iteration_statistics_updates_compiled = torch.compile(
 )
 
 
+###########################################################
+###      Main function for whole orientation search     ###
+### (inputs generalize beyond those in pydantic models) ###
+###########################################################
+
+
 def core_match_template(
     image_dft: torch.Tensor,
     template_dft: torch.Tensor,  # already fftshifted
@@ -386,8 +386,6 @@ def core_match_template(
     whitening_filter_template: torch.Tensor,
     defocus_values: torch.Tensor,
     euler_angles: torch.Tensor,
-    image_shape: tuple[int, int],
-    template_shape: tuple[int, int],
     device: torch.device | list[torch.device],
     projection_batch_size: int = 1,
 ) -> dict[str, torch.Tensor]:
@@ -418,10 +416,6 @@ def core_match_template(
     defocus_values : torch.Tensor
         What defoucs values correspond with the CTF filters. Has shape
         (defocus_batch,).
-    image_shape : tuple[int, int]
-        Shape of the image (H, W), in pixels.
-    template_shape : tuple[int, int]
-        Shape of the template (h, w), in pixels.
     device : torch.device | list[torch.device]
         Device or devices to split computation across.
     projection_batch_size : int, optional
@@ -429,18 +423,22 @@ def core_match_template(
 
     Returns
     -------
-    TODO
+    dict[str, torch.Tensor]
+        Dictionary containing the following
+            - "mip": Maximum intensity projection of the cross-correlation values across
+              orientation and defocus search space.
+            - "scaled_mip": Z-score scaled MIP of the cross-correlation values.
+            - "best_phi": Best phi angle for each pixel.
+            - "best_theta": Best theta angle for each pixel.
+            - "best_psi": Best psi angle for each pixel.
+            - "best_defocus": Best defocus value for each pixel.
+            - "correlation_sum": Sum of cross-correlation values for each pixel.
+            - "correlation_squared_sum": Sum of squared cross-correlation values for
+              each pixel.
+            - "total_projections": Total number of projections calculated.
+            - "total_orientations": Total number of orientations searched.
+            - "total_defocus": Total number of defocus values searched.
     """
-    #####################################
-    ### Constants for later reference ###
-    #####################################
-
-    h, w = template_shape
-    H, W = image_shape
-
-    # filter_batch_size = ctf_filters.shape[0]
-    # batch_size = projection_batch_size * filter_batch_size
-
     ##############################################################
     ### Pre-multiply the whitening filter with the CTF filters ###
     ##############################################################
@@ -460,10 +458,6 @@ def core_match_template(
         euler_angles=euler_angles,
         projective_filters=projective_filters,
         defocus_values=defocus_values,
-        H=H,
-        W=W,
-        h=h,
-        w=w,
         projection_batch_size=projection_batch_size,
         devices=device,
     )
@@ -522,6 +516,8 @@ def core_match_template(
         "correlation_sum": correlation_sum,
         "correlation_squared_sum": correlation_squared_sum,
         "total_projections": total_projections,
+        "total_orientations": euler_angles.shape[0],
+        "total_defocus": defocus_values.shape[0],
     }
 
 
@@ -533,10 +529,6 @@ def _core_match_template_single_gpu(
     euler_angles: torch.Tensor,
     projective_filters: torch.Tensor,
     defocus_values: torch.Tensor,
-    H: int,
-    W: int,
-    h: int,
-    w: int,
     projection_batch_size: int,
 ) -> None:
     """Single-GPU call for template matching.
@@ -571,14 +563,6 @@ def _core_match_template_single_gpu(
     defocus_values : torch.Tensor
         What defoucs values correspond with the CTF filters. Has shape
         (defocus_batch,).
-    H : int
-        Height of the image in real space.
-    W : int
-        Width of the image in real space.
-    h : int
-        Height of the template in real space.
-    w : int
-        Width of the template in real space.
     projection_batch_size : int
         The number of projections to calculate the correlation for at once.
 
@@ -587,6 +571,11 @@ def _core_match_template_single_gpu(
     None
     """
     device = image_dft.device
+    H, W = image_dft.shape
+    h, w = template_dft.shape[-2:]
+    # account for RFFT
+    W = 2 * (W - 1)
+    w = 2 * (w - 1)
 
     ################################################
     ### Initialize the tracked output statistics ###
@@ -600,25 +589,25 @@ def _core_match_template_single_gpu(
     )
     best_phi = torch.full(
         size=(H, W),
-        fill_value=-1.0,
+        fill_value=-1000.0,
         dtype=DEFAULT_STATISTIC_DTYPE,
         device=device,
     )
     best_theta = torch.full(
         size=(H, W),
-        fill_value=-1.0,
+        fill_value=-1000.0,
         dtype=DEFAULT_STATISTIC_DTYPE,
         device=device,
     )
     best_psi = torch.full(
         size=(H, W),
-        fill_value=-1.0,
+        fill_value=-1000.0,
         dtype=DEFAULT_STATISTIC_DTYPE,
         device=device,
     )
     best_defocus = torch.full(
         size=(H, W),
-        fill_value=0.0,
+        fill_value=float("inf"),
         dtype=DEFAULT_STATISTIC_DTYPE,
         device=device,
     )
@@ -718,4 +707,8 @@ def _core_match_template_single_gpu(
         "total_projections": total_projections,
     }
 
+    # Place the results in the shared multi-process manager dictionary so accessible
+    # by the main process.
     result_dict[device_id] = result
+
+    return None
