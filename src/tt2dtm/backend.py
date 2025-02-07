@@ -208,19 +208,11 @@ def scale_mip(
     """
     num_pixels = torch.tensor(mip.shape[0] * mip.shape[1])
 
-    correlation_sum = correlation_sum * total_correlation_positions
-    correlation_squared_sum = (
-        correlation_squared_sum / total_correlation_positions
-    ) - (correlation_sum**2)
-    correlation_squared_sum = correlation_squared_sum * num_pixels
+    # Convert sum and squared sum to mean and variance in-place
+    correlation_sum = correlation_sum / total_correlation_positions
+    correlation_squared_sum = correlation_squared_sum / total_correlation_positions
+    correlation_squared_sum -= correlation_sum**2
     correlation_squared_sum = torch.sqrt(torch.clamp(correlation_squared_sum, min=0))
-    correlation_sum = correlation_sum * (num_pixels**0.5)
-
-    # # Convert sum and squared sum to mean and variance in-place
-    # correlation_sum = correlation_sum / total_correlation_positions
-    # correlation_squared_sum = correlation_squared_sum / total_correlation_positions
-    # correlation_squared_sum -= correlation_sum**2
-    # correlation_squared_sum = torch.sqrt(torch.clamp(correlation_squared_sum, min=0))
 
     # Calculate normalized MIP
     mip_scaled = mip - correlation_sum
@@ -231,7 +223,7 @@ def scale_mip(
         out=mip_scaled,
     )
 
-    # mip = mip * (num_pixels**0.5)
+    mip = mip * (num_pixels**0.5)
 
     return mip, mip_scaled
 
