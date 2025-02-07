@@ -93,7 +93,7 @@ def write_mrc_from_tensor(
         Overwrite argument passed to mrcfile.new. Default is False.
     """
     # TODO: Figure out how to set info in the header
-    write_mrc_from_numpy(data.numpy(), mrc_path, mrc_header)
+    write_mrc_from_numpy(data.numpy(), mrc_path, mrc_header, overwrite)
 
 
 def load_mrc_image(file_path: str | os.PathLike | Path) -> torch.Tensor:

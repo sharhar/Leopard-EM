@@ -10,11 +10,11 @@ class ComputationalConfig(BaseModel):
 
     Attributes
     ----------
-    gpu_ids : list[int]
+    gpu_ids : int | list[int]
         List of GPU IDs to use, defaults to [0].
     num_cpus : int
         Total number of CPUs to use, defaults to 1.
     """
 
-    gpu_ids: Annotated[list[int], Field(...)] = [0]
+    gpu_ids: Annotated[int | list[int], Field(...)] = [0]
     num_cpus: Annotated[int, Field(ge=1)] = 1
