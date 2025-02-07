@@ -135,9 +135,7 @@ class MatchTemplateManager(BaseModel2DTM):
         template = torch.from_numpy(self.template_volume)
         template_shape = template.shape[-2:]
 
-        whitening_filter = calculate_whitening_filter_template(
-            image, (template_shape[0], template_shape[1] // 2 + 1)
-        )
+        whitening_filter = calculate_whitening_filter_template(image, template_shape)
         image_preprocessed_dft = do_image_preprocessing(image)
 
         defocus_values = self.defocus_search_config.defocus_values

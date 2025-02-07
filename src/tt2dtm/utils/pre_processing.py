@@ -1,9 +1,9 @@
 """Helper functions for pre-processing data for 2DTM."""
 
 import torch
-from torch_angular_search.hopf_angles import get_uniform_euler_angles
 from torch_fourier_filter.ctf import calculate_ctf_2d
 from torch_fourier_filter.whitening import whitening_filter
+from torch_so3.hopf_angles import get_uniform_euler_angles
 
 
 def calculate_whitening_filter_template(
@@ -18,8 +18,7 @@ def calculate_whitening_filter_template(
     image : torch.Tensor
         The image to use as a reference (power spectrum calculated from here).
     output_shape : tuple[int, int]
-        Desired output shape for the filter. Argument should take into account RFFT
-        half dimension (e.g. (h, w // 2 + 1) for RFFT template).
+        Desired output shape for the filter. Argument is in terms of real-space shape
     smoothing : bool, optional
         If True, apply smoothing to the filter, by default False.
 
