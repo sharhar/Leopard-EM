@@ -112,3 +112,8 @@ ENV/
 
 # Temporary files
 *.tmp
+
+
+small_image_test_data/
+large_image_test_data/
+scratch_files/

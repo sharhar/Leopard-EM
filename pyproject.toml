@@ -41,13 +41,12 @@ dependencies = [
     "pydantic",
     "pyyaml",
     "types-PyYAML",
-    "torch-fourier-slice",
-    "torch-fourier-filter",
     "roma",
     "tqdm",
-    # Temporary hard-links to github repos
-    "torch_angular_search@git+https://github.com/teamtomo/torch-angular-search",
-    "torch_image_lerp@git+https://github.com/teamtomo/torch-image-lerp",
+    "torch-fourier-slice==v0.0.5",
+    "torch-fourier-filter==v0.2.1",
+    "torch-so3==v0.0.1",
+    "torch_image_lerp==v0.0.5",
 ]
 
 [tool.hatch.metadata]
