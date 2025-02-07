@@ -38,7 +38,7 @@ def calculate_whitening_filter_template(
         output_shape=output_shape,
         output_rfft=True,
         output_fftshift=False,
-    )[0]
+    )
 
 
 def calculate_ctf_filter_stack(
@@ -120,11 +120,16 @@ def calculate_ctf_filter_stack(
 def do_image_preprocessing(image: torch.Tensor) -> torch.Tensor:
     """Pre-processes the input image before running the algorithm.
 
+    NOTE: Although we want an image with mean zero and variance 1, we do not divide by
+    the number of pixels because the CCG normalization requires that the CCG be divided
+    by the number of elements. This operation is skipped to save computation time during
+    the search.
+
     1. RFFT
     2. Calculate whitening filter
     2. Zero central pixel
-    3. Whitening filter element-wise multiplication
-    4. Zero central pixel
+    3. Calculate whitening filter and do element-wise multiplication.
+    4. Zero central pixel again (superfluous, but following cisTEM)
     5. Normalize (x /= sqrt(sum(abs(x)**2)); pixelwise)
 
     Parameters
@@ -140,17 +145,24 @@ def do_image_preprocessing(image: torch.Tensor) -> torch.Tensor:
     """
     image_dft = torch.fft.rfftn(image)
     image_dft[0, 0] = 0 + 0j
+
     wf_image = whitening_filter(
         image_dft=image_dft,
         rfft=True,
         fftshift=False,
         do_power_spectrum=True,
-    )[0]
+    )
     image_dft *= wf_image
     image_dft[0, 0] = 0 + 0j  # superfluous, but following cisTEM
-    image_dft /= torch.sqrt(
-        torch.sum(torch.abs(image_dft) ** 2, dim=(-1, -2), keepdim=True)
-    )
+
+    # NOTE: Extra indexing happening with squared_sum so that Hermitian pairs are
+    # counted, but we skip the first column of the RFFT which should not be duplicated.
+    squared_image_dft = torch.abs(image_dft) ** 2
+    squared_sum = squared_image_dft.sum() + squared_image_dft[:, 1:].sum()
+    image_dft /= torch.sqrt(squared_sum)
+
+    # NOTE: skip this operation -- see docstring
+    # image_dft *= image.numel()  # Scale to variance 1 in real-space
 
     return image_dft
 
@@ -204,7 +216,10 @@ def calculate_searched_orientations(
     return get_uniform_euler_angles(
         in_plane_step=in_plane_angular_step,
         out_of_plane_step=out_of_plane_angular_step,
-        phi_ranges=torch.tensor([[phi_min, phi_max]]),
-        theta_ranges=torch.tensor([[theta_min, theta_max]]),
-        psi_ranges=torch.tensor([[psi_min, psi_max]]),
-    )[0]
+        phi_min=phi_min,
+        phi_max=phi_max,
+        theta_min=theta_min,
+        theta_max=theta_max,
+        psi_min=psi_min,
+        psi_max=psi_max,
+    )

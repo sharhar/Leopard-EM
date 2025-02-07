@@ -78,10 +78,7 @@ class MatchTemplateManager(BaseModel2DTM):
 
     Methods
     -------
-    apply_preprocessing_filters()
-        TODO: Implement this method.
-    run_match_template()
-        TODO: Implement this method.
+    TODO: Document these methods
     """
 
     model_config: ClassVar = ConfigDict(arbitrary_types_allowed=True)

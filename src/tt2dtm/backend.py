@@ -208,10 +208,19 @@ def scale_mip(
     """
     num_pixels = torch.tensor(mip.shape[0] * mip.shape[1])
 
-    correlation_sum = correlation_sum / total_correlation_positions
-    correlation_squared_sum = correlation_squared_sum / total_correlation_positions
-    correlation_squared_sum -= correlation_sum**2
+    correlation_sum = correlation_sum * total_correlation_positions
+    correlation_squared_sum = (
+        correlation_squared_sum / total_correlation_positions
+    ) - (correlation_sum**2)
+    correlation_squared_sum = correlation_squared_sum * num_pixels
     correlation_squared_sum = torch.sqrt(torch.clamp(correlation_squared_sum, min=0))
+    correlation_sum = correlation_sum * (num_pixels**0.5)
+
+    # # Convert sum and squared sum to mean and variance in-place
+    # correlation_sum = correlation_sum / total_correlation_positions
+    # correlation_squared_sum = correlation_squared_sum / total_correlation_positions
+    # correlation_squared_sum -= correlation_sum**2
+    # correlation_squared_sum = torch.sqrt(torch.clamp(correlation_squared_sum, min=0))
 
     # Calculate normalized MIP
     mip_scaled = mip - correlation_sum
@@ -222,7 +231,7 @@ def scale_mip(
         out=mip_scaled,
     )
 
-    mip = mip * (num_pixels**0.5)
+    # mip = mip * (num_pixels**0.5)
 
     return mip, mip_scaled
 
@@ -274,9 +283,15 @@ def normalize_template_projection(
     # Subtract the edge pixel mean and calculate variance of small, unpadded projection
     edge_mean = edge_pixels.mean(dim=-1)
     projections -= edge_mean[..., None, None]
-    variance, mean = torch.var_mean(projections, dim=(-1, -2), keepdim=True)
 
-    # Scale the variance such that the larger padded space has variance of 1
+    # # Calculate variance like cisTEM (does not match desired results...)
+    # variance = (projections**2).sum(dim=(-1, -2), keepdim=True) * relative_size - (
+    #     projections.mean(dim=(-1, -2), keepdim=True) * relative_size
+    # ) ** 2
+
+    # Fast calculation of mean/var using Torch + appropriate scaling.
+    # Scale the variance such that the larger padded space has variance of 1.
+    variance, mean = torch.var_mean(projections, dim=(-1, -2), keepdim=True)
     mean += relative_size
     variance *= relative_size
     variance += (1 / npix_padded) * mean**2
@@ -300,7 +315,7 @@ def do_iteration_statistics_updates(
 ) -> None:
     """Helper function for updating maxima and tracked statistics.
 
-    NOTE: the batch dimensions are effectively unraveled since taking the
+    NOTE: The batch dimensions are effectively unraveled since taking the
     maximum over a single batch dimensions is much faster than
     multi-dimensional maxima.
 
