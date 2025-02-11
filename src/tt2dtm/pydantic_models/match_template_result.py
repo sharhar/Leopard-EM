@@ -6,7 +6,7 @@ from typing import ClassVar
 from pydantic import ConfigDict, model_validator
 from typing_extensions import Self
 
-from tt2dtm.models.types import BaseModel2DTM, ExcludedTensor
+from tt2dtm.pydantic_models.types import BaseModel2DTM, ExcludedTensor
 from tt2dtm.utils.data_io import load_mrc_image, write_mrc_from_tensor
 
 

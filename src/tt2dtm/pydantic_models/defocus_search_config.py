@@ -5,7 +5,7 @@ from typing import Annotated
 import numpy as np
 from pydantic import Field
 
-from tt2dtm.models.types import BaseModel2DTM
+from tt2dtm.pydantic_models.types import BaseModel2DTM
 
 
 class DefocusSearchConfig(BaseModel2DTM):

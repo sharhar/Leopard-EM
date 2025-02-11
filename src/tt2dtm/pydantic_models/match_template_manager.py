@@ -7,14 +7,14 @@ import torch
 from pydantic import ConfigDict, field_validator
 
 from tt2dtm.backend import core_match_template
-from tt2dtm.models.computational_config import ComputationalConfig
-from tt2dtm.models.correlation_filters import PreprocessingFilters
-from tt2dtm.models.defocus_search_config import DefocusSearchConfig
-from tt2dtm.models.match_template_result import MatchTemplateResult
-from tt2dtm.models.optics_group import OpticsGroup
-from tt2dtm.models.orientation_search_config import OrientationSearchConfig
-from tt2dtm.models.pixel_size_search_config import PixelSizeSearchConfig
-from tt2dtm.models.types import BaseModel2DTM, ExcludedTensor
+from tt2dtm.pydantic_models.computational_config import ComputationalConfig
+from tt2dtm.pydantic_models.correlation_filters import PreprocessingFilters
+from tt2dtm.pydantic_models.defocus_search_config import DefocusSearchConfig
+from tt2dtm.pydantic_models.match_template_result import MatchTemplateResult
+from tt2dtm.pydantic_models.optics_group import OpticsGroup
+from tt2dtm.pydantic_models.orientation_search_config import OrientationSearchConfig
+from tt2dtm.pydantic_models.pixel_size_search_config import PixelSizeSearchConfig
+from tt2dtm.pydantic_models.types import BaseModel2DTM, ExcludedTensor
 from tt2dtm.utils.data_io import load_mrc_image, load_mrc_volume
 from tt2dtm.utils.pre_processing import (
     calculate_ctf_filter_stack,
