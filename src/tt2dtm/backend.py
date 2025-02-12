@@ -650,7 +650,7 @@ def _core_match_template_single_gpu(
             i * projection_batch_size : (i + 1) * projection_batch_size
         ]
         rot_matrix = roma.euler_to_rotmat(
-            "zyz", euler_angles_batch, degrees=True, device=device
+            "ZYZ", euler_angles_batch, degrees=True, device=device
         )
 
         # Extract central slice(s) from the template volume
