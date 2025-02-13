@@ -3,6 +3,7 @@
 from typing import NamedTuple, Optional
 
 import numpy as np
+import pandas as pd
 import torch
 from scipy.special import erfcinv
 
@@ -18,6 +19,16 @@ class MatchTemplatePeaks(NamedTuple):
     theta: torch.Tensor
     phi: torch.Tensor
     defocus: torch.Tensor
+
+
+def match_template_peaks_to_dict(peaks: MatchTemplatePeaks) -> dict:
+    """Convert MatchTemplatePeaks object to a dictionary."""
+    return peaks._asdict()
+
+
+def match_template_peaks_to_dataframe(peaks: MatchTemplatePeaks) -> pd.DataFrame:
+    """Convert MatchTemplatePeaks object to a pandas DataFrame."""
+    return pd.DataFrame(peaks._asdict())
 
 
 def gaussian_noise_zscore_cutoff(num_ccg: int, false_positives: float = 1.0) -> float:

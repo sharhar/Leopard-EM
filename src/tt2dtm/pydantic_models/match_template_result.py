@@ -3,9 +3,16 @@
 import os
 from typing import ClassVar
 
+import pandas as pd
 from pydantic import ConfigDict, model_validator
 from typing_extensions import Self
 
+from tt2dtm.analysis.pick_match_template_peaks import (
+    MatchTemplatePeaks,
+    extract_peaks_and_statistics,
+    match_template_peaks_to_dataframe,
+    match_template_peaks_to_dict,
+)
 from tt2dtm.pydantic_models.types import BaseModel2DTM, ExcludedTensor
 from tt2dtm.utils.data_io import load_mrc_image, write_mrc_from_tensor
 
@@ -95,6 +102,9 @@ class MatchTemplateResult(BaseModel2DTM):
     total_defocus : int, optional
         Total number of defocus values searched. Default is 0, and this field is updated
         automatically after a match_template run.
+    match_template_peaks : MatchTemplatePeaks
+        Named tuple object containing the peak locations, heights, and pose statistics.
+        See the 'analysis.pick_match_template_peaks' module for more information.
 
     Methods
     -------
@@ -103,6 +113,17 @@ class MatchTemplateResult(BaseModel2DTM):
 
     load_tensors_from_paths()
         Load tensors from the specified (held) paths into memory.
+
+    locate_peaks(**kwargs)
+        Updates the 'match_template_peaks' attribute with info from held tensors.
+        Additional keyword arguments can be passed to the 'extract_peaks_and_statistics'
+        function.
+
+    peaks_to_dict()
+        Convert the 'match_template_peaks' attribute to a dictionary.
+
+    peaks_to_dataframe()
+        Convert the 'match_template_peaks' attribute to a pandas DataFrame.
 
     export_results()
         Export the torch.Tensor results to the specified mrc files.
@@ -133,6 +154,8 @@ class MatchTemplateResult(BaseModel2DTM):
     total_projections: int = 0
     total_orientations: int = 0
     total_defocus: int = 0
+
+    match_template_peaks: MatchTemplatePeaks
 
     # Large array-like attributes saved to individual files (not in JSON)
     mip: ExcludedTensor
@@ -200,6 +223,52 @@ class MatchTemplateResult(BaseModel2DTM):
         self.orientation_theta = load_mrc_image(self.orientation_theta_path)
         self.orientation_phi = load_mrc_image(self.orientation_phi_path)
         self.relative_defocus = load_mrc_image(self.relative_defocus_path)
+
+    def locate_peaks(self, **kwargs) -> None:  # type: ignore
+        """Updates the 'match_template_peaks' attribute with info from held tensors.
+
+        This method calls the `extract_peaks_and_statistics` function to first locate
+        particles based on the z-scores of the correlation results, then finds the
+        best orientations and defocus values at those locations. Returned named tuple
+        object is stored in the 'match_template_peaks' attribute.
+
+        NOTE: Method intended to be called after running match_template or loading
+        the tensors from disk.
+
+        Parameters
+        ----------
+        **kwargs
+            Additional keyword arguments to pass to the 'extract_peaks_and_statistics'
+            function.
+
+        Returns
+        -------
+        None
+        """
+        self.match_template_peaks = extract_peaks_and_statistics(
+            mip=self.mip,
+            scaled_mip=self.scaled_mip,
+            best_psi=self.orientation_psi,
+            best_theta=self.orientation_theta,
+            best_phi=self.orientation_phi,
+            best_defocus=self.relative_defocus,
+            total_correlation_positions=self.total_projections,
+            **kwargs,
+        )
+
+    def peaks_to_dict(self) -> dict:
+        """Convert the 'match_template_peaks' attribute to a dictionary."""
+        if self.match_template_peaks is None:
+            self.locate_peaks()
+
+        return match_template_peaks_to_dict(self.match_template_peaks)
+
+    def peaks_to_dataframe(self) -> pd.DataFrame:
+        """Convert the 'match_template_peaks' attribute to a pandas DataFrame."""
+        if self.match_template_peaks is None:
+            self.locate_peaks()
+
+        return match_template_peaks_to_dataframe(self.match_template_peaks)
 
     ######################
     ### Export methods ###
