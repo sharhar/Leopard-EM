@@ -1,8 +1,10 @@
 """Root-level model for serialization and validation of 2DTM parameters."""
 
 import os
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Literal, Optional
 
+import mrcfile
+import pandas as pd
 import torch
 from pydantic import ConfigDict, field_validator
 
@@ -185,13 +187,18 @@ class MatchTemplateManager(BaseModel2DTM):
             "device": device_list,
         }
 
-    def run_match_template(self, projection_batch_size: int = 1) -> None:
+    def run_match_template(
+        self, orientation_batch_size: int = 1, do_result_export: bool = True
+    ) -> None:
         """Runs the base match template in pytorch.
 
         Parameters
         ----------
-        projection_batch_size : int
+        orientation_batch_size : int
             The number of projections to process in a single batch. Default is 1.
+        do_result_export : bool
+            If True, call the `MatchTemplateResult.export_results` method to save the
+            results to disk directly after running the match template. Default is True.
 
         Returns
         -------
@@ -199,7 +206,7 @@ class MatchTemplateManager(BaseModel2DTM):
         """
         core_kwargs = self.make_backend_core_function_kwargs()
         results = core_match_template(
-            **core_kwargs, projection_batch_size=projection_batch_size
+            **core_kwargs, orientation_batch_size=orientation_batch_size
         )
 
         # Place results into the `MatchTemplateResult` object and save it.
@@ -220,4 +227,109 @@ class MatchTemplateManager(BaseModel2DTM):
         self.match_template_result.total_projections = results["total_projections"]
         self.match_template_result.total_orientations = results["total_orientations"]
         self.match_template_result.total_defocus = results["total_defocus"]
-        self.match_template_result.export_results()
+
+        if do_result_export:
+            self.match_template_result.export_results()
+
+    def results_to_dataframe(
+        self,
+        do_peak_shifting: bool = True,
+        exclude_columns: Optional[list] = None,
+        locate_peaks_kwargs: Optional[dict] = None,
+    ) -> pd.DataFrame:
+        """Converts the match template results to a DataFrame with additional info.
+
+        Data included in this dataframe should be sufficient to do cross-correlation on
+        the extracted peaks, that is, all the microscope parameters, defocus parameters,
+        etc. are included in the dataframe. Run-specific filter information is *not*
+        included in this dataframe; use the YAML configuration file to replicate a
+        match_template run.
+
+        Parameters
+        ----------
+        do_peak_shifting : bool, optional
+            If True, columns for the image peak position are shifted by half a template
+            width to correspond to the center of the particle. Default is True. This
+            should generally be left as True unless you know what you are doing.
+        exclude_columns : list, optional
+            List of columns to exclude from the DataFrame. Default is None and no
+            columns are excluded.
+        locate_peaks_kwargs : dict, optional
+            Keyword arguments to pass to the 'MatchTemplateResult.locate_peaks' method.
+            Default is None and no additional keyword arguments are passed.
+
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame containing the match template results.
+        """
+        if locate_peaks_kwargs is None:
+            locate_peaks_kwargs = {}
+        self.match_template_result.locate_peaks(**locate_peaks_kwargs)
+        df = self.match_template_result.peaks_to_dataframe()
+
+        # DataFrame currently contains pixel coordinates for results. Coordinates in
+        # image correspond with upper left corner of the template. Need to translate
+        # coordinates by half template width to get to particle center in image.
+        # NOTE: We are assuming the template is cubic
+        nx = mrcfile.open(self.template_volume_path).header.nx
+        if do_peak_shifting:
+            df["img_pos_x"] = df["pos_x"] + nx // 2
+            df["img_pos_y"] = df["pos_y"] + nx // 2
+        else:
+            df["img_pos_x"] = df["pos_x"]
+            df["img_pos_y"] = df["pos_y"]
+
+        # Also, the positions are in terms of pixels. Also add columns for particle
+        # positions in terms of Angstroms.
+        pixel_size = self.optics_group.pixel_size
+        df["img_pos_x_angstrom"] = df["img_pos_x"] * pixel_size
+        df["img_pos_y_angstrom"] = df["img_pos_y"] * pixel_size
+
+        # Add paths to the micrograph and reference template
+        df["reference_micrograph"] = self.micrograph_path
+        df["reference_template"] = self.template_volume_path
+
+        # Add absolute defocus values and other imaging parameters
+        df["defocus_u"] = self.optics_group.defocus_u + df["defocus"]
+        df["defocus_v"] = self.optics_group.defocus_v + df["defocus"]
+        df["defocus_astigmatism_angle"] = self.optics_group.defocus_astigmatism_angle
+
+        df["pixel_size"] = pixel_size
+        df["voltage"] = self.optics_group.voltage
+        df["spherical_aberration"] = self.optics_group.spherical_aberration
+        df["amplitude_contrast_ratio"] = self.optics_group.amplitude_contrast_ratio
+        df["phase_shift"] = self.optics_group.phase_shift
+        df["ctf_B_factor"] = self.optics_group.ctf_B_factor
+
+        # Drop columns if requested
+        if exclude_columns is not None:
+            df = df.drop(columns=exclude_columns)
+
+        return df
+
+    def save_config(self, path: str, mode: Literal["yaml", "json"] = "yaml") -> None:
+        """Save this Pydandic model to disk. Wrapper around the serialization methods.
+
+        Parameters
+        ----------
+        path : str
+            Path to save the configuration file.
+        mode : Literal["yaml", "json"], optional
+            Serialization format to use. Default is 'yaml'.
+
+        Returns
+        -------
+        None
+
+        Raises
+        ------
+        ValueError
+            If an invalid serialization mode is provided.
+        """
+        if mode == "yaml":
+            self.to_yaml(path)
+        elif mode == "json":
+            self.to_json(path)
+        else:
+            raise ValueError(f"Invalid serialization mode '{mode}'.")

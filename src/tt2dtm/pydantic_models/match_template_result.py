@@ -4,7 +4,7 @@ import os
 from typing import ClassVar
 
 import pandas as pd
-from pydantic import ConfigDict, model_validator
+from pydantic import ConfigDict, Field, model_validator
 from typing_extensions import Self
 
 from tt2dtm.analysis.pick_match_template_peaks import (
@@ -155,7 +155,7 @@ class MatchTemplateResult(BaseModel2DTM):
     total_orientations: int = 0
     total_defocus: int = 0
 
-    match_template_peaks: MatchTemplatePeaks
+    match_template_peaks: MatchTemplatePeaks = Field(default=None, exclude=True)
 
     # Large array-like attributes saved to individual files (not in JSON)
     mip: ExcludedTensor
