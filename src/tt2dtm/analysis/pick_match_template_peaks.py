@@ -78,6 +78,10 @@ def find_peaks_in_zscore(
     tuple[torch.Tensor, torch.Tensor]
         Tensors corresponding to the x and y coordinates of the peaks, respectively.
     """
+    # Short circuit if the cutoff is too high
+    if zscore_cutoff < zscore_map.max():
+        return torch.tensor([]), torch.tensor([])
+
     zscore_map_copy = zscore_map.clone()
     H, W = zscore_map.shape
 
@@ -171,6 +175,10 @@ def extract_peaks_and_statistics(
 
     # Find the peak locations only in the scaled MIP
     pos_x, pos_y = find_peaks_in_zscore(scaled_mip, z_score_cutoff, mask_radius)
+
+    # rase error if no peaks are found
+    if len(pos_x) == 0:
+        raise ValueError("No peaks found in scaled MIP.")
 
     # Extract peak heights, orientations, etc. from other maps
     mip_peaks = mip[pos_x, pos_y]
