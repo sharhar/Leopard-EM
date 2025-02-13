@@ -252,6 +252,8 @@ class MatchTemplateResult(BaseModel2DTM):
             best_theta=self.orientation_theta,
             best_phi=self.orientation_phi,
             best_defocus=self.relative_defocus,
+            correlation_average=self.correlation_average,
+            correlation_variance=self.correlation_variance,
             total_correlation_positions=self.total_projections,
             **kwargs,
         )

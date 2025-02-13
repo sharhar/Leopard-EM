@@ -263,9 +263,13 @@ class MatchTemplateManager(BaseModel2DTM):
         pd.DataFrame
             DataFrame containing the match template results.
         """
+        # Short circuit if no kwargs and peaks have already been located
         if locate_peaks_kwargs is None:
-            locate_peaks_kwargs = {}
-        self.match_template_result.locate_peaks(**locate_peaks_kwargs)
+            if self.match_template_result.match_template_peaks is None:
+                self.match_template_result.locate_peaks()
+        else:
+            self.match_template_result.locate_peaks(**locate_peaks_kwargs)
+
         df = self.match_template_result.peaks_to_dataframe()
 
         # DataFrame currently contains pixel coordinates for results. Coordinates in
@@ -286,14 +290,28 @@ class MatchTemplateManager(BaseModel2DTM):
         df["img_pos_x_angstrom"] = df["img_pos_x"] * pixel_size
         df["img_pos_y_angstrom"] = df["img_pos_y"] * pixel_size
 
-        # Add paths to the micrograph and reference template
-        df["reference_micrograph"] = self.micrograph_path
-        df["reference_template"] = self.template_volume_path
-
         # Add absolute defocus values and other imaging parameters
         df["defocus_u"] = self.optics_group.defocus_u + df["defocus"]
         df["defocus_v"] = self.optics_group.defocus_v + df["defocus"]
         df["defocus_astigmatism_angle"] = self.optics_group.defocus_astigmatism_angle
+
+        # Add paths to the micrograph and reference template
+        df["reference_micrograph"] = self.micrograph_path
+        df["reference_template"] = self.template_volume_path
+
+        # Add paths to the output statistic files
+        df["mip_path"] = self.match_template_result.mip_path
+        df["scaled_mip_path"] = self.match_template_result.scaled_mip_path
+        df["psi_path"] = self.match_template_result.orientation_psi_path
+        df["theta_path"] = self.match_template_result.orientation_theta_path
+        df["phi_path"] = self.match_template_result.orientation_phi_path
+        df["defocus_path"] = self.match_template_result.relative_defocus_path
+        df["correlation_average_path"] = (
+            self.match_template_result.correlation_average_path
+        )
+        df["correlation_variance_path"] = (
+            self.match_template_result.correlation_variance_path
+        )
 
         df["pixel_size"] = pixel_size
         df["voltage"] = self.optics_group.voltage

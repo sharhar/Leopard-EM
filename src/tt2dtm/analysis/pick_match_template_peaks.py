@@ -19,6 +19,9 @@ class MatchTemplatePeaks(NamedTuple):
     theta: torch.Tensor
     phi: torch.Tensor
     defocus: torch.Tensor
+    corr_average: torch.Tensor
+    corr_variance: torch.Tensor
+    corr_total: int
 
 
 def match_template_peaks_to_dict(peaks: MatchTemplatePeaks) -> dict:
@@ -79,7 +82,7 @@ def find_peaks_in_zscore(
         Tensors corresponding to the x and y coordinates of the peaks, respectively.
     """
     # Short circuit if the cutoff is too high
-    if zscore_cutoff < zscore_map.max():
+    if zscore_cutoff > zscore_map.max():
         return torch.tensor([]), torch.tensor([])
 
     zscore_map_copy = zscore_map.clone()
@@ -134,6 +137,8 @@ def extract_peaks_and_statistics(
     best_theta: torch.Tensor,
     best_phi: torch.Tensor,
     best_defocus: torch.Tensor,
+    correlation_average: torch.Tensor,
+    correlation_variance: torch.Tensor,
     total_correlation_positions: int,
     z_score_cutoff: Optional[float] = None,
     mask_radius: Optional[float] = 5.0,
@@ -154,6 +159,10 @@ def extract_peaks_and_statistics(
         Best phi angles for each pixel.
     best_defocus : torch.Tensor
         Best defocus values for each pixel.
+    correlation_average : torch.Tensor
+        Average correlation value for each pixel.
+    correlation_variance : torch.Tensor
+        Variance of the correlation values for each pixel.
     total_correlation_positions : int
         Total number of correlation positions calculated during template matching. Must
         be provided if `z_score_cutoff` is not provided (needed for the noise model).
@@ -187,6 +196,8 @@ def extract_peaks_and_statistics(
     theta_peaks = best_theta[pos_x, pos_y]
     phi_peaks = best_phi[pos_x, pos_y]
     defocus_peaks = best_defocus[pos_x, pos_y]
+    correlation_average_peaks = correlation_average[pos_x, pos_y]
+    correlation_variance_peaks = correlation_variance[pos_x, pos_y]
 
     return MatchTemplatePeaks(
         pos_x=pos_x,
@@ -197,4 +208,7 @@ def extract_peaks_and_statistics(
         theta=theta_peaks,
         phi=phi_peaks,
         defocus=defocus_peaks,
+        corr_average=correlation_average_peaks,
+        corr_variance=correlation_variance_peaks,
+        corr_total=total_correlation_positions,
     )
