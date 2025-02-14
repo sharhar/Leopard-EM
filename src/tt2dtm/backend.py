@@ -418,7 +418,7 @@ def core_match_template(
         Whitening filter for the template volume. Has shape (h, w // 2 + 1).
         Gets multiplied with the ctf filters to create a filter stack.
     euler_angles : torch.Tensor
-        Euler angles (in 'zyz' convention) to search over. Has shape
+        Euler angles (in 'ZYZ' convention) to search over. Has shape
         (orientations, 3).
     defocus_values : torch.Tensor
         What defoucs values correspond with the CTF filters. Has shape
@@ -561,7 +561,7 @@ def _core_match_template_single_gpu(
         slices from. Has shape (l, h, w // 2 + 1). where l is the number of
         slices.
     euler_angles : torch.Tensor
-        Euler angles (in 'zyz' convention) to search over. Has shape
+        Euler angles (in 'ZYZ' convention) to search over. Has shape
         (orientations // n_devices, 3). This has already been split (e.g.
         4 devices has shape (orientations // 4, 3).
     projective_filters : torch.Tensor
