@@ -3,12 +3,7 @@
 from typing import Literal
 
 import numpy as np
-import roma
 import torch
-from torch_fourier_slice import extract_central_slices_rfft_3d
-
-from tt2dtm.backend import normalize_template_projection
-from tt2dtm.utils.cross_correlation import handle_correlation_mode
 
 TORCH_TO_NUMPY_PADDING_MODE = {
     "constant": "constant",
@@ -159,105 +154,3 @@ def _get_cropped_image_regions_torch(
     )
 
     return cropped_images
-
-
-def cross_correlate_particle_stack(
-    particle_stack_dft: torch.Tensor,
-    template_dft: torch.Tensor,
-    euler_angles: torch.Tensor,
-    projective_filters: torch.Tensor,  # usually (ctf * whitening)
-    mode: Literal["valid", "same"] = "valid",
-    batch_size: int = 1024,
-) -> torch.Tensor:
-    """Cross-correlate a stack of particle images against a template.
-
-    Parameters
-    ----------
-    particle_stack_dft : torch.Tensor
-        The stack of particle real-Fourier transformed and un-fftshifted images.
-        Shape of (N, H, W).
-    template_dft : torch.Tensor
-        The template volume to extract central slices from. Real-Fourier transformed
-        and fftshifted.
-    euler_angles : torch.Tensor
-        The Euler angles for each particle in the stack. Shape of (3, N).
-    projective_filters : torch.Tensor
-        Projective filters to apply to each Fourier slice particle. Shape of (N, h, w).
-    mode : Literal["valid", "same"], optional
-        Correlation mode to use, by default "valid". If "valid", the output will be
-        the valid cross-correlation of the inputs. If "same", the output will be the
-        same shape as the input particle stack.
-    batch_size : int, optional
-        The batch size to use when processing the particle stack, by default 1024.
-
-    Returns
-    -------
-    torch.Tensor
-        The cross-correlation of the particle stack with the template. Shape will depend
-        on the mode used.
-    """
-    # Helpful constants for later use
-    device = particle_stack_dft.device
-    num_particles, H, W = particle_stack_dft.shape
-    d, h, w = template_dft.shape
-    # account for RFFT
-    W = 2 * (W - 1)
-    w = 2 * (w - 1)
-
-    print(f"num_particles: {num_particles}")
-    print(f"H: {H}")
-    print(f"W: {W}")
-    print(f"d: {d}")
-    print(f"w: {w}")
-    print(f"h: {h}")
-
-    # # Flag for same dimensional output
-    # _same_dim = (H == h) and (W == w)
-
-    if mode == "valid":
-        output_shape = (num_particles, H - h + 1, W - w + 1)
-    elif mode == "same":
-        output_shape = (num_particles, H, W)
-
-    out_correlation = torch.zeros(output_shape, device=device)
-
-    # Loop over the particle stack in batches
-    for i in range(0, num_particles, batch_size):
-        batch_particles_dft = particle_stack_dft[i : i + batch_size]
-        batch_euler_angles = euler_angles[i : i + batch_size]
-        batch_projective_filters = projective_filters[i : i + batch_size]
-
-        # Convert the Euler angles into rotation matrices
-        rot_matrix = roma.euler_to_rotmat(
-            "ZYZ", batch_euler_angles, degrees=True, device=device
-        )
-
-        # Extract the Fourier slice and apply the projective filters
-        fourier_slice = extract_central_slices_rfft_3d(
-            volume_rfft=template_dft,
-            image_shape=(h,) * 3,
-            rotation_matrices=rot_matrix,
-        )
-        fourier_slice = torch.fft.ifftshift(fourier_slice, dim=(-2,))
-        fourier_slice[..., 0, 0] = 0 + 0j  # zero out the DC component (mean zero)
-        fourier_slice *= -1  # flip contrast
-        fourier_slice *= batch_projective_filters
-
-        # Inverse Fourier transform and normalize the projection
-        projections = torch.fft.irfftn(fourier_slice, dim=(-2, -1))
-        projections = torch.fft.ifftshift(projections, dim=(-2, -1))
-        projections = normalize_template_projection(projections, (h, w), (H, W))
-
-        # Padded forward FFT and cross-correlate
-        projections_dft = torch.fft.rfftn(projections, dim=(-2, -1), s=(H, W))
-        projections_dft = batch_particles_dft * projections_dft.conj()
-        cross_correlation = torch.fft.irfftn(projections_dft, dim=(-2, -1))
-
-        # Handle the output shape
-        cross_correlation = handle_correlation_mode(
-            cross_correlation, output_shape, mode
-        )
-
-        out_correlation[i : i + batch_size] = cross_correlation
-
-    return out_correlation
