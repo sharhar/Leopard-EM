@@ -11,8 +11,8 @@ from scipy.special import erfcinv
 class MatchTemplatePeaks(NamedTuple):
     """Helper class for return value of extract_peaks_and_statistics."""
 
-    pos_x: torch.Tensor
     pos_y: torch.Tensor
+    pos_x: torch.Tensor
     mip: torch.Tensor
     scaled_mip: torch.Tensor
     psi: torch.Tensor
@@ -183,25 +183,25 @@ def extract_peaks_and_statistics(
         )
 
     # Find the peak locations only in the scaled MIP
-    pos_x, pos_y = find_peaks_in_zscore(scaled_mip, z_score_cutoff, mask_radius)
+    pos_y, pos_x = find_peaks_in_zscore(scaled_mip, z_score_cutoff, mask_radius)
 
     # rase error if no peaks are found
-    if len(pos_x) == 0:
+    if len(pos_y) == 0:
         raise ValueError("No peaks found in scaled MIP.")
 
     # Extract peak heights, orientations, etc. from other maps
-    mip_peaks = mip[pos_x, pos_y]
-    scaled_mip_peaks = scaled_mip[pos_x, pos_y]
-    psi_peaks = best_psi[pos_x, pos_y]
-    theta_peaks = best_theta[pos_x, pos_y]
-    phi_peaks = best_phi[pos_x, pos_y]
-    defocus_peaks = best_defocus[pos_x, pos_y]
-    correlation_average_peaks = correlation_average[pos_x, pos_y]
-    correlation_variance_peaks = correlation_variance[pos_x, pos_y]
+    mip_peaks = mip[pos_y, pos_x]
+    scaled_mip_peaks = scaled_mip[pos_y, pos_x]
+    psi_peaks = best_psi[pos_y, pos_x]
+    theta_peaks = best_theta[pos_y, pos_x]
+    phi_peaks = best_phi[pos_y, pos_x]
+    defocus_peaks = best_defocus[pos_y, pos_x]
+    correlation_average_peaks = correlation_average[pos_y, pos_x]
+    correlation_variance_peaks = correlation_variance[pos_y, pos_x]
 
     return MatchTemplatePeaks(
-        pos_x=pos_x,
         pos_y=pos_y,
+        pos_x=pos_x,
         mip=mip_peaks,
         scaled_mip=scaled_mip_peaks,
         psi=psi_peaks,

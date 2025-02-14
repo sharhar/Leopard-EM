@@ -278,17 +278,17 @@ class MatchTemplateManager(BaseModel2DTM):
         # NOTE: We are assuming the template is cubic
         nx = mrcfile.open(self.template_volume_path).header.nx
         if do_peak_shifting:
-            df["img_pos_x"] = df["pos_x"] + nx // 2
             df["img_pos_y"] = df["pos_y"] + nx // 2
+            df["img_pos_x"] = df["pos_x"] + nx // 2
         else:
-            df["img_pos_x"] = df["pos_x"]
             df["img_pos_y"] = df["pos_y"]
+            df["img_pos_x"] = df["pos_x"]
 
         # Also, the positions are in terms of pixels. Also add columns for particle
         # positions in terms of Angstroms.
         pixel_size = self.optics_group.pixel_size
-        df["img_pos_x_angstrom"] = df["img_pos_x"] * pixel_size
         df["img_pos_y_angstrom"] = df["img_pos_y"] * pixel_size
+        df["img_pos_x_angstrom"] = df["img_pos_x"] * pixel_size
 
         # Add absolute defocus values and other imaging parameters
         df["defocus_u"] = self.optics_group.defocus_u + df["defocus"]
