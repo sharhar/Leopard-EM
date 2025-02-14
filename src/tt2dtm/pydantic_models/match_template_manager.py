@@ -133,8 +133,16 @@ class MatchTemplateManager(BaseModel2DTM):
 
     def make_backend_core_function_kwargs(self) -> dict[str, Any]:
         """Generates the keyword arguments for backend call from held parameters."""
-        image = torch.from_numpy(self.micrograph)
-        template = torch.from_numpy(self.template_volume)
+        if not isinstance(self.micrograph, torch.Tensor):
+            image = torch.from_numpy(self.micrograph)
+        else:
+            image = self.micrograph
+
+        if not isinstance(self.template_volume, torch.Tensor):
+            template = torch.from_numpy(self.template_volume)
+        else:
+            template = self.template_volume
+
         template_shape = template.shape[-2:]
 
         whitening_filter = calculate_whitening_filter_template(image, template_shape)
