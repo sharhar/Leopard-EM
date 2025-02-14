@@ -21,6 +21,9 @@ match_template_result:
   pixel_size_path: ./output_pixel_size.mrc
   relative_defocus_path: ./output_relative_defocus.mrc
   scaled_mip_path: ./output_scaled_mip.mrc
+  total_defocus: 0
+  total_orientations: 0
+  total_projections: 0
 micrograph_path: dummy_micrograph.mrc
 optics_group:
   amplitude_contrast_ratio: 0.07

@@ -4,7 +4,7 @@ from typing import Annotated
 
 from pydantic import Field, field_validator
 
-from tt2dtm.models.types import BaseModel2DTM
+from tt2dtm.pydantic_models.types import BaseModel2DTM
 
 ALLOWED_ORIENTATION_SAMPLING_METHODS = ["Hopf Fibration"]
 

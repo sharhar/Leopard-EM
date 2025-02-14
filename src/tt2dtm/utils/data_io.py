@@ -39,7 +39,7 @@ def read_mrc_to_tensor(mrc_path: str | os.PathLike | Path) -> torch.Tensor:
     torch.Tensor
         The MRC data as a tensor, copied.
     """
-    return read_mrc_to_numpy(mrc_path)
+    return torch.tensor(read_mrc_to_numpy(mrc_path))
 
 
 def write_mrc_from_numpy(

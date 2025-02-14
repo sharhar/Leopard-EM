@@ -24,7 +24,7 @@ def construct_multi_gpu_match_template_kwargs(
     euler_angles: torch.Tensor,
     projective_filters: torch.Tensor,
     defocus_values: torch.Tensor,
-    projection_batch_size: int,
+    orientation_batch_size: int,
     devices: list[torch.device],
 ) -> list[dict[str, torch.Tensor | int]]:
     """Split orientations between requested devices.
@@ -44,7 +44,7 @@ def construct_multi_gpu_match_template_kwargs(
         filters to apply to each projection
     defocus_values : torch.Tensor
         corresponding defocus values for each filter
-    projection_batch_size : int
+    orientation_batch_size : int
         number of projections to calculate at once
     devices : list[torch.device]
         list of devices to split the orientations across
@@ -77,7 +77,7 @@ def construct_multi_gpu_match_template_kwargs(
             "euler_angles": euler_angles_device,
             "projective_filters": projective_filters_device,
             "defocus_values": defocus_values_device,
-            "projection_batch_size": projection_batch_size,
+            "orientation_batch_size": orientation_batch_size,
         }
 
         kwargs_per_device.append(kwargs)
@@ -394,7 +394,7 @@ def core_match_template(
     defocus_values: torch.Tensor,
     euler_angles: torch.Tensor,
     device: torch.device | list[torch.device],
-    projection_batch_size: int = 1,
+    orientation_batch_size: int = 1,
 ) -> dict[str, torch.Tensor]:
     """Core function for performing the whole-orientation search.
 
@@ -425,7 +425,7 @@ def core_match_template(
         (defocus_batch,).
     device : torch.device | list[torch.device]
         Device or devices to split computation across.
-    projection_batch_size : int, optional
+    orientation_batch_size : int, optional
         Number of projections to calculate at once, on each device
 
     Returns
@@ -465,7 +465,7 @@ def core_match_template(
         euler_angles=euler_angles,
         projective_filters=projective_filters,
         defocus_values=defocus_values,
-        projection_batch_size=projection_batch_size,
+        orientation_batch_size=orientation_batch_size,
         devices=device,
     )
 
@@ -536,7 +536,7 @@ def _core_match_template_single_gpu(
     euler_angles: torch.Tensor,
     projective_filters: torch.Tensor,
     defocus_values: torch.Tensor,
-    projection_batch_size: int,
+    orientation_batch_size: int,
 ) -> None:
     """Single-GPU call for template matching.
 
@@ -570,7 +570,7 @@ def _core_match_template_single_gpu(
     defocus_values : torch.Tensor
         What defoucs values correspond with the CTF filters. Has shape
         (defocus_batch,).
-    projection_batch_size : int
+    orientation_batch_size : int
         The number of projections to calculate the correlation for at once.
 
     Returns
@@ -629,7 +629,7 @@ def _core_match_template_single_gpu(
     ### Setup iterator object with tqdm for progress bar ###
     ########################################################
 
-    num_batches = euler_angles.shape[0] // projection_batch_size
+    num_batches = euler_angles.shape[0] // orientation_batch_size
     orientation_batch_iterator = tqdm.tqdm(
         range(num_batches),
         desc=f"Progress on device: {device.index}",
@@ -647,7 +647,7 @@ def _core_match_template_single_gpu(
 
     for i in orientation_batch_iterator:
         euler_angles_batch = euler_angles[
-            i * projection_batch_size : (i + 1) * projection_batch_size
+            i * orientation_batch_size : (i + 1) * orientation_batch_size
         ]
         rot_matrix = roma.euler_to_rotmat(
             "ZYZ", euler_angles_batch, degrees=True, device=device

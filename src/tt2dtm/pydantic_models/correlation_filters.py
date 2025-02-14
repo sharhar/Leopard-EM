@@ -4,7 +4,7 @@ from typing import Annotated, Optional
 
 from pydantic import Field
 
-from tt2dtm.models.types import BaseModel2DTM
+from tt2dtm.pydantic_models.types import BaseModel2DTM
 
 
 class PhaseRandomizationFilterConfig(BaseModel2DTM):

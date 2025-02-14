@@ -43,7 +43,7 @@ Inputs to the template matching programs are contained within Pydantic model obj
 Alternatively, configurations can be set in a YAML file and loaded into the `MatchTemplateManager` object. See the notebook `examples/01-config_import_export.ipynb` further information on configuration fields and import/export functionality.
 
 ```python
-from tt2dtm.models import MatchTemplateManager
+from tt2dtm.pydantic_models import MatchTemplateManager
 
 YAML_CONFIG_PATH = "path/to/config.yaml"
 ORIENTATION_BATCH_SIZE = 8
