@@ -1,0 +1,5 @@
+site_name: Py2DTM -- Two-Dimensional Template Matching in Python
+theme:
+  name: material
+nav:
+  - Home: index.md

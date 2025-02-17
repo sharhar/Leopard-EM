@@ -56,9 +56,9 @@ allow-direct-references = true
 # https://peps.python.org/pep-0621/#dependencies-optional-dependencies
 # "extras" (e.g. for `pip install .[test]`)
 [project.optional-dependencies]
-# add dependencies used for testing here
+# Dependencies for running tests
 test = ["pytest", "pytest-cov"]
-# add anything else you like to have in your dev environment here
+# Development dependencies
 dev = [
     "ipython",
     "mypy",
@@ -67,6 +67,8 @@ dev = [
     "rich",  # https://github.com/Textualize/rich
     "ruff",
 ]
+# Documentation dependencies
+docs = ["mkdocs", "mkdocs-material"]
 
 [project.urls]
 homepage = "https://github.com/jdickerson95/tt2DTM"
