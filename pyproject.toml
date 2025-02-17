@@ -68,7 +68,7 @@ dev = [
     "ruff",
 ]
 # Documentation dependencies
-docs = ["mkdocs", "mkdocs-material"]
+docs = ["mkdocs", "mkdocs-material", "mkdocs-jupyter"]
 
 [project.urls]
 homepage = "https://github.com/jdickerson95/tt2DTM"

@@ -162,7 +162,7 @@ The first command will construct the HTML files for the documentation site, and 
 
 ## License
 
-The code in this repository is licensed under the **BSD 3-Clause License**. See the [LICENSE](../LICENSE) file for full details.
+The code in this repository is licensed under the **BSD 3-Clause License**. See the [LICENSE](LICENSE) file for full details.
 
 ## References
 

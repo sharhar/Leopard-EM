@@ -1,5 +1,14 @@
 site_name: Py2DTM -- Two-Dimensional Template Matching in Python
 theme:
   name: material
+plugins:
+  - search
+  - mkdocs-jupyter
 nav:
   - Home: index.md
+  - Examples:
+    - Match Template Configuration: examples/basic_configuration.ipynb
+  #   - Analyzing Match Template Results: examples/analyzing_results.md
+  # - Pydantic Model API: api/pydantic_models.md
+  # - Backend API: api/backend.md
+  # - Theory: theory.md
