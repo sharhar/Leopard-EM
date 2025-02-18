@@ -11,41 +11,17 @@ from pydantic import ConfigDict, field_validator
 from tt2dtm.backend import core_match_template
 from tt2dtm.pydantic_models.computational_config import ComputationalConfig
 from tt2dtm.pydantic_models.correlation_filters import PreprocessingFilters
-from tt2dtm.pydantic_models.defocus_search_config import DefocusSearchConfig
+from tt2dtm.pydantic_models.defocus_search import DefocusSearchConfig
 from tt2dtm.pydantic_models.match_template_result import MatchTemplateResult
 from tt2dtm.pydantic_models.optics_group import OpticsGroup
-from tt2dtm.pydantic_models.orientation_search_config import OrientationSearchConfig
-from tt2dtm.pydantic_models.pixel_size_search_config import PixelSizeSearchConfig
+from tt2dtm.pydantic_models.orientation_search import OrientationSearchConfig
 from tt2dtm.pydantic_models.types import BaseModel2DTM, ExcludedTensor
 from tt2dtm.utils.data_io import load_mrc_image, load_mrc_volume
 from tt2dtm.utils.pre_processing import (
     calculate_ctf_filter_stack,
-    calculate_searched_orientations,
-    calculate_whitening_filter_template,
     do_image_preprocessing,
+    select_gpu_devices,
 )
-
-
-def select_gpu_devices(gpu_ids: int | list[int]) -> list[torch.device]:
-    """Convert requested GPU IDs to torch device objects.
-
-    Parameters
-    ----------
-    gpu_ids : int | list[int]
-        GPU ID(s) to use for computation.
-
-    Returns
-    -------
-    list[torch.device]
-    """
-    if isinstance(gpu_ids, int):
-        if gpu_ids < -1:  # -2 or lower means CPU
-            return [torch.device("cpu")]
-        gpu_ids = [gpu_ids]
-
-    devices = [torch.device(f"cuda:{gpu_id}") for gpu_id in gpu_ids]
-
-    return devices
 
 
 class MatchTemplateManager(BaseModel2DTM):
@@ -91,7 +67,6 @@ class MatchTemplateManager(BaseModel2DTM):
     optics_group: OpticsGroup
     defocus_search_config: DefocusSearchConfig
     orientation_search_config: OrientationSearchConfig
-    pixel_size_search_config: PixelSizeSearchConfig
     preprocessing_filters: PreprocessingFilters
     match_template_result: MatchTemplateResult
     computational_config: ComputationalConfig
@@ -145,8 +120,34 @@ class MatchTemplateManager(BaseModel2DTM):
 
         template_shape = template.shape[-2:]
 
-        whitening_filter = calculate_whitening_filter_template(image, template_shape)
-        image_preprocessed_dft = do_image_preprocessing(image)
+        # Shorthand variables for calling filter configurations
+        wf_config = self.preprocessing_filters.whitening_filter_config
+        bp_config = self.preprocessing_filters.bandpass_filter_config
+        pr_config = self.preprocessing_filters.phase_randomization_filter_config
+        ac_config = self.preprocessing_filters.arbitrary_curve_filter_config
+
+        # First, calculate and apply the bandpass, phase randomization, and
+        # arbitrary curve filters to the template.
+        image_dft = torch.fft.rfftn(image)
+
+        bandpass_filter = bp_config.calculate_bandpass_filter(image_dft.shape)
+        phase_rand_filter = pr_config.calculate_phase_randomization_filter(image_dft)
+        arb_curve_filter = ac_config.calculate_arbitrary_curve_filter(image_dft.shape)
+
+        image_dft *= bandpass_filter
+        image_dft *= phase_rand_filter
+        image_dft *= arb_curve_filter
+
+        # Now, calculate the whitening filter for the template based on the filtered img
+        whitening_filter = wf_config.calculate_whitening_filter(
+            image_dft,
+            output_shape=template_shape,
+            output_rfft=True,
+            output_fftshift=False,
+        )
+
+        # Do the image pre-processing (applying whitening filter)
+        image_preprocessed_dft = do_image_preprocessing(image_dft, wf_config)
 
         defocus_values = self.defocus_search_config.defocus_values
         defocus_values = torch.tensor(defocus_values, dtype=torch.float32)
@@ -166,21 +167,16 @@ class MatchTemplateManager(BaseModel2DTM):
             ctf_B_factor=self.optics_group.ctf_B_factor,
         )
 
-        euler_angles = calculate_searched_orientations(
-            in_plane_angular_step=self.orientation_search_config.in_plane_angular_step,
-            out_of_plane_angular_step=self.orientation_search_config.out_of_plane_angular_step,
-            phi_min=self.orientation_search_config.phi_min,
-            phi_max=self.orientation_search_config.phi_max,
-            theta_min=self.orientation_search_config.theta_min,
-            theta_max=self.orientation_search_config.theta_max,
-            psi_min=self.orientation_search_config.psi_min,
-            psi_max=self.orientation_search_config.psi_max,
-            template_symmetry=self.orientation_search_config.template_symmetry,
-        )
+        euler_angles = self.orientation_search_config.euler_angles
         euler_angles = euler_angles.to(torch.float32)
 
         device_list = select_gpu_devices(self.computational_config.gpu_ids)
 
+        # Calculate the DFT of the template to take Fourier slices from
+        # NOTE: There is an extra FFTshift step before the RFFT since, for some reason,
+        # omitting this step will cause a 180 degree phase shift on odd (i, j, k)
+        # structure factors in the Fourier domain. This just requires an extra
+        # IFFTshift after converting a slice back to real-space (handled already).
         template_dft = torch.fft.fftshift(template, dim=(-3, -2, -1))
         template_dft = torch.fft.rfftn(template_dft, dim=(-3, -2, -1))
         template_dft = torch.fft.fftshift(template_dft, dim=(-3, -2))  # skip rfft dim
