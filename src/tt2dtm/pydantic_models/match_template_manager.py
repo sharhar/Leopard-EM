@@ -41,8 +41,6 @@ class MatchTemplateManager(BaseModel2DTM):
         Optics group parameters for the imaging system on the microscope.
     defocus_search_config : DefocusSearchConfig
         Parameters for searching over defocus values.
-    pixel_size_search_config : PixelSizeSearchConfig
-        Parameters for searching over pixel sizes.
     orientation_search_config : OrientationSearchConfig
         Parameters for searching over orientation angles.
     preprocessing_filters : PreprocessingFilters
@@ -56,7 +54,28 @@ class MatchTemplateManager(BaseModel2DTM):
 
     Methods
     -------
-    TODO: Document these methods
+    validate_micrograph_path(v: str) -> str
+        Ensure the micrograph file exists.
+    validate_template_volume_path(v: str) -> str
+        Ensure the template volume file exists.
+    __init__(**data: Any)
+        Constructor which also loads the micrograph and template volume from disk.
+    make_backend_core_function_kwargs() -> dict[str, Any]
+        Generates the keyword arguments for backend 'core_match_template' call from
+        held parameters. Does the necessary pre-processing steps to filter the image
+        and template.
+    run_match_template(orientation_batch_size: int = 1, do_result_export: bool = True)
+        Runs the base match template program in PyTorch.
+    results_to_dataframe(
+        half_template_width_pos_shift: bool = True,
+        exclude_columns: Optional[list] = None,
+        locate_peaks_kwargs: Optional[dict] = None,
+    ) -> pd.DataFrame
+        Converts the basic extracted peak info DataFrame (from the result object) to a
+        DataFrame with additional information about reference files, microscope
+        parameters, etc.
+    save_config(path: str, mode: Literal["yaml", "json"] = "yaml") -> None
+        Save this Pydantic model config to disk.
     """
 
     model_config: ClassVar = ConfigDict(arbitrary_types_allowed=True)
@@ -227,7 +246,6 @@ class MatchTemplateManager(BaseModel2DTM):
         self.match_template_result.relative_defocus = results["best_defocus"]
 
         # TODO: Implement pixel size calculation
-        self.match_template_result.pixel_size = torch.zeros(1, 1)
         self.match_template_result.total_projections = results["total_projections"]
         self.match_template_result.total_orientations = results["total_orientations"]
         self.match_template_result.total_defocus = results["total_defocus"]
@@ -237,7 +255,7 @@ class MatchTemplateManager(BaseModel2DTM):
 
     def results_to_dataframe(
         self,
-        do_peak_shifting: bool = True,
+        half_template_width_pos_shift: bool = True,
         exclude_columns: Optional[list] = None,
         locate_peaks_kwargs: Optional[dict] = None,
     ) -> pd.DataFrame:
@@ -251,10 +269,12 @@ class MatchTemplateManager(BaseModel2DTM):
 
         Parameters
         ----------
-        do_peak_shifting : bool, optional
+        half_template_width_pos_shift : bool, optional
             If True, columns for the image peak position are shifted by half a template
-            width to correspond to the center of the particle. Default is True. This
-            should generally be left as True unless you know what you are doing.
+            width to correspond to the center of the particle. This should be done when
+            the position of a peak corresponds to the top-left corner of the template
+            rather than the center. Default is True. This should generally be left as
+            True unless you know what you are doing.
         exclude_columns : list, optional
             List of columns to exclude from the DataFrame. Default is None and no
             columns are excluded.
@@ -281,7 +301,7 @@ class MatchTemplateManager(BaseModel2DTM):
         # coordinates by half template width to get to particle center in image.
         # NOTE: We are assuming the template is cubic
         nx = mrcfile.open(self.template_volume_path).header.nx
-        if do_peak_shifting:
+        if half_template_width_pos_shift:
             df["img_pos_y"] = df["pos_y"] + nx // 2
             df["img_pos_x"] = df["pos_x"] + nx // 2
         else:
