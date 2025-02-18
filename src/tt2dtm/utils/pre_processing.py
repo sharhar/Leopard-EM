@@ -122,8 +122,12 @@ def do_image_preprocessing(
     squared_sum = squared_image_rfft.sum() + squared_image_rfft[:, 1:].sum()
     image_rfft /= torch.sqrt(squared_sum)
 
-    # Scale to variance 1 in real-space
-    image_rfft *= image_rfft.numel() * 2
+    # NOTE: We add on extra division by sqrt(num_pixels) so the cross-correlograms
+    # are roughly normalized to have mean 0 and variance 1.
+    # We do this here since Fourier transform is linear, and we don't have to multiply
+    # the cross correlation at each iteration. This *will not* make the image
+    # have variance 1.
+    image_rfft /= image_rfft.numel() ** 0.5
 
     return image_rfft
 
