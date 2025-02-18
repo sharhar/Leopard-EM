@@ -4,6 +4,10 @@ theme:
 plugins:
   - search
   - mkdocs-jupyter
+markdown_extensions:
+  - mdx_math
+extra_javascript:
+  - https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js?config=TeX-AMS-MML_HTMLorMML
 nav:
   - Home: index.md
   - Examples:
