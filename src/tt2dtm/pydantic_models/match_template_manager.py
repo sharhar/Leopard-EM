@@ -140,10 +140,10 @@ class MatchTemplateManager(BaseModel2DTM):
         template_shape = template.shape[-2:]
 
         # Shorthand variables for calling filter configurations
-        wf_config = self.preprocessing_filters.whitening_filter_config
-        bp_config = self.preprocessing_filters.bandpass_filter_config
-        pr_config = self.preprocessing_filters.phase_randomization_filter_config
-        ac_config = self.preprocessing_filters.arbitrary_curve_filter_config
+        wf_config = self.preprocessing_filters.whitening_filter
+        bp_config = self.preprocessing_filters.bandpass_filter
+        pr_config = self.preprocessing_filters.phase_randomization_filter
+        ac_config = self.preprocessing_filters.arbitrary_curve_filter
 
         # First, calculate and apply the bandpass, phase randomization, and
         # arbitrary curve filters to the template.
@@ -160,7 +160,7 @@ class MatchTemplateManager(BaseModel2DTM):
         # Now, calculate the whitening filter for the template based on the filtered img
         whitening_filter = wf_config.calculate_whitening_filter(
             image_dft,
-            output_shape=template_shape,
+            output_shape=(template_shape[-2], template_shape[-1] // 2 + 1),
             output_rfft=True,
             output_fftshift=False,
         )

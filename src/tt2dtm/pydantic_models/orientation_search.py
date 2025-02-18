@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 
 import torch
 from pydantic import Field
-from torch_so3.hopf_angles import get_uniform_euler_angles
+from torch_so3.uniform_so3_sampling import get_uniform_euler_angles
 
 from tt2dtm.pydantic_models.types import BaseModel2DTM
 
@@ -16,7 +16,7 @@ class OrientationSearchConfig(BaseModel2DTM):
     convention.
 
     This model effectively acts as a connector into the
-    `torch_so3.hopf_angles.get_uniform_euler_angles` function from the
+    `torch_so3.uniform_so3_sampling.get_uniform_euler_angles` function from the
     [torch-so3](https://github.com/teamtomo/torch-so3) package.
 
     TODO: Add parameters for template symmetry.
