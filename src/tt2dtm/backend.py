@@ -24,7 +24,7 @@ def construct_multi_gpu_match_template_kwargs(
     euler_angles: torch.Tensor,
     projective_filters: torch.Tensor,
     defocus_values: torch.Tensor,
-    projection_batch_size: int,
+    orientation_batch_size: int,
     devices: list[torch.device],
 ) -> list[dict[str, torch.Tensor | int]]:
     """Split orientations between requested devices.
@@ -44,7 +44,7 @@ def construct_multi_gpu_match_template_kwargs(
         filters to apply to each projection
     defocus_values : torch.Tensor
         corresponding defocus values for each filter
-    projection_batch_size : int
+    orientation_batch_size : int
         number of projections to calculate at once
     devices : list[torch.device]
         list of devices to split the orientations across
@@ -77,7 +77,7 @@ def construct_multi_gpu_match_template_kwargs(
             "euler_angles": euler_angles_device,
             "projective_filters": projective_filters_device,
             "defocus_values": defocus_values_device,
-            "projection_batch_size": projection_batch_size,
+            "orientation_batch_size": orientation_batch_size,
         }
 
         kwargs_per_device.append(kwargs)
@@ -208,19 +208,11 @@ def scale_mip(
     """
     num_pixels = torch.tensor(mip.shape[0] * mip.shape[1])
 
-    correlation_sum = correlation_sum * total_correlation_positions
-    correlation_squared_sum = (
-        correlation_squared_sum / total_correlation_positions
-    ) - (correlation_sum**2)
-    correlation_squared_sum = correlation_squared_sum * num_pixels
+    # Convert sum and squared sum to mean and variance in-place
+    correlation_sum = correlation_sum / total_correlation_positions
+    correlation_squared_sum = correlation_squared_sum / total_correlation_positions
+    correlation_squared_sum -= correlation_sum**2
     correlation_squared_sum = torch.sqrt(torch.clamp(correlation_squared_sum, min=0))
-    correlation_sum = correlation_sum * (num_pixels**0.5)
-
-    # # Convert sum and squared sum to mean and variance in-place
-    # correlation_sum = correlation_sum / total_correlation_positions
-    # correlation_squared_sum = correlation_squared_sum / total_correlation_positions
-    # correlation_squared_sum -= correlation_sum**2
-    # correlation_squared_sum = torch.sqrt(torch.clamp(correlation_squared_sum, min=0))
 
     # Calculate normalized MIP
     mip_scaled = mip - correlation_sum
@@ -231,7 +223,7 @@ def scale_mip(
         out=mip_scaled,
     )
 
-    # mip = mip * (num_pixels**0.5)
+    mip = mip * (num_pixels**0.5)
 
     return mip, mip_scaled
 
@@ -402,7 +394,7 @@ def core_match_template(
     defocus_values: torch.Tensor,
     euler_angles: torch.Tensor,
     device: torch.device | list[torch.device],
-    projection_batch_size: int = 1,
+    orientation_batch_size: int = 1,
 ) -> dict[str, torch.Tensor]:
     """Core function for performing the whole-orientation search.
 
@@ -426,14 +418,14 @@ def core_match_template(
         Whitening filter for the template volume. Has shape (h, w // 2 + 1).
         Gets multiplied with the ctf filters to create a filter stack.
     euler_angles : torch.Tensor
-        Euler angles (in 'zyz' convention) to search over. Has shape
+        Euler angles (in 'ZYZ' convention) to search over. Has shape
         (orientations, 3).
     defocus_values : torch.Tensor
         What defoucs values correspond with the CTF filters. Has shape
         (defocus_batch,).
     device : torch.device | list[torch.device]
         Device or devices to split computation across.
-    projection_batch_size : int, optional
+    orientation_batch_size : int, optional
         Number of projections to calculate at once, on each device
 
     Returns
@@ -473,7 +465,7 @@ def core_match_template(
         euler_angles=euler_angles,
         projective_filters=projective_filters,
         defocus_values=defocus_values,
-        projection_batch_size=projection_batch_size,
+        orientation_batch_size=orientation_batch_size,
         devices=device,
     )
 
@@ -544,7 +536,7 @@ def _core_match_template_single_gpu(
     euler_angles: torch.Tensor,
     projective_filters: torch.Tensor,
     defocus_values: torch.Tensor,
-    projection_batch_size: int,
+    orientation_batch_size: int,
 ) -> None:
     """Single-GPU call for template matching.
 
@@ -569,7 +561,7 @@ def _core_match_template_single_gpu(
         slices from. Has shape (l, h, w // 2 + 1). where l is the number of
         slices.
     euler_angles : torch.Tensor
-        Euler angles (in 'zyz' convention) to search over. Has shape
+        Euler angles (in 'ZYZ' convention) to search over. Has shape
         (orientations // n_devices, 3). This has already been split (e.g.
         4 devices has shape (orientations // 4, 3).
     projective_filters : torch.Tensor
@@ -578,7 +570,7 @@ def _core_match_template_single_gpu(
     defocus_values : torch.Tensor
         What defoucs values correspond with the CTF filters. Has shape
         (defocus_batch,).
-    projection_batch_size : int
+    orientation_batch_size : int
         The number of projections to calculate the correlation for at once.
 
     Returns
@@ -637,7 +629,7 @@ def _core_match_template_single_gpu(
     ### Setup iterator object with tqdm for progress bar ###
     ########################################################
 
-    num_batches = euler_angles.shape[0] // projection_batch_size
+    num_batches = euler_angles.shape[0] // orientation_batch_size
     orientation_batch_iterator = tqdm.tqdm(
         range(num_batches),
         desc=f"Progress on device: {device.index}",
@@ -655,10 +647,10 @@ def _core_match_template_single_gpu(
 
     for i in orientation_batch_iterator:
         euler_angles_batch = euler_angles[
-            i * projection_batch_size : (i + 1) * projection_batch_size
+            i * orientation_batch_size : (i + 1) * orientation_batch_size
         ]
         rot_matrix = roma.euler_to_rotmat(
-            "zyz", euler_angles_batch, degrees=True, device=device
+            "ZYZ", euler_angles_batch, degrees=True, device=device
         )
 
         # Extract central slice(s) from the template volume
