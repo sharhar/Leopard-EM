@@ -88,11 +88,6 @@ def do_image_preprocessing(
 ) -> torch.Tensor:
     """Pre-processes the input image before running the algorithm.
 
-    NOTE: Although we want an image with mean zero and variance 1, we do not divide by
-    the number of pixels because the CCG normalization requires that the CCG be divided
-    by the number of elements. This operation is skipped to save computation time during
-    the search.
-
     1. Zero central pixel (0, 0)
     2. Calculate a whitening filter
     3. Do element-wise multiplication with the whitening filter
@@ -112,6 +107,11 @@ def do_image_preprocessing(
         The pre-processed image.
 
     """
+    H, W = image_rfft.shape
+    W = (W - 1) * 2  # Account for RFFT
+    npix_real = H * W
+
+    # Zero out the constant term
     image_rfft[0, 0] = 0 + 0j
 
     wf_image = wf_config.calculate_whitening_filter(
@@ -127,8 +127,15 @@ def do_image_preprocessing(
     squared_sum = squared_image_rfft.sum() + squared_image_rfft[:, 1:].sum()
     image_rfft /= torch.sqrt(squared_sum)
 
-    # NOTE: skip this operation -- see docstring
-    # image_rfft *= image.numel()  # Scale to variance 1 in real-space
+    # # real-space image will now have mean=0 and variance=1
+    # image_rfft *= npix_real  # NOTE: This would set the variance to 1 exactly, but...
+
+    # NOTE: We add on extra division by sqrt(num_pixels) so the cross-correlograms
+    # are roughly normalized to have mean 0 and variance 1.
+    # We do this here since Fourier transform is linear, and we don't have to multiply
+    # the cross correlation at each iteration. This *will not* make the image
+    # have variance 1.
+    image_rfft *= npix_real**0.5
 
     return image_rfft
 

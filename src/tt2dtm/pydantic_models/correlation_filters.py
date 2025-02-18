@@ -232,8 +232,8 @@ class ArbitraryCurveFilterConfig(BaseModel2DTM):
     """
 
     enabled: bool = False
-    frequencies: list[float]  # in terms of Nyquist frequency
-    amplitudes: list[float]
+    frequencies: Optional[list[float]] = None  # in terms of Nyquist frequency
+    amplitudes: Optional[list[float]] = None
 
     def calculate_arbitrary_curve_filter(
         self, output_shape: tuple[int, ...]
@@ -254,6 +254,12 @@ class ArbitraryCurveFilterConfig(BaseModel2DTM):
         """
         if not self.enabled:
             return torch.ones(output_shape, dtype=torch.float32)
+
+        # Ensure that neither frequencies nor amplitudes are None
+        if self.frequencies is None or self.amplitudes is None:
+            raise ValueError(
+                "When enabled, both 'frequencies' and 'amplitudes' must be provided."
+            )
 
         # Convert to real-space shape for function call
         output_shape = output_shape[:-1] + (2 * (output_shape[-1] - 1),)
@@ -291,7 +297,9 @@ class PreprocessingFilters(BaseModel2DTM):
         Configuration for the phase randomization filter.
     """
 
-    whitening_filter_config: WhiteningFilterConfig
-    bandpass_filter_config: BandpassFilterConfig
-    phase_randomization_filter_config: PhaseRandomizationFilterConfig
-    arbitrary_curve_filter: ArbitraryCurveFilterConfig
+    whitening_filter: WhiteningFilterConfig = WhiteningFilterConfig()
+    bandpass_filter: BandpassFilterConfig = BandpassFilterConfig()
+    phase_randomization_filter: PhaseRandomizationFilterConfig = (
+        PhaseRandomizationFilterConfig()
+    )
+    arbitrary_curve_filter: ArbitraryCurveFilterConfig = ArbitraryCurveFilterConfig()
