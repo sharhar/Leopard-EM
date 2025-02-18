@@ -2,42 +2,8 @@
 
 import torch
 from torch_fourier_filter.ctf import calculate_ctf_2d
-from torch_fourier_filter.whitening import whitening_filter
-from torch_so3.hopf_angles import get_uniform_euler_angles
 
-
-def calculate_whitening_filter_template(
-    image: torch.Tensor,
-    output_shape: tuple[int, int],
-    smoothing: bool = False,
-) -> torch.Tensor:
-    """Calculation of the whitening filter for the template.
-
-    Parameters
-    ----------
-    image : torch.Tensor
-        The image to use as a reference (power spectrum calculated from here).
-    output_shape : tuple[int, int]
-        Desired output shape for the filter. Argument is in terms of real-space shape
-    smoothing : bool, optional
-        If True, apply smoothing to the filter, by default False.
-
-    Returns
-    -------
-    torch.Tensor
-        The whitening filter for the template.
-    """
-    image_dft = torch.fft.rfftn(image)
-
-    return whitening_filter(
-        image_dft=image_dft,
-        rfft=True,
-        fftshift=False,
-        do_power_spectrum=True,
-        output_shape=output_shape,
-        output_rfft=True,
-        output_fftshift=False,
-    )
+from tt2dtm.pydantic_models import WhiteningFilterConfig
 
 
 def calculate_ctf_filter_stack(
@@ -116,25 +82,24 @@ def calculate_ctf_filter_stack(
     return torch.stack(ctf_filters, dim=0).squeeze()
 
 
-def do_image_preprocessing(image: torch.Tensor) -> torch.Tensor:
+def do_image_preprocessing(
+    image_rfft: torch.Tensor,
+    wf_config: WhiteningFilterConfig,
+) -> torch.Tensor:
     """Pre-processes the input image before running the algorithm.
 
-    NOTE: Although we want an image with mean zero and variance 1, we do not divide by
-    the number of pixels because the CCG normalization requires that the CCG be divided
-    by the number of elements. This operation is skipped to save computation time during
-    the search.
-
-    1. RFFT
-    2. Calculate whitening filter
-    2. Zero central pixel
-    3. Calculate whitening filter and do element-wise multiplication.
+    1. Zero central pixel (0, 0)
+    2. Calculate a whitening filter
+    3. Do element-wise multiplication with the whitening filter
     4. Zero central pixel again (superfluous, but following cisTEM)
     5. Normalize (x /= sqrt(sum(abs(x)**2)); pixelwise)
 
     Parameters
     ----------
-    image : torch.Tensor
-        The input image to be pre-processed.
+    image_rfft : torch.Tensor
+        The input image, RFFT'd and unshifted.
+    wf_config : WhiteningFilterConfig
+        The configuration for the whitening filter.
 
     Returns
     -------
@@ -142,83 +107,56 @@ def do_image_preprocessing(image: torch.Tensor) -> torch.Tensor:
         The pre-processed image.
 
     """
-    image_dft = torch.fft.rfftn(image)
-    image_dft[0, 0] = 0 + 0j
+    H, W = image_rfft.shape
+    W = (W - 1) * 2  # Account for RFFT
+    npix_real = H * W
 
-    wf_image = whitening_filter(
-        image_dft=image_dft,
-        rfft=True,
-        fftshift=False,
-        do_power_spectrum=True,
+    # Zero out the constant term
+    image_rfft[0, 0] = 0 + 0j
+
+    wf_image = wf_config.calculate_whitening_filter(
+        ref_img_rfft=image_rfft,
+        output_shape=image_rfft.shape,
     )
-    image_dft *= wf_image
-    image_dft[0, 0] = 0 + 0j  # superfluous, but following cisTEM
+    image_rfft *= wf_image
+    image_rfft[0, 0] = 0 + 0j  # superfluous, but following cisTEM
 
     # NOTE: Extra indexing happening with squared_sum so that Hermitian pairs are
     # counted, but we skip the first column of the RFFT which should not be duplicated.
-    squared_image_dft = torch.abs(image_dft) ** 2
-    squared_sum = squared_image_dft.sum() + squared_image_dft[:, 1:].sum()
-    image_dft /= torch.sqrt(squared_sum)
+    squared_image_rfft = torch.abs(image_rfft) ** 2
+    squared_sum = squared_image_rfft.sum() + squared_image_rfft[:, 1:].sum()
+    image_rfft /= torch.sqrt(squared_sum)
 
-    # NOTE: skip this operation -- see docstring
-    # image_dft *= image.numel()  # Scale to variance 1 in real-space
+    # # real-space image will now have mean=0 and variance=1
+    # image_rfft *= npix_real  # NOTE: This would set the variance to 1 exactly, but...
 
-    return image_dft
+    # NOTE: We add on extra division by sqrt(num_pixels) so the cross-correlograms
+    # are roughly normalized to have mean 0 and variance 1.
+    # We do this here since Fourier transform is linear, and we don't have to multiply
+    # the cross correlation at each iteration. This *will not* make the image
+    # have variance 1.
+    image_rfft *= npix_real**0.5
+
+    return image_rfft
 
 
-def calculate_searched_orientations(
-    in_plane_angular_step: float,
-    out_of_plane_angular_step: float,
-    phi_min: float,
-    phi_max: float,
-    theta_min: float,
-    theta_max: float,
-    psi_min: float,
-    psi_max: float,
-    template_symmetry: str = "C1",
-    # orientation_sampling_method: str
-) -> torch.Tensor:
-    """Helper function for calculating the searched orientations.
+def select_gpu_devices(gpu_ids: int | list[int]) -> list[torch.device]:
+    """Convert requested GPU IDs to torch device objects.
 
     Parameters
     ----------
-    in_plane_angular_step : float
-        The step size for in-plane angles.
-    out_of_plane_angular_step : float
-        The step size for out-of-plane angles.
-    phi_min : float
-        The minimum phi angle.
-    phi_max : float
-        The maximum phi angle.
-    theta_min : float
-        The minimum theta angle.
-    theta_max : float
-        The maximum theta angle.
-    psi_min : float
-        The minimum psi angle.
-    psi_max : float
-        The maximum psi angle.
-    template_symmetry : str, optional
-        The symmetry of the template, by default "C1".
+    gpu_ids : int | list[int]
+        GPU ID(s) to use for computation.
 
     Returns
     -------
-    torch.Tensor
-        The searched orientations as Euler angles in 'zyz' convention.
+    list[torch.device]
     """
-    if template_symmetry != "C1":
-        raise NotImplementedError(
-            "Template symmetry is implemented in package 'torch-fourier-filter', "
-            "BUT we have not added the automatic conversions yet."
-        )
+    if isinstance(gpu_ids, int):
+        if gpu_ids < -1:  # -2 or lower means CPU
+            return [torch.device("cpu")]
+        gpu_ids = [gpu_ids]
 
-    return get_uniform_euler_angles(
-        in_plane_step=in_plane_angular_step,
-        out_of_plane_step=out_of_plane_angular_step,
-        phi_min=phi_min,
-        phi_max=phi_max,
-        theta_min=theta_min,
-        theta_max=theta_max,
-        psi_min=psi_min,
-        psi_max=psi_max,
-    )
+    devices = [torch.device(f"cuda:{gpu_id}") for gpu_id in gpu_ids]
+
+    return devices

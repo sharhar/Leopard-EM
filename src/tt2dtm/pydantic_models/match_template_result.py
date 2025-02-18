@@ -72,8 +72,6 @@ class MatchTemplateResult(BaseModel2DTM):
         Path to the output orientation phi file.
     relative_defocus_path : str
         Path to the output relative defocus file.
-    pixel_size_path : str
-        Path to the output best pixel size file.
     mip : ExcludedTensor
         Maximum intensity projection (MIP).
     scaled_mip : ExcludedTensor
@@ -90,8 +88,6 @@ class MatchTemplateResult(BaseModel2DTM):
         Best orientation angle phi.
     relative_defocus : ExcludedTensor
         Best relative defocus.
-    pixel_size : ExcludedTensor
-        Best pixel size.
     total_projections : int, optional
         Total number of cross-correlograms of projections computed. Should be
         'total_orientations x total_defocus' Default is 0, and this field is updated
@@ -148,7 +144,6 @@ class MatchTemplateResult(BaseModel2DTM):
     orientation_theta_path: str
     orientation_phi_path: str
     relative_defocus_path: str
-    pixel_size_path: str
 
     # Scalar (non-tensor) attributes
     total_projections: int = 0
@@ -166,7 +161,6 @@ class MatchTemplateResult(BaseModel2DTM):
     orientation_theta: ExcludedTensor
     orientation_phi: ExcludedTensor
     relative_defocus: ExcludedTensor
-    pixel_size: ExcludedTensor
 
     ###########################
     ### Pydantic Validators ###
@@ -199,7 +193,6 @@ class MatchTemplateResult(BaseModel2DTM):
             self.orientation_theta_path,
             self.orientation_phi_path,
             self.relative_defocus_path,
-            self.pixel_size_path,
         ]
         for path in paths:
             check_file_path_and_permissions(path, self.allow_file_overwrite)
@@ -224,7 +217,7 @@ class MatchTemplateResult(BaseModel2DTM):
         self.orientation_phi = load_mrc_image(self.orientation_phi_path)
         self.relative_defocus = load_mrc_image(self.relative_defocus_path)
 
-    def locate_peaks(self, **kwargs) -> None:  # type: ignore
+    def locate_peaks(self, **kwargs) -> MatchTemplatePeaks:  # type: ignore
         """Updates the 'match_template_peaks' attribute with info from held tensors.
 
         This method calls the `extract_peaks_and_statistics` function to first locate
@@ -243,7 +236,9 @@ class MatchTemplateResult(BaseModel2DTM):
 
         Returns
         -------
-        None
+        MatchTemplatePeaks
+            Named tuple object containing the peak locations, heights, and pose
+            statistics.
         """
         self.match_template_peaks = extract_peaks_and_statistics(
             mip=self.mip,
@@ -257,6 +252,8 @@ class MatchTemplateResult(BaseModel2DTM):
             total_correlation_positions=self.total_projections,
             **kwargs,
         )
+
+        return self.match_template_peaks
 
     def peaks_to_dict(self) -> dict:
         """Convert the 'match_template_peaks' attribute to a dictionary."""
@@ -289,7 +286,6 @@ class MatchTemplateResult(BaseModel2DTM):
             self.orientation_theta_path,
             self.orientation_phi_path,
             self.relative_defocus_path,
-            self.pixel_size_path,
         ]
         tensors = [
             self.mip,
@@ -300,7 +296,6 @@ class MatchTemplateResult(BaseModel2DTM):
             self.orientation_theta,
             self.orientation_phi,
             self.relative_defocus,
-            self.pixel_size,
         ]
 
         for path, tensor in zip(paths, tensors):

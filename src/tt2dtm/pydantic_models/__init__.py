@@ -7,12 +7,11 @@ from .correlation_filters import (
     PreprocessingFilters,
     WhiteningFilterConfig,
 )
-from .defocus_search_config import DefocusSearchConfig
+from .defocus_search import DefocusSearchConfig
 from .match_template_manager import MatchTemplateManager
 from .match_template_result import MatchTemplateResult
 from .optics_group import OpticsGroup
 from .orientation_search_config import OrientationSearchConfig
-from .pixel_size_search_config import PixelSizeSearchConfig
 from .types import ExcludedTensor
 
 __all__ = [

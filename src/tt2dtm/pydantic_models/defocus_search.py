@@ -37,6 +37,11 @@ class DefocusSearchConfig(BaseModel2DTM):
 
     @property
     def defocus_values(self) -> list[float]:
+        """Relative defocus values to search over based on held params."""
+        # Return a relative defocus of 0.0 if search is disabled.
+        if not self.enabled:
+            return [0.0]
+
         """Gets a list of defocus values to search over."""
         vals = np.arange(
             self.defocus_min,
