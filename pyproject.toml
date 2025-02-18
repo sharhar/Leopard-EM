@@ -21,7 +21,10 @@ description = "2DTM in pyTorch"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "BSD-3-Clause" }
-authors = [{ name = "Josh Dickerson", email = "jdickerson@berkeley.edu" }, { name = "Matthew Giammar", email = "matthew_giammar@berkeley.edu" }]
+authors = [
+    { name = "Josh Dickerson", email = "jdickerson@berkeley.edu" },
+    { name = "Matthew Giammar", email = "matthew_giammar@berkeley.edu" },
+]
 # https://pypi.org/classifiers/
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -46,7 +49,7 @@ dependencies = [
     "tqdm",
     "torch-fourier-slice==v0.0.5",
     "torch-fourier-filter==v0.2.1",
-    "torch-so3==v0.0.2",
+    "torch-so3==v0.1.0",
     "torch_image_lerp==v0.0.5",
 ]
 
@@ -62,13 +65,13 @@ test = ["pytest", "pytest-cov"]
 dev = [
     "ipython",
     "mypy",
-    "pdbpp",  # https://github.com/pdbpp/pdbpp
+    "pdbpp",      # https://github.com/pdbpp/pdbpp
     "pre-commit",
-    "rich",  # https://github.com/Textualize/rich
+    "rich",       # https://github.com/Textualize/rich
     "ruff",
 ]
 # Documentation dependencies
-docs = ["mkdocs", "mkdocs-material", "mkdocs-jupyter"]
+docs = ["mkdocs", "mkdocs-material", "mkdocs-jupyter", "python-markdown-math",]
 
 [project.urls]
 homepage = "https://github.com/jdickerson95/tt2DTM"
@@ -117,7 +120,7 @@ ignore = [
 # https://docs.astral.sh/ruff/formatter/
 [tool.ruff.format]
 docstring-code-format = true
-skip-magic-trailing-comma = false  # default is false
+skip-magic-trailing-comma = false # default is false
 
 # https://mypy.readthedocs.io/en/stable/config_file.html
 [tool.mypy]
@@ -159,8 +162,4 @@ source = ["tt2dtm"]
 # add files that you want check-manifest to explicitly ignore here
 # (files that are in the repo but shouldn't go in the package)
 [tool.check-manifest]
-ignore = [
-    ".pre-commit-config.yaml",
-    ".ruff_cache/**/*",
-    "tests/**/*",
-]
+ignore = [".pre-commit-config.yaml", ".ruff_cache/**/*", "tests/**/*"]

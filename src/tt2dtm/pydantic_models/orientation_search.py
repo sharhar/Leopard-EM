@@ -52,14 +52,16 @@ class OrientationSearchConfig(BaseModel2DTM):
         greater than 0.
     """
 
+    # TODO: Particle symmetry options
+
     in_plane_step: Annotated[float, Field(ge=0.0)] = 1.5
     out_of_plane_step: Annotated[float, Field(ge=0.0)] = 2.5
-    phi_min: float = 0.0
-    phi_max: float = 360.0
-    theta_min: float = 0.0
-    theta_max: float = 180.0
     psi_min: float = 0.0
     psi_max: float = 360.0
+    theta_min: float = 0.0
+    theta_max: float = 180.0
+    phi_min: float = 0.0
+    phi_max: float = 360.0
     base_grid_method: Literal["uniform", "healpix"] = "uniform"
 
     @property

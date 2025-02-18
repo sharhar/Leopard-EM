@@ -58,8 +58,10 @@ class MatchTemplateManager(BaseModel2DTM):
         Ensure the micrograph file exists.
     validate_template_volume_path(v: str) -> str
         Ensure the template volume file exists.
-    __init__(**data: Any)
+    __init__(preload_mrc_files: bool = False , **data: Any)
         Constructor which also loads the micrograph and template volume from disk.
+        The 'preload_mrc_files' parameter controls whether to read the MRC files
+        immediately upon initialization.
     make_backend_core_function_kwargs() -> dict[str, Any]
         Generates the keyword arguments for backend 'core_match_template' call from
         held parameters. Does the necessary pre-processing steps to filter the image
@@ -114,12 +116,13 @@ class MatchTemplateManager(BaseModel2DTM):
 
         return str(v)
 
-    def __init__(self, **data: Any):
+    def __init__(self, preload_mrc_files: bool = False, **data: Any):
         super().__init__(**data)
 
-        # Load the data from the MRC files
-        self.micrograph = load_mrc_image(self.micrograph_path)
-        self.template_volume = load_mrc_volume(self.template_volume_path)
+        if preload_mrc_files:
+            # Load the data from the MRC files
+            self.micrograph = load_mrc_image(self.micrograph_path)
+            self.template_volume = load_mrc_volume(self.template_volume_path)
 
     ############################################
     ### Functional (data processing) methods ###
@@ -127,6 +130,12 @@ class MatchTemplateManager(BaseModel2DTM):
 
     def make_backend_core_function_kwargs(self) -> dict[str, Any]:
         """Generates the keyword arguments for backend call from held parameters."""
+        # Ensure the micrograph and template are loaded and in the correct format
+        if self.micrograph is None:
+            self.micrograph = load_mrc_image(self.micrograph_path)
+        if self.template_volume is None:
+            self.template_volume = load_mrc_volume(self.template_volume_path)
+
         if not isinstance(self.micrograph, torch.Tensor):
             image = torch.from_numpy(self.micrograph)
         else:
@@ -144,6 +153,9 @@ class MatchTemplateManager(BaseModel2DTM):
         bp_config = self.preprocessing_filters.bandpass_filter
         pr_config = self.preprocessing_filters.phase_randomization_filter
         ac_config = self.preprocessing_filters.arbitrary_curve_filter
+
+        # NOTE: ordering of the filters is important and need to debug which ordering
+        # is correct.
 
         # First, calculate and apply the bandpass, phase randomization, and
         # arbitrary curve filters to the template.
