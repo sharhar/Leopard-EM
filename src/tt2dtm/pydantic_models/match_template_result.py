@@ -217,7 +217,7 @@ class MatchTemplateResult(BaseModel2DTM):
         self.orientation_phi = load_mrc_image(self.orientation_phi_path)
         self.relative_defocus = load_mrc_image(self.relative_defocus_path)
 
-    def locate_peaks(self, **kwargs) -> None:  # type: ignore
+    def locate_peaks(self, **kwargs) -> MatchTemplatePeaks:  # type: ignore
         """Updates the 'match_template_peaks' attribute with info from held tensors.
 
         This method calls the `extract_peaks_and_statistics` function to first locate
@@ -236,7 +236,9 @@ class MatchTemplateResult(BaseModel2DTM):
 
         Returns
         -------
-        None
+        MatchTemplatePeaks
+            Named tuple object containing the peak locations, heights, and pose
+            statistics.
         """
         self.match_template_peaks = extract_peaks_and_statistics(
             mip=self.mip,
@@ -250,6 +252,8 @@ class MatchTemplateResult(BaseModel2DTM):
             total_correlation_positions=self.total_projections,
             **kwargs,
         )
+
+        return self.match_template_peaks
 
     def peaks_to_dict(self) -> dict:
         """Convert the 'match_template_peaks' attribute to a dictionary."""
