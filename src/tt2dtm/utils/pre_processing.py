@@ -88,11 +88,6 @@ def do_image_preprocessing(
 ) -> torch.Tensor:
     """Pre-processes the input image before running the algorithm.
 
-    NOTE: Although we want an image with mean zero and variance 1, we do not divide by
-    the number of pixels because the CCG normalization requires that the CCG be divided
-    by the number of elements. This operation is skipped to save computation time during
-    the search.
-
     1. Zero central pixel (0, 0)
     2. Calculate a whitening filter
     3. Do element-wise multiplication with the whitening filter
@@ -127,8 +122,8 @@ def do_image_preprocessing(
     squared_sum = squared_image_rfft.sum() + squared_image_rfft[:, 1:].sum()
     image_rfft /= torch.sqrt(squared_sum)
 
-    # NOTE: skip this operation -- see docstring
-    # image_rfft *= image.numel()  # Scale to variance 1 in real-space
+    # Scale to variance 1 in real-space
+    image_rfft *= image_rfft.numel() * 2
 
     return image_rfft
 

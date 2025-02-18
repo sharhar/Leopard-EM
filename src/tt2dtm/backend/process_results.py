@@ -37,11 +37,17 @@ def aggregate_distributed_results(
         for result in results
     ]
 
+    # Find which device had the highest MIP for each pixel and index stats accordingly.
+    # Results after 'take_along_axis' have extra dimension at idx 0.
     mips = np.stack([result["mip"] for result in results], axis=0)
     best_phi = np.stack([result["best_phi"] for result in results], axis=0)
     best_theta = np.stack([result["best_theta"] for result in results], axis=0)
     best_psi = np.stack([result["best_psi"] for result in results], axis=0)
     best_defocus = np.stack([result["best_defocus"] for result in results], axis=0)
+    best_phi = best_phi[0]
+    best_theta = best_theta[0]
+    best_psi = best_psi[0]
+    best_defocus = best_defocus[0]
 
     mip_max = mips.max(axis=0)
     mip_argmax = mips.argmax(axis=0)
@@ -85,6 +91,34 @@ def aggregate_distributed_results(
     }
 
 
+def correlation_sum_and_squared_sum_to_mean_and_variance(
+    correlation_sum: torch.Tensor,
+    correlation_squared_sum: torch.Tensor,
+    total_correlation_positions: int,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Convert the sum and squared sum of the correlation values to mean and variance.
+
+    Parameters
+    ----------
+    correlation_sum : torch.Tensor
+        Sum of the correlation values.
+    correlation_squared_sum : torch.Tensor
+        Sum of the squared correlation values.
+    total_correlation_positions : int
+        Total number cross-correlograms calculated.
+
+    Returns
+    -------
+    tuple[torch.Tensor, torch.Tensor]
+        Tuple containing the mean and variance of the correlation values.
+    """
+    correlation_mean = correlation_sum / total_correlation_positions
+    correlation_variance = correlation_squared_sum / total_correlation_positions
+    correlation_variance -= correlation_mean**2
+    correlation_variance = torch.sqrt(torch.clamp(correlation_variance, min=0))
+    return correlation_mean, correlation_variance
+
+
 def scale_mip(
     mip: torch.Tensor,
     mip_scaled: torch.Tensor,
@@ -102,6 +136,10 @@ def scale_mip(
     of Gaussian distributions, so Z-score has to be compared with a generalized extreme
     value distribution (GEV) to determine significance (done elsewhere).
 
+    NOTE: This method also updates the correlation_sum and correlation_squared_sum
+    tensors in-place into the mean and variance, respectively. Likely should reflect
+    conversions in variable names...
+
     Parameters
     ----------
     mip : torch.Tensor
@@ -109,9 +147,9 @@ def scale_mip(
     mip_scaled : torch.Tensor
         Scaled MIP of the correlation values.
     correlation_sum : torch.Tensor
-        Sum of the correlation values.
+        Sum of the correlation values. Updated to mean of the correlation values.
     correlation_squared_sum : torch.Tensor
-        Sum of the squared correlation values.
+        Sum of the squared correlation values. Updated to variance of the correlation.
     total_correlation_positions : int
         Total number cross-correlograms calculated.
 
@@ -120,7 +158,9 @@ def scale_mip(
     tuple[torch.Tensor, torch.Tensor]
         Tuple containing the MIP and scaled MIP
     """
-    num_pixels = torch.tensor(mip.shape[0] * mip.shape[1])
+    corr_mean, corr_variance = correlation_sum_and_squared_sum_to_mean_and_variance(
+        correlation_sum, correlation_squared_sum, total_correlation_positions
+    )
 
     # Convert sum and squared sum to mean and variance in-place
     correlation_sum = correlation_sum / total_correlation_positions
@@ -129,14 +169,16 @@ def scale_mip(
     correlation_squared_sum = torch.sqrt(torch.clamp(correlation_squared_sum, min=0))
 
     # Calculate normalized MIP
-    mip_scaled = mip - correlation_sum
+    mip_scaled = mip - corr_mean
     torch.where(
-        correlation_squared_sum != 0,  # preventing zero division error, albeit unlikely
-        mip_scaled / correlation_squared_sum,
+        corr_variance != 0,  # preventing zero division error, albeit unlikely
+        mip_scaled / corr_variance,
         torch.zeros_like(mip_scaled),
         out=mip_scaled,
     )
 
-    mip = mip * (num_pixels**0.5)
+    # Update correlation_sum and correlation_squared_sum to mean and variance
+    correlation_sum = corr_mean
+    correlation_squared_sum = corr_variance
 
     return mip, mip_scaled
