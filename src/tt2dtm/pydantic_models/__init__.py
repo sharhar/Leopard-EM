@@ -2,6 +2,7 @@
 
 from .computational_config import ComputationalConfig
 from .correlation_filters import (
+    ArbitraryCurveFilterConfig,
     BandpassFilterConfig,
     PhaseRandomizationFilterConfig,
     PreprocessingFilters,
@@ -10,18 +11,22 @@ from .correlation_filters import (
 from .defocus_search import DefocusSearchConfig
 from .match_template_manager import MatchTemplateManager
 from .match_template_result import MatchTemplateResult
+from .optics_group import OpticsGroup
 from .orientation_search import OrientationSearchConfig
 from .types import ExcludedTensor
 
 __all__ = [
+    "ArbitraryCurveFilterConfig",
+    "BandpassFilterConfig",
     "ComputationalConfig",
     "DefocusSearchConfig",
+    "ExcludedTensor",
     "MatchTemplateManager",
     "MatchTemplateResult",
+    "OpticsGroup",
     "OrientationSearchConfig",
-    "PreprocessingFilters",
+    "PixelSizeSearchConfig",
     "PhaseRandomizationFilterConfig",
+    "PreprocessingFilters",
     "WhiteningFilterConfig",
-    "BandpassFilterConfig",
-    "ExcludedTensor",
 ]
