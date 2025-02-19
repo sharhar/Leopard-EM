@@ -209,10 +209,18 @@ class BandpassFilterConfig(BaseModel2DTM):
         if not self.enabled:
             return torch.ones(output_shape, dtype=torch.float32)
 
+        # Account for None values
+        low = self.low_pass if self.low_pass is not None else 0.0
+        high = self.high_pass if self.high_pass is not None else 1.0
+        falloff = self.falloff if self.falloff is not None else 0.0
+
+        # Convert to real-space shape for function call
+        output_shape = output_shape[:-1] + (2 * (output_shape[-1] - 1),)
+
         return bandpass_filter(
-            low=self.low_pass,
-            high=self.high_pass,
-            falloff=self.falloff,
+            low=low,
+            high=high,
+            falloff=falloff,
             image_shape=output_shape,
             rfft=True,
             fftshift=False,

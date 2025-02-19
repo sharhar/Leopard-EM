@@ -395,6 +395,7 @@ def _core_match_template_single_gpu(
 
         # Padded forward Fourier transform for cross-correlation
         projections_dft = torch.fft.rfftn(projections, dim=(-2, -1), s=(H, W))
+        projections_dft[..., 0, 0] = 0 + 0j  # zero out the DC component (mean zero)
 
         # Cross correlation step by element-wise multiplication
         projections_dft = image_dft[None, None, ...] * projections_dft.conj()

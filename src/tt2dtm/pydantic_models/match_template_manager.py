@@ -19,7 +19,6 @@ from tt2dtm.pydantic_models.types import BaseModel2DTM, ExcludedTensor
 from tt2dtm.utils.data_io import load_mrc_image, load_mrc_volume
 from tt2dtm.utils.pre_processing import (
     calculate_ctf_filter_stack,
-    do_image_preprocessing,
     select_gpu_devices,
 )
 
@@ -151,35 +150,58 @@ class MatchTemplateManager(BaseModel2DTM):
         # Shorthand variables for calling filter configurations
         wf_config = self.preprocessing_filters.whitening_filter
         bp_config = self.preprocessing_filters.bandpass_filter
-        pr_config = self.preprocessing_filters.phase_randomization_filter
+        # pr_config = self.preprocessing_filters.phase_randomization_filter
         ac_config = self.preprocessing_filters.arbitrary_curve_filter
 
-        # NOTE: ordering of the filters is important and need to debug which ordering
-        # is correct.
-
-        # First, calculate and apply the bandpass, phase randomization, and
-        # arbitrary curve filters to the template.
+        # First calculate the filters for the large image
         image_dft = torch.fft.rfftn(image)
+        image_dft[0, 0] = 0 + 0j  # zero out the constant term
 
-        bandpass_filter = bp_config.calculate_bandpass_filter(image_dft.shape)
-        phase_rand_filter = pr_config.calculate_phase_randomization_filter(image_dft)
-        arb_curve_filter = ac_config.calculate_arbitrary_curve_filter(image_dft.shape)
+        wh_filter_image = wf_config.calculate_whitening_filter(image_dft)
+        bp_filter_image = bp_config.calculate_bandpass_filter(image_dft.shape)
+        ac_filter_image = ac_config.calculate_arbitrary_curve_filter(image_dft.shape)
 
-        image_dft *= bandpass_filter
-        image_dft *= phase_rand_filter
-        image_dft *= arb_curve_filter
-
-        # Now, calculate the whitening filter for the template based on the filtered img
-        whitening_filter = wf_config.calculate_whitening_filter(
+        # Next calculate the filters in terms of the template
+        wh_filter_template = wf_config.calculate_whitening_filter(
             image_dft,
             output_shape=(template_shape[-2], template_shape[-1] // 2 + 1),
             output_rfft=True,
             output_fftshift=False,
         )
+        bp_filter_template = bp_config.calculate_bandpass_filter(
+            (template_shape[-2], template_shape[-1] // 2 + 1)
+        )
+        ac_filter_template = ac_config.calculate_arbitrary_curve_filter(
+            (template_shape[-2], template_shape[-1] // 2 + 1)
+        )
+        # dummy "whitening" filter for the template
+        whitening_filter = wh_filter_template * bp_filter_template * ac_filter_template
 
-        # Do the image pre-processing (applying whitening filter)
-        image_preprocessed_dft = do_image_preprocessing(image_dft, wf_config)
+        # Now apply the filters to the image
+        cumulative_filter = wh_filter_image * bp_filter_image * ac_filter_image
+        image_preprocessed_dft = image_dft * cumulative_filter
 
+        # Normalize the image after filtering
+        squared_image_dft = torch.abs(image_preprocessed_dft) ** 2
+        squared_sum = squared_image_dft.sum() + squared_image_dft[:, 1:-1].sum()
+        image_preprocessed_dft /= torch.sqrt(squared_sum)
+
+        # NOTE: For two Gaussian random variables in d-dimensional space --  A and B --
+        # each with mean 0 and variance 1 their correlation will have on average a
+        # variance of d.
+        # NOTE: Since we have the variance of the image and template projections each at
+        # 1, we need to multiply the image by the square root of the number of pixels
+        # so the cross-correlograms have a variance of 1 and not d.
+        # NOTE: When applying the Fourier filters to the image and template, any
+        # elements that get set to zero effectively reduce the dimensionality of our
+        # cross-correlation. Therefore, instead of multiplying by the number of pixels,
+        # we need to multiply tby the effective number of pixels that are non-zero.
+        # Below, we calculate the dimensionality of our cross-correlation and divide
+        # by the square root of that number to normalize the image.
+        dimensionality = bp_filter_image.sum() + bp_filter_image[:, 1:-1].sum()
+        image_preprocessed_dft *= dimensionality**0.5
+
+        # Calculate the CTF filters at each defocus value
         defocus_values = self.defocus_search_config.defocus_values
         defocus_values = torch.tensor(defocus_values, dtype=torch.float32)
         ctf_filters = calculate_ctf_filter_stack(

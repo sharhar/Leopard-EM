@@ -44,10 +44,6 @@ def aggregate_distributed_results(
     best_theta = np.stack([result["best_theta"] for result in results], axis=0)
     best_psi = np.stack([result["best_psi"] for result in results], axis=0)
     best_defocus = np.stack([result["best_defocus"] for result in results], axis=0)
-    best_phi = best_phi[0]
-    best_theta = best_theta[0]
-    best_psi = best_psi[0]
-    best_defocus = best_defocus[0]
 
     mip_max = mips.max(axis=0)
     mip_argmax = mips.argmax(axis=0)
@@ -56,6 +52,10 @@ def aggregate_distributed_results(
     best_theta = np.take_along_axis(best_theta, mip_argmax[None, ...], axis=0)
     best_psi = np.take_along_axis(best_psi, mip_argmax[None, ...], axis=0)
     best_defocus = np.take_along_axis(best_defocus, mip_argmax[None, ...], axis=0)
+    best_phi = best_phi[0]
+    best_theta = best_theta[0]
+    best_psi = best_psi[0]
+    best_defocus = best_defocus[0]
 
     # Sum the sums and squared sums of the cross-correlation values
     correlation_sum = np.stack(

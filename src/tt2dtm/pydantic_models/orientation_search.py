@@ -78,11 +78,11 @@ class OrientationSearchConfig(BaseModel2DTM):
         return get_uniform_euler_angles(
             in_plane_step=self.in_plane_step,
             out_of_plane_step=self.out_of_plane_step,
-            phi_min=self.phi_min,
-            phi_max=self.phi_max,
-            theta_min=self.theta_min,
-            theta_max=self.theta_max,
             psi_min=self.psi_min,
             psi_max=self.psi_max,
+            theta_min=self.theta_min,
+            theta_max=self.theta_max,
+            phi_min=self.phi_min,
+            phi_max=self.phi_max,
             base_grid_method=self.base_grid_method,
         )
