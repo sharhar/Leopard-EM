@@ -64,8 +64,8 @@ preprocessing_filters:
   bandpass_filter_config:
     enabled: false
     falloff: 10.0
-    high_pass: 2.5
-    low_pass: 50.0
+    high_freq_cutoff: 2.5
+    low_freq_cutoff: 50.0
   phase_randomization_filter_config:
     cuton: 2.5
     enabled: false

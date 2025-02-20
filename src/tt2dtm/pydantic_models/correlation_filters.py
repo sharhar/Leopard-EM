@@ -1,6 +1,6 @@
 """Set of classes for configuring correlation filters in 2DTM."""
 
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 
 import torch
 from pydantic import Field
@@ -171,21 +171,66 @@ class BandpassFilterConfig(BaseModel2DTM):
     enabled : bool
         If True, apply a bandpass filter to correlation during template
         matching. Default is False.
-    low_pass : Optional[float]
+    low_freq_cutoff : Optional[float]
         Low pass filter cutoff frequency. Default is None, which is no low
         pass filter.
-    high_pass : Optional[float]
+    high_freq_cutoff : Optional[float]
         High pass filter cutoff frequency. Default is None, which is no high
         pass filter.
     falloff : Optional[float]
         Falloff factor for bandpass filter. Default is 0.0, which is no
         falloff.
+
+    Methods
+    -------
+    from_spatial_resolution(low_resolution, high_resolution, pixel_size, **kwargs)
+        Helper method to instantiate a bandpass filter from spatial resolutions and
+        a pixel size.
+    calculate_bandpass_filter(output_shape)
+        Helper function for bandpass filter based on the desired output shape. This
+        method returns a filter for a RFFT'd and unshifted (zero-frequency component
+        at the top-left corner) image.
     """
 
     enabled: bool = False
-    low_pass: Optional[Annotated[float, Field(ge=0.0)]] = None
-    high_pass: Optional[Annotated[float, Field(ge=0.0)]] = None
+    low_freq_cutoff: Optional[Annotated[float, Field(ge=0.0)]] = None
+    high_freq_cutoff: Optional[Annotated[float, Field(ge=0.0)]] = None
     falloff: Optional[Annotated[float, Field(ge=0.0)]] = None
+
+    @classmethod
+    def from_spatial_resolution(
+        cls,
+        low_resolution: float,
+        high_resolution: float,
+        pixel_size: float,
+        **kwargs: dict[str, Any],
+    ) -> "BandpassFilterConfig":
+        """Helper method to instantiate a bandpass filter from spatial resolutions.
+
+        Parameters
+        ----------
+        low_resolution : float
+            Low resolution cutoff frequency in Angstroms.
+        high_resolution : float
+            High resolution cutoff frequency in Angstroms.
+        pixel_size : float
+            Pixel size in Angstroms.
+        **kwargs
+            Additional keyword arguments to pass to the constructor method.
+
+        Returns
+        -------
+        BandpassFilterConfig
+            Bandpass filter configuration object.
+        """
+        low_freq_cutoff = pixel_size / low_resolution
+        high_freq_cutoff = pixel_size / high_resolution
+
+        return cls(
+            low_freq_cutoff=low_freq_cutoff,
+            high_freq_cutoff=high_freq_cutoff,
+            **kwargs,
+        )
 
     def calculate_bandpass_filter(self, output_shape: tuple[int, ...]) -> torch.Tensor:
         """Helper function for bandpass filter based on the desired output shape.
@@ -210,8 +255,8 @@ class BandpassFilterConfig(BaseModel2DTM):
             return torch.ones(output_shape, dtype=torch.float32)
 
         # Account for None values
-        low = self.low_pass if self.low_pass is not None else 0.0
-        high = self.high_pass if self.high_pass is not None else 1.0
+        low = self.low_freq_cutoff if self.low_freq_cutoff is not None else 0.0
+        high = self.high_freq_cutoff if self.high_freq_cutoff is not None else 1.0
         falloff = self.falloff if self.falloff is not None else 0.0
 
         # Convert to real-space shape for function call
