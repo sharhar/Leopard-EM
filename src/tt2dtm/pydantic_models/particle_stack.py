@@ -67,23 +67,13 @@ class ParticleStack(BaseModel2DTM):
     extracted_box_size: tuple[int, int]
     original_template_size: tuple[int, int]
 
+    # TODO: Ensure the extracted box size is at least the same size as the template size
+
     # Imported tabular data (not serialized)
     _df: pd.DataFrame
 
     # Cropped out view of the particles from images
     image_stack: ExcludedTensor
-
-    # TODO: Implement methods for accessing the following maps as stacks
-    # around the boxes
-    # # Template matching related statistic maps (as stacks around the box)
-    # _mip_map_stack: ExcludedTensor
-    # _scaled_mip_map_stack: ExcludedTensor
-    # _psi_map_stack: ExcludedTensor
-    # _theta_map_stack: ExcludedTensor
-    # _phi_map_stack: ExcludedTensor
-    # _defocus_map_stack: ExcludedTensor
-    # _corr_mean_map_stack: ExcludedTensor
-    # _corr_variance_map_stack: ExcludedTensor
 
     def __init__(self, skip_df_load: bool = False, **data: dict[str, Any]):
         """Initialize the ParticleStack object.
@@ -172,6 +162,61 @@ class ParticleStack(BaseModel2DTM):
         self.image_stack = image_stack
 
         return image_stack
+
+    def cropped_statistics_map_as_tensor(
+        self,
+        stat: Literal[
+            "mip",
+            "scaled_mip",
+            "correlation_average",
+            "correlation_variance",
+            "defocus",
+            "psi",
+            "theta",
+            "phi",
+        ],
+    ) -> torch.Tensor:
+        """Return a tensor of the specified statistic for each cropped image."""
+        stat_col = f"{stat}_path"
+
+        if stat_col not in self._df.columns:
+            raise ValueError(f"Statistic '{stat}' not found in the DataFrame.")
+
+        # Create an empty tensor to store the stat stack
+        h, w = self.original_template_size
+        H, W = self.extracted_box_size
+        num_particles = len(self._df)
+        stat_stack = torch.zeros((num_particles, H - h + 1, W - w + 1))
+
+        # Find the indexes in the DataFrame that correspond to each unique stat map
+        stat_index_groups = self._df.groupby(stat_col).groups
+
+        # Loop over each unique stat map and extract the particles
+        for stat_path, indexes in stat_index_groups.items():
+            stat_map = load_mrc_image(stat_path)
+
+            # with reference to the exact pixel of the statistic (top-left)
+            # need to account for relative extracted box size
+            pos_y = self._df.loc[indexes, "pos_y"]
+            pos_x = self._df.loc[indexes, "pos_x"]
+            pos_y = torch.tensor(pos_y)
+            pos_x = torch.tensor(pos_x)
+            pos_y -= (H - h) // 2
+            pos_x -= (W - w) // 2
+
+            cropped_stat_maps = get_cropped_image_regions(
+                stat_map,
+                pos_y,
+                pos_x,
+                (H - h + 1, W - w + 1),
+                pos_reference="top-left",
+                handle_bounds="pad",
+                padding_mode="constant",
+                padding_value=0.0,
+            )
+            stat_stack[indexes] = cropped_stat_maps
+
+        return stat_stack
 
     @property
     def pos_y(self) -> torch.Tensor:
