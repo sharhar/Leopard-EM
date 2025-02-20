@@ -15,37 +15,12 @@ from tt2dtm.pydantic_models.defocus_search import DefocusSearchConfig
 from tt2dtm.pydantic_models.match_template_result import MatchTemplateResult
 from tt2dtm.pydantic_models.optics_group import OpticsGroup
 from tt2dtm.pydantic_models.orientation_search import OrientationSearchConfig
-from tt2dtm.pydantic_models.pixel_size_search_config import PixelSizeSearchConfig
 from tt2dtm.pydantic_models.types import BaseModel2DTM, ExcludedTensor
 from tt2dtm.utils.data_io import load_mrc_image, load_mrc_volume
 from tt2dtm.utils.pre_processing import (
     calculate_ctf_filter_stack,
-    calculate_searched_orientations,
-    calculate_whitening_filter_template,
-    do_image_preprocessing,
+    select_gpu_devices,
 )
-
-
-def select_gpu_devices(gpu_ids: int | list[int]) -> list[torch.device]:
-    """Convert requested GPU IDs to torch device objects.
-
-    Parameters
-    ----------
-    gpu_ids : int | list[int]
-        GPU ID(s) to use for computation.
-
-    Returns
-    -------
-    list[torch.device]
-    """
-    if isinstance(gpu_ids, int):
-        if gpu_ids < -1:  # -2 or lower means CPU
-            return [torch.device("cpu")]
-        gpu_ids = [gpu_ids]
-
-    devices = [torch.device(f"cuda:{gpu_id}") for gpu_id in gpu_ids]
-
-    return devices
 
 
 class MatchTemplateManager(BaseModel2DTM):
@@ -65,8 +40,6 @@ class MatchTemplateManager(BaseModel2DTM):
         Optics group parameters for the imaging system on the microscope.
     defocus_search_config : DefocusSearchConfig
         Parameters for searching over defocus values.
-    pixel_size_search_config : PixelSizeSearchConfig
-        Parameters for searching over pixel sizes.
     orientation_search_config : OrientationSearchConfig
         Parameters for searching over orientation angles.
     preprocessing_filters : PreprocessingFilters
@@ -80,7 +53,30 @@ class MatchTemplateManager(BaseModel2DTM):
 
     Methods
     -------
-    TODO: Document these methods
+    validate_micrograph_path(v: str) -> str
+        Ensure the micrograph file exists.
+    validate_template_volume_path(v: str) -> str
+        Ensure the template volume file exists.
+    __init__(preload_mrc_files: bool = False , **data: Any)
+        Constructor which also loads the micrograph and template volume from disk.
+        The 'preload_mrc_files' parameter controls whether to read the MRC files
+        immediately upon initialization.
+    make_backend_core_function_kwargs() -> dict[str, Any]
+        Generates the keyword arguments for backend 'core_match_template' call from
+        held parameters. Does the necessary pre-processing steps to filter the image
+        and template.
+    run_match_template(orientation_batch_size: int = 1, do_result_export: bool = True)
+        Runs the base match template program in PyTorch.
+    results_to_dataframe(
+        half_template_width_pos_shift: bool = True,
+        exclude_columns: Optional[list] = None,
+        locate_peaks_kwargs: Optional[dict] = None,
+    ) -> pd.DataFrame
+        Converts the basic extracted peak info DataFrame (from the result object) to a
+        DataFrame with additional information about reference files, microscope
+        parameters, etc.
+    save_config(path: str, mode: Literal["yaml", "json"] = "yaml") -> None
+        Save this Pydantic model config to disk.
     """
 
     model_config: ClassVar = ConfigDict(arbitrary_types_allowed=True)
@@ -91,7 +87,6 @@ class MatchTemplateManager(BaseModel2DTM):
     optics_group: OpticsGroup
     defocus_search_config: DefocusSearchConfig
     orientation_search_config: OrientationSearchConfig
-    pixel_size_search_config: PixelSizeSearchConfig
     preprocessing_filters: PreprocessingFilters
     match_template_result: MatchTemplateResult
     computational_config: ComputationalConfig
@@ -120,11 +115,11 @@ class MatchTemplateManager(BaseModel2DTM):
 
         return str(v)
 
-    def __init__(self, skip_mrc_preloads: bool = False, **data: Any):
+    def __init__(self, preload_mrc_files: bool = False, **data: Any):
         super().__init__(**data)
 
-        # Load the data from the MRC files
-        if not skip_mrc_preloads:
+        if preload_mrc_files:
+            # Load the data from the MRC files
             self.micrograph = load_mrc_image(self.micrograph_path)
             self.template_volume = load_mrc_volume(self.template_volume_path)
 
@@ -134,6 +129,12 @@ class MatchTemplateManager(BaseModel2DTM):
 
     def make_backend_core_function_kwargs(self) -> dict[str, Any]:
         """Generates the keyword arguments for backend call from held parameters."""
+        # Ensure the micrograph and template are loaded and in the correct format
+        if self.micrograph is None:
+            self.micrograph = load_mrc_image(self.micrograph_path)
+        if self.template_volume is None:
+            self.template_volume = load_mrc_volume(self.template_volume_path)
+
         if not isinstance(self.micrograph, torch.Tensor):
             image = torch.from_numpy(self.micrograph)
         else:
@@ -146,9 +147,61 @@ class MatchTemplateManager(BaseModel2DTM):
 
         template_shape = template.shape[-2:]
 
-        whitening_filter = calculate_whitening_filter_template(image, template_shape)
-        image_preprocessed_dft = do_image_preprocessing(image)
+        # Shorthand variables for calling filter configurations
+        wf_config = self.preprocessing_filters.whitening_filter
+        bp_config = self.preprocessing_filters.bandpass_filter
+        # pr_config = self.preprocessing_filters.phase_randomization_filter
+        ac_config = self.preprocessing_filters.arbitrary_curve_filter
 
+        # First calculate the filters for the large image
+        image_dft = torch.fft.rfftn(image)
+        image_dft[0, 0] = 0 + 0j  # zero out the constant term
+
+        wh_filter_image = wf_config.calculate_whitening_filter(image_dft)
+        bp_filter_image = bp_config.calculate_bandpass_filter(image_dft.shape)
+        ac_filter_image = ac_config.calculate_arbitrary_curve_filter(image_dft.shape)
+
+        # Next calculate the filters in terms of the template
+        wh_filter_template = wf_config.calculate_whitening_filter(
+            image_dft,
+            output_shape=(template_shape[-2], template_shape[-1] // 2 + 1),
+            output_rfft=True,
+            output_fftshift=False,
+        )
+        bp_filter_template = bp_config.calculate_bandpass_filter(
+            (template_shape[-2], template_shape[-1] // 2 + 1)
+        )
+        ac_filter_template = ac_config.calculate_arbitrary_curve_filter(
+            (template_shape[-2], template_shape[-1] // 2 + 1)
+        )
+        # dummy "whitening" filter for the template
+        whitening_filter = wh_filter_template * bp_filter_template * ac_filter_template
+
+        # Now apply the filters to the image
+        cumulative_filter = wh_filter_image * bp_filter_image * ac_filter_image
+        image_preprocessed_dft = image_dft * cumulative_filter
+
+        # Normalize the image after filtering
+        squared_image_dft = torch.abs(image_preprocessed_dft) ** 2
+        squared_sum = squared_image_dft.sum() + squared_image_dft[:, 1:-1].sum()
+        image_preprocessed_dft /= torch.sqrt(squared_sum)
+
+        # NOTE: For two Gaussian random variables in d-dimensional space --  A and B --
+        # each with mean 0 and variance 1 their correlation will have on average a
+        # variance of d.
+        # NOTE: Since we have the variance of the image and template projections each at
+        # 1, we need to multiply the image by the square root of the number of pixels
+        # so the cross-correlograms have a variance of 1 and not d.
+        # NOTE: When applying the Fourier filters to the image and template, any
+        # elements that get set to zero effectively reduce the dimensionality of our
+        # cross-correlation. Therefore, instead of multiplying by the number of pixels,
+        # we need to multiply tby the effective number of pixels that are non-zero.
+        # Below, we calculate the dimensionality of our cross-correlation and divide
+        # by the square root of that number to normalize the image.
+        dimensionality = bp_filter_image.sum() + bp_filter_image[:, 1:-1].sum()
+        image_preprocessed_dft *= dimensionality**0.5
+
+        # Calculate the CTF filters at each defocus value
         defocus_values = self.defocus_search_config.defocus_values
         defocus_values = torch.tensor(defocus_values, dtype=torch.float32)
         ctf_filters = calculate_ctf_filter_stack(
@@ -167,21 +220,16 @@ class MatchTemplateManager(BaseModel2DTM):
             ctf_B_factor=self.optics_group.ctf_B_factor,
         )
 
-        euler_angles = calculate_searched_orientations(
-            in_plane_angular_step=self.orientation_search_config.in_plane_angular_step,
-            out_of_plane_angular_step=self.orientation_search_config.out_of_plane_angular_step,
-            phi_min=self.orientation_search_config.phi_min,
-            phi_max=self.orientation_search_config.phi_max,
-            theta_min=self.orientation_search_config.theta_min,
-            theta_max=self.orientation_search_config.theta_max,
-            psi_min=self.orientation_search_config.psi_min,
-            psi_max=self.orientation_search_config.psi_max,
-            template_symmetry=self.orientation_search_config.template_symmetry,
-        )
+        euler_angles = self.orientation_search_config.euler_angles
         euler_angles = euler_angles.to(torch.float32)
 
         device_list = select_gpu_devices(self.computational_config.gpu_ids)
 
+        # Calculate the DFT of the template to take Fourier slices from
+        # NOTE: There is an extra FFTshift step before the RFFT since, for some reason,
+        # omitting this step will cause a 180 degree phase shift on odd (i, j, k)
+        # structure factors in the Fourier domain. This just requires an extra
+        # IFFTshift after converting a slice back to real-space (handled already).
         template_dft = torch.fft.fftshift(template, dim=(-3, -2, -1))
         template_dft = torch.fft.rfftn(template_dft, dim=(-3, -2, -1))
         template_dft = torch.fft.fftshift(template_dft, dim=(-3, -2))  # skip rfft dim
@@ -232,7 +280,6 @@ class MatchTemplateManager(BaseModel2DTM):
         self.match_template_result.relative_defocus = results["best_defocus"]
 
         # TODO: Implement pixel size calculation
-        self.match_template_result.pixel_size = torch.zeros(1, 1)
         self.match_template_result.total_projections = results["total_projections"]
         self.match_template_result.total_orientations = results["total_orientations"]
         self.match_template_result.total_defocus = results["total_defocus"]
@@ -242,7 +289,7 @@ class MatchTemplateManager(BaseModel2DTM):
 
     def results_to_dataframe(
         self,
-        do_peak_shifting: bool = True,
+        half_template_width_pos_shift: bool = True,
         exclude_columns: Optional[list] = None,
         locate_peaks_kwargs: Optional[dict] = None,
     ) -> pd.DataFrame:
@@ -256,10 +303,12 @@ class MatchTemplateManager(BaseModel2DTM):
 
         Parameters
         ----------
-        do_peak_shifting : bool, optional
+        half_template_width_pos_shift : bool, optional
             If True, columns for the image peak position are shifted by half a template
-            width to correspond to the center of the particle. Default is True. This
-            should generally be left as True unless you know what you are doing.
+            width to correspond to the center of the particle. This should be done when
+            the position of a peak corresponds to the top-left corner of the template
+            rather than the center. Default is True. This should generally be left as
+            True unless you know what you are doing.
         exclude_columns : list, optional
             List of columns to exclude from the DataFrame. Default is None and no
             columns are excluded.
@@ -286,7 +335,7 @@ class MatchTemplateManager(BaseModel2DTM):
         # coordinates by half template width to get to particle center in image.
         # NOTE: We are assuming the template is cubic
         nx = mrcfile.open(self.template_volume_path).header.nx
-        if do_peak_shifting:
+        if half_template_width_pos_shift:
             df["img_pos_y"] = df["pos_y"] + nx // 2
             df["img_pos_x"] = df["pos_x"] + nx // 2
         else:

@@ -8,6 +8,11 @@
 
 Two-dimensional template-matching implemented in Python.
 
+## Documentation and Examples
+
+See the `/examples` directory for a set of Jupyter notebooks demonstrating some basic usage of the package.
+More extensive documentation can be found at (TODO: Add link to documentation site).
+
 ## Installation
 
 The newest released version of the package can be installed from PyPI using pip:

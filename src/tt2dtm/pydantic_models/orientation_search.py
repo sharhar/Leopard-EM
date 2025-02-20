@@ -1,12 +1,12 @@
 """Serialization and validation of orientation search parameters for 2DTM."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 
-from pydantic import Field, field_validator
+import torch
+from pydantic import Field
+from torch_so3.uniform_so3_sampling import get_uniform_euler_angles
 
 from tt2dtm.pydantic_models.types import BaseModel2DTM
-
-ALLOWED_ORIENTATION_SAMPLING_METHODS = ["Hopf Fibration"]
 
 
 class OrientationSearchConfig(BaseModel2DTM):
@@ -14,6 +14,12 @@ class OrientationSearchConfig(BaseModel2DTM):
 
     The angles -- psi, theta, and phi -- represent Euler angles in the 'ZYZ'
     convention.
+
+    This model effectively acts as a connector into the
+    `torch_so3.uniform_so3_sampling.get_uniform_euler_angles` function from the
+    [torch-so3](https://github.com/teamtomo/torch-so3) package.
+
+    TODO: Add parameters for template symmetry.
 
     TODO: Implement indexing to get the i-th or range of orientations in the
     search space (need to be ordered).
@@ -46,27 +52,40 @@ class OrientationSearchConfig(BaseModel2DTM):
         greater than 0.
     """
 
-    orientation_sampling_method: str = "Hopf Fibration"
-    template_symmetry: str = "C1"
+    # TODO: Particle symmetry options
+
+    in_plane_step: Annotated[float, Field(ge=0.0)] = 1.5
+    out_of_plane_step: Annotated[float, Field(ge=0.0)] = 2.5
     psi_min: float = 0.0
     psi_max: float = 360.0
     theta_min: float = 0.0
     theta_max: float = 180.0
     phi_min: float = 0.0
     phi_max: float = 360.0
-    in_plane_angular_step: Annotated[float, Field(..., gt=0.0)] = 1.5
-    out_of_plane_angular_step: Annotated[float, Field(..., gt=0.0)] = 2.5
+    base_grid_method: Literal["uniform", "healpix"] = "uniform"
 
-    @field_validator("orientation_sampling_method")
-    def validate_orientation_sampling_method(cls, value):  # type: ignore
-        """Validate from allowed orientation sampling methods."""
-        if value not in ALLOWED_ORIENTATION_SAMPLING_METHODS:
-            raise ValueError(
-                f"Currently only supports the following sampling "
-                f"method(s):\n\t {ALLOWED_ORIENTATION_SAMPLING_METHODS}"
-            )
+    @property
+    def euler_angles(self) -> torch.Tensor:
+        """Returns the Euler angles ('ZYZ' convention) to search over.
 
-        return value
+        Returns
+        -------
+        torch.Tensor
+            A tensor of shape (N, 3) where N is the number of orientations to
+            search over. The columns represent the psi, theta, and phi angles
+            respectively.
+        """
+        return get_uniform_euler_angles(
+            in_plane_step=self.in_plane_step,
+            out_of_plane_step=self.out_of_plane_step,
+            psi_min=self.psi_min,
+            psi_max=self.psi_max,
+            theta_min=self.theta_min,
+            theta_max=self.theta_max,
+            phi_min=self.phi_min,
+            phi_max=self.phi_max,
+            base_grid_method=self.base_grid_method,
+        )
 
 
 class RefineOrientationConfig(BaseModel2DTM):
@@ -107,14 +126,3 @@ class RefineOrientationConfig(BaseModel2DTM):
     in_plane_angular_step_fine: Annotated[float, Field(..., ge=0.0)] = 0.1
     out_of_plane_angular_step_coarse: Annotated[float, Field(..., ge=0.0)] = 2.5
     out_of_plane_angular_step_fine: Annotated[float, Field(..., ge=0.0)] = 0.1
-
-    @field_validator("orientation_sampling_method")
-    def validate_orientation_sampling_method(cls, value):  # type: ignore
-        """Validate from allowed orientation sampling methods."""
-        if value not in ALLOWED_ORIENTATION_SAMPLING_METHODS:
-            raise ValueError(
-                f"Currently only supports the following sampling "
-                f"method(s):\n\t {ALLOWED_ORIENTATION_SAMPLING_METHODS}"
-            )
-
-        return value

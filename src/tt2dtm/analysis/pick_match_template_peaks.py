@@ -63,7 +63,7 @@ def gaussian_noise_zscore_cutoff(num_ccg: int, false_positives: float = 1.0) -> 
 
 
 def find_peaks_in_zscore(
-    zscore_map: torch.Tensor, zscore_cutoff: float, mask_radius: Optional[float] = 8.0
+    zscore_map: torch.Tensor, zscore_cutoff: float, mask_radius: Optional[float] = 5.0
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """Finds locations of peaks above a threshold using masking around each found peak.
 
@@ -74,7 +74,7 @@ def find_peaks_in_zscore(
     zscore_cutoff : float
         Z-score cutoff value.
     mask_radius : float, optional
-        Radius of the circular mask to apply around the peak. Default is 8.0.
+        Radius of the circular mask to apply around the peak. Default is 5.0.
 
     Returns
     -------
