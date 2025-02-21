@@ -348,6 +348,13 @@ class PreprocessingFilters(BaseModel2DTM):
         Configuration for the bandpass filter.
     phase_randomization_filter_config : PhaseRandomizationFilterConfig
         Configuration for the phase randomization filter.
+    arbitrary_curve_filter_config : ArbitraryCurveFilterConfig
+        Configuration for the arbitrary curve filter.
+
+    Methods
+    -------
+    combined_filter(ref_img_rfft, output_shape)
+        Calculate and combine all Fourier filters into a single filter.
     """
 
     whitening_filter: WhiteningFilterConfig = WhiteningFilterConfig()
@@ -356,3 +363,50 @@ class PreprocessingFilters(BaseModel2DTM):
         PhaseRandomizationFilterConfig()
     )
     arbitrary_curve_filter: ArbitraryCurveFilterConfig = ArbitraryCurveFilterConfig()
+
+    def get_combined_filter(
+        self, ref_img_rfft: torch.Tensor, output_shape: tuple[int, ...]
+    ) -> torch.Tensor:
+        """Combine all filters into a single filter.
+
+        Parameters
+        ----------
+        ref_img_rfft : torch.Tensor
+            Reference image to use for calculating the filters.
+        output_shape : tuple[int, ...]
+            Desired output shape of the combined filter in Fourier space. This is the
+            filter shape in Fourier space *not* real space (like in the
+            torch_fourier_filter package).
+
+        Returns
+        -------
+        torch.Tensor
+            The combined filter for the desired output shape.
+        """
+        # NOTE: Phase randomization filter is not currently enabled
+        # pr_config = self.phase_randomization_filter
+        wf_config = self.whitening_filter
+        bf_config = self.bandpass_filter
+        ac_config = self.arbitrary_curve_filter
+
+        # Calculate each of the filters in turn
+        # phase_randomization_filter = pr_config.calculate_phase_randomization_filter(
+        #     ref_img_rfft=ref_img_rfft
+        # )
+        whitening_filter_tensor = wf_config.calculate_whitening_filter(
+            ref_img_rfft=ref_img_rfft, output_shape=output_shape
+        )
+        bandpass_filter_tensor = bf_config.calculate_bandpass_filter(
+            output_shape=output_shape
+        )
+        arbitrary_curve_filter_tensor = ac_config.calculate_arbitrary_curve_filter(
+            output_shape=output_shape
+        )
+
+        combined_filter = (
+            whitening_filter_tensor
+            * bandpass_filter_tensor
+            * arbitrary_curve_filter_tensor
+        )
+
+        return combined_filter

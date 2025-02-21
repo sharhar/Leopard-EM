@@ -147,38 +147,15 @@ class MatchTemplateManager(BaseModel2DTM):
 
         template_shape = template.shape[-2:]
 
-        # Shorthand variables for calling filter configurations
-        wf_config = self.preprocessing_filters.whitening_filter
-        bp_config = self.preprocessing_filters.bandpass_filter
-        # pr_config = self.preprocessing_filters.phase_randomization_filter
-        ac_config = self.preprocessing_filters.arbitrary_curve_filter
-
-        # First calculate the filters for the large image
+        # Fourier transform the image (RFFT, unshifted)
         image_dft = torch.fft.rfftn(image)
         image_dft[0, 0] = 0 + 0j  # zero out the constant term
 
-        wh_filter_image = wf_config.calculate_whitening_filter(image_dft)
-        bp_filter_image = bp_config.calculate_bandpass_filter(image_dft.shape)
-        ac_filter_image = ac_config.calculate_arbitrary_curve_filter(image_dft.shape)
-
-        # Next calculate the filters in terms of the template
-        wh_filter_template = wf_config.calculate_whitening_filter(
-            image_dft,
-            output_shape=(template_shape[-2], template_shape[-1] // 2 + 1),
-            output_rfft=True,
-            output_fftshift=False,
+        # Get the combined filter from the pre-processing filter attribute
+        cumulative_filter = self.preprocessing_filters.get_combined_filter(
+            ref_img_rfft=image_dft,
+            output_shape=image_dft.shape,
         )
-        bp_filter_template = bp_config.calculate_bandpass_filter(
-            (template_shape[-2], template_shape[-1] // 2 + 1)
-        )
-        ac_filter_template = ac_config.calculate_arbitrary_curve_filter(
-            (template_shape[-2], template_shape[-1] // 2 + 1)
-        )
-        # dummy "whitening" filter for the template
-        whitening_filter = wh_filter_template * bp_filter_template * ac_filter_template
-
-        # Now apply the filters to the image
-        cumulative_filter = wh_filter_image * bp_filter_image * ac_filter_image
         image_preprocessed_dft = image_dft * cumulative_filter
 
         # Normalize the image after filtering
@@ -198,8 +175,18 @@ class MatchTemplateManager(BaseModel2DTM):
         # we need to multiply tby the effective number of pixels that are non-zero.
         # Below, we calculate the dimensionality of our cross-correlation and divide
         # by the square root of that number to normalize the image.
+        bp_config = self.preprocessing_filters.bandpass_filter
+        bp_filter_image = bp_config.calculate_bandpass_filter(image_dft.shape)
         dimensionality = bp_filter_image.sum() + bp_filter_image[:, 1:-1].sum()
         image_preprocessed_dft *= dimensionality**0.5
+
+        # Next calculate the filters in terms of the template
+        # NOTE: Here, manually accounting for the RFFT in output shape since we have not
+        # RFFT'd the template volume yet. Also, this is 2-dimensional ,not 3-dimensional
+        cumulative_filter_template = self.preprocessing_filters.get_combined_filter(
+            ref_img_rfft=image_dft,
+            output_shape=(template_shape[-2], template_shape[-1] // 2 + 1),
+        )
 
         # Calculate the CTF filters at each defocus value
         defocus_values = self.defocus_search_config.defocus_values
@@ -220,6 +207,7 @@ class MatchTemplateManager(BaseModel2DTM):
             ctf_B_factor=self.optics_group.ctf_B_factor,
         )
 
+        # Grab the Euler angles from the orientation search configuration
         euler_angles = self.orientation_search_config.euler_angles
         euler_angles = euler_angles.to(torch.float32)
 
@@ -238,7 +226,7 @@ class MatchTemplateManager(BaseModel2DTM):
             "image_dft": image_preprocessed_dft,
             "template_dft": template_dft,
             "ctf_filters": ctf_filters,
-            "whitening_filter_template": whitening_filter,
+            "whitening_filter_template": cumulative_filter_template,
             "euler_angles": euler_angles,
             "defocus_values": defocus_values,
             "device": device_list,
@@ -349,8 +337,8 @@ class MatchTemplateManager(BaseModel2DTM):
         df["img_pos_x_angstrom"] = df["img_pos_x"] * pixel_size
 
         # Add absolute defocus values and other imaging parameters
-        df["defocus_u"] = self.optics_group.defocus_u + df["defocus"]
-        df["defocus_v"] = self.optics_group.defocus_v + df["defocus"]
+        df["defocus_u"] = self.optics_group.defocus_u
+        df["defocus_v"] = self.optics_group.defocus_v
         df["defocus_astigmatism_angle"] = self.optics_group.defocus_astigmatism_angle
 
         # Add paths to the micrograph and reference template
