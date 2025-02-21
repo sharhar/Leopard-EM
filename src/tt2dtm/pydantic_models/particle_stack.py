@@ -6,52 +6,11 @@ import pandas as pd
 import torch
 from pydantic import ConfigDict
 
+from tt2dtm.pydantic_models.correlation_filters import PreprocessingFilters
 from tt2dtm.utils.data_io import load_mrc_image
 from tt2dtm.utils.particle_stack import get_cropped_image_regions
 
 from .types import BaseModel2DTM, ExcludedTensor
-
-# class Particle(BaseModel2DTM):
-#     """Data class for a single particle.
-
-#     TODO: Complete docstring
-#     """
-
-#     # Image of the particle
-#     image: ExcludedTensor
-
-#     # Location and orientation of particle
-#     pos_x: int
-#     pos_y: int
-#     psi: float
-#     theta: float
-#     phi: float
-#     defocus_u: float
-#     defocus_v: float
-#     defocus_astigmatism_angle: float
-
-#     # Microscope (CTF) parameters
-#     pixel_size: float
-#     voltage: float
-#     spherical_aberration: float
-#     amplitude_contrast: float
-#     phase_shift: float
-#     ctf_B_factor: float
-
-#     # Where the original image is stored
-#     orig_micrograph_path: str
-
-#     @property
-#     def pos_x_angstrom(self) -> float:
-#         return self.pos_x * self.pixel_size
-
-#     @property
-#     def pos_y_angstrom(self) -> float:
-#         return self.pos_y * self.pixel_size
-
-#     @property
-#     def box_size(self) -> tuple[int, int]:
-#         return self.image.shape
 
 
 class ParticleStack(BaseModel2DTM):
@@ -131,8 +90,7 @@ class ParticleStack(BaseModel2DTM):
             The stack of images, this is the internal 'image_stack' attribute.
         """
         # Create an empty tensor to store the image stack
-        num_particles = len(self._df)
-        image_stack = torch.zeros((num_particles, *self.extracted_box_size))
+        image_stack = torch.zeros((self.num_particles, *self.extracted_box_size))
 
         # Find the indexes in the DataFrame that correspond to each unique image
         image_index_groups = self._df.groupby("reference_micrograph").groups
@@ -163,7 +121,7 @@ class ParticleStack(BaseModel2DTM):
 
         return image_stack
 
-    def cropped_statistics_map_as_tensor(
+    def construct_cropped_statistic_stack(
         self,
         stat: Literal[
             "mip",
@@ -185,8 +143,7 @@ class ParticleStack(BaseModel2DTM):
         # Create an empty tensor to store the stat stack
         h, w = self.original_template_size
         H, W = self.extracted_box_size
-        num_particles = len(self._df)
-        stat_stack = torch.zeros((num_particles, H - h + 1, W - w + 1))
+        stat_stack = torch.zeros((self.num_particles, H - h + 1, W - w + 1))
 
         # Find the indexes in the DataFrame that correspond to each unique stat map
         stat_index_groups = self._df.groupby(stat_col).groups
@@ -217,6 +174,54 @@ class ParticleStack(BaseModel2DTM):
             stat_stack[indexes] = cropped_stat_maps
 
         return stat_stack
+
+    def construct_filter_stack(
+        self, preprocess_filters: PreprocessingFilters, output_shape: tuple[int, int]
+    ) -> torch.Tensor:
+        """Get stack of Fourier filters from filter config and reference micrographs.
+
+        Note that here the filters are assumed to be applied globally (i.e. no local
+        whitening, etc. is being done). Whitening filters are calculated with reference
+        to each original micrograph in the DataFrame.
+
+        Parameters
+        ----------
+        preprocess_filters : PreprocessingFilters
+            Configuration object of filters to apply.
+        output_shape : tuple[int, int]
+            What shape along the last two dimensions the filters should be.
+
+        Returns
+        -------
+        torch.Tensor
+            The stack of filters with shape (N, h, w) where N is the number of particles
+            and (h, w) is the output shape.
+        """
+        # Create an empty tensor to store the filter stack
+        filter_stack = torch.zeros((self.num_particles, *output_shape))
+
+        # Find the indexes in the DataFrame that correspond to each unique image
+        image_index_groups = self._df.groupby("reference_micrograph").groups
+
+        # Loop over each unique image and extract the particles
+        for img_path, indexes in image_index_groups.items():
+            img = load_mrc_image(img_path)
+
+            image_dft = torch.fft.rfftn(img)
+            image_dft[0, 0] = 0 + 0j
+            cumulative_filter = preprocess_filters.get_combined_filter(
+                ref_img_rfft=image_dft,
+                output_shape=output_shape,
+            )
+
+            filter_stack[indexes] = cumulative_filter
+
+        return filter_stack
+
+    @property
+    def num_particles(self) -> int:
+        """Get the number of particles in the stack."""
+        return len(self._df)
 
     @property
     def pos_y(self) -> torch.Tensor:

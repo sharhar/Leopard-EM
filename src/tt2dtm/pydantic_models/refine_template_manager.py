@@ -1,51 +1,19 @@
 """Pydantic model for running the refine template program."""
 
-from typing import Annotated, Any, ClassVar, Literal
+from typing import Any, ClassVar
 
 import pandas as pd
-from pydantic import ConfigDict, Field, field_validator
+from pydantic import ConfigDict, field_validator
 
 from tt2dtm.pydantic_models.computational_config import ComputationalConfig
 from tt2dtm.pydantic_models.correlation_filters import PreprocessingFilters
 from tt2dtm.pydantic_models.defocus_search import DefocusSearchConfig
 from tt2dtm.pydantic_models.match_template_manager import MatchTemplateManager
-from tt2dtm.pydantic_models.optics_group import OpticsGroup
 from tt2dtm.pydantic_models.orientation_search import RefineOrientationConfig
+from tt2dtm.pydantic_models.particle_stack import ParticleStack
+from tt2dtm.pydantic_models.refine_template_result import RefineTemplateResult
 from tt2dtm.pydantic_models.types import BaseModel2DTM, ExcludedTensor
 from tt2dtm.utils.data_io import load_mrc_volume
-
-
-class ExtractParticleStackConfig(BaseModel2DTM):
-    """Configuration parameters defining how to extract particles from micrographs.
-
-    Attributes of this class are passed directly to the
-    `tt2dtm.utils.get_cropped_image_regions` function when extracting particles from
-    micrographs.
-
-    Attributes
-    ----------
-    box_size: int
-        The size of the box to extract around each particle. Must be greater than zero.
-        Box size is the same in both the x and y dimensions.
-    pos_reference: Literal["top_left", "center"]
-        Reference point for the position of the particle. If "top_left", the position
-        is the top-left corner of the box. If "center", the position is the center of
-        the box.
-    handle_bounds: Literal["pad", "error"]
-        How to handle particles that are too close to the edge of the micrograph. If
-        "pad", pad the particle with zeros. If "error", raise an error.
-    padding_mode: Literal["constant", "reflect", "replicate", "circular"]
-        Padding mode to use when padding particles. See the PyTorch documentation on
-        the `torch.nn.functional.pad` function for more information.
-    padding_value: float
-        Value to use when padding particles. Only used if `padding_mode` is "constant".
-    """
-
-    box_size: Annotated[int, Field(gt=0)]
-    pos_reference: Literal["top_left", "center"] = "center"
-    handle_bounds: Literal["pad", "error"] = "pad"
-    padding_mode: Literal["constant", "reflect", "replicate", "circular"] = "constant"
-    padding_value: float = 0.0
 
 
 class RefineTemplateManager(BaseModel2DTM):
@@ -59,35 +27,16 @@ class RefineTemplateManager(BaseModel2DTM):
 
     model_config: ClassVar = ConfigDict(arbitrary_types_allowed=True)
 
-    # Serialized configuration attributes
-    micrograph_paths: str | list[str]
-    template_volume_path: str
-    extract_particle_stack_config: ExtractParticleStackConfig
-    optics_group: OpticsGroup
-    defocus_search_config: DefocusSearchConfig
-    refine_orientation: RefineOrientationConfig
+    template_volume_path: str  # In df per-particle, but ensure only one reference
+    particle_stack: ParticleStack
+    defocus_refinement_config: DefocusSearchConfig
+    orientation_refinement_config: RefineOrientationConfig
     preprocessing_filters: PreprocessingFilters
-    # refine_template_result: RefineTemplateResult
+    refine_template_result: RefineTemplateResult
     computational_config: ComputationalConfig
 
-    micrograph_index: list[int]
-    optics_group_index: list[int]
-    particle_stack_index: list[int]
-
     # Excluded tensors
-    particle_stack: ExcludedTensor
     template_volume: ExcludedTensor
-
-    pos_x: ExcludedTensor
-    pos_y: ExcludedTensor
-    mip: ExcludedTensor
-    scaled_mip: ExcludedTensor
-    psi: ExcludedTensor
-    theta: ExcludedTensor
-    phi: ExcludedTensor
-    defocus: ExcludedTensor
-    corr_avg: ExcludedTensor
-    corr_var: ExcludedTensor
 
     @classmethod
     def from_results_csv(cls, results_csv_path: str) -> "RefineTemplateManager":
