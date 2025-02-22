@@ -13,6 +13,9 @@ from .match_template_manager import MatchTemplateManager
 from .match_template_result import MatchTemplateResult
 from .optics_group import OpticsGroup
 from .orientation_search import OrientationSearchConfig
+from .particle_stack import ParticleStack
+from .refine_template_manager import RefineTemplateManager
+from .refine_template_result import RefineTemplateResult
 from .types import ExcludedTensor
 
 __all__ = [
@@ -29,4 +32,7 @@ __all__ = [
     "PhaseRandomizationFilterConfig",
     "PreprocessingFilters",
     "WhiteningFilterConfig",
+    "RefineTemplateManager",
+    "ParticleStack",
+    "RefineTemplateResult",
 ]

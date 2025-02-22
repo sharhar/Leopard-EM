@@ -182,7 +182,7 @@ class MatchTemplateManager(BaseModel2DTM):
 
         # Next calculate the filters in terms of the template
         # NOTE: Here, manually accounting for the RFFT in output shape since we have not
-        # RFFT'd the template volume yet. Also, this is 2-dimensional ,not 3-dimensional
+        # RFFT'd the template volume yet. Also, this is 2-dimensional, not 3-dimensional
         cumulative_filter_template = self.preprocessing_filters.get_combined_filter(
             ref_img_rfft=image_dft,
             output_shape=(template_shape[-2], template_shape[-1] // 2 + 1),

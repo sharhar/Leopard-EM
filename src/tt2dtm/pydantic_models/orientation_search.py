@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 
 import torch
 from pydantic import Field
-from torch_so3.uniform_so3_sampling import get_uniform_euler_angles
+from torch_so3 import get_local_high_resolution_angles, get_uniform_euler_angles
 
 from tt2dtm.pydantic_models.types import BaseModel2DTM
 
@@ -120,9 +120,30 @@ class RefineOrientationConfig(BaseModel2DTM):
 
     """
 
-    orientation_sampling_method: str = "Hopf Fibration"
-    template_symmetry: str = "C1"
     in_plane_angular_step_coarse: Annotated[float, Field(..., ge=0.0)] = 1.5
     in_plane_angular_step_fine: Annotated[float, Field(..., ge=0.0)] = 0.1
     out_of_plane_angular_step_coarse: Annotated[float, Field(..., ge=0.0)] = 2.5
     out_of_plane_angular_step_fine: Annotated[float, Field(..., ge=0.0)] = 0.1
+
+    @property
+    def euler_angles_offsets(self) -> torch.Tensor:
+        """Return the Euler angle offsets to search over.
+
+        Note that this method uses a uniform grid search which approximates SO(3) space
+        well when the angular ranges are small (e.g. ±2.5 degrees).
+
+        Returns
+        -------
+        torch.Tensor
+            A tensor of shape (N, 3) where N is the number of orientations to
+            search over. The columns represent the psi, theta, and phi angles,
+            respectively, in the 'ZYZ' convention.
+        """
+        euler_angles_offsets = get_local_high_resolution_angles(
+            coarse_in_plane_step=self.in_plane_angular_step_coarse,
+            coarse_out_of_plane_step=self.out_of_plane_angular_step_coarse,
+            fine_in_plane_step=self.in_plane_angular_step_fine,
+            fine_out_of_plane_step=self.out_of_plane_angular_step_fine,
+        )
+
+        return euler_angles_offsets
