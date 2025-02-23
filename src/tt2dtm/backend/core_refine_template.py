@@ -8,9 +8,16 @@ import tqdm
 from torch_fourier_filter.ctf import calculate_ctf_2d
 from torch_fourier_slice import extract_central_slices_rfft_3d
 
-from tt2dtm.backend.core_match_template import _do_bached_orientation_cross_correlate
+from tt2dtm.backend.core_match_template import (
+    _do_bached_orientation_cross_correlate,
+    _do_bached_orientation_cross_correlate_cpu,
+)
 from tt2dtm.backend.utils import normalize_template_projection
 from tt2dtm.utils.cross_correlation import handle_correlation_mode
+
+# BUG: unsure why the 'zyz' extrinsic rotation is necessary here...
+# The refine template program is using 'ZYZ' intrinsic rotations...
+EULER_ANGLE_FMT = "zyz"
 
 
 def core_refine_template(
@@ -77,9 +84,17 @@ def core_refine_template(
     projective_filters = projective_filters.to(device)
     euler_angle_offsets = euler_angle_offsets.to(device)
 
+    # tqdm progress bar
+    pbar_iter = tqdm.tqdm(
+        range(num_particles),
+        total=num_particles,
+        desc="Refining particle orientations",
+        leave=True,
+    )
+
     # Iterate over each particle in the stack
     refined_statistics = []
-    for i in range(num_particles):
+    for i in pbar_iter:
         particle_image_dft = particle_stack_dft[i]
         particle_index = i
 
@@ -116,7 +131,41 @@ def _core_refine_template_single_thread(
     projective_filter: torch.Tensor,
     orientation_batch_size: int = 32,
 ) -> dict[str, float | int]:
-    """TODO: docstring."""
+    """Run the single-threaded core refine template function.
+
+    Parameters
+    ----------
+    particle_image_dft : torch.Tensor
+        The real-Fourier transformed particle image. Shape of (H, W).
+    particle_index : int
+        The index of the particle in the stack.
+    template_dft : torch.Tensor
+        The template volume to extract central slices from. Real-Fourier transformed
+        and fftshifted.
+    euler_angles : torch.Tensor
+        The previous best euler angle for the particle. Shape of (3,).
+    euler_angle_offsets : torch.Tensor
+        The Euler angle offsets to apply to each particle. Shape of (k, 3).
+    defocus_u : float
+        The defocus along the major axis for the particle.
+    defocus_v : float
+        The defocus along the minor for the particle.
+    defocus_angle : float
+        The defocus astigmatism angle for the particle.
+    defocus_offsets : torch.Tensor
+        The defocus offsets to search over for each particle. Shape of (l,).
+    ctf_kwargs : dict
+        Keyword arguments to pass to the CTF calculation function.
+    projective_filter : torch.Tensor
+        Projective filters to apply to the Fourier slice particle. Shape of (h, w).
+    orientation_batch_size : int, optional
+        The number of orientations to cross-correlate at once. Default is 32.
+
+    Returns
+    -------
+    dict[str, float | int]
+        The refined statistics for the particle.
+    """
     H, W = particle_image_dft.shape
     _, h, w = template_dft.shape
     # account for RFFT
@@ -145,9 +194,9 @@ def _core_refine_template_single_thread(
 
     # The "best" Euler angle from the match template program
     default_rot_matrix = roma.euler_to_rotmat(
-        "ZYZ", euler_angles, degrees=True, device=particle_image_dft.device
+        EULER_ANGLE_FMT, euler_angles, degrees=True, device=particle_image_dft.device
     )
-    # default_rot_matrix.to(torch.float32)
+    default_rot_matrix = default_rot_matrix.to(torch.float32)
 
     # Calculate the CTF filters with the relative offsets
     defocus = (defocus_u + defocus_v) / 2 + defocus_offsets
@@ -162,45 +211,51 @@ def _core_refine_template_single_thread(
     # Combine the single projective filter with the CTF filter
     combined_projective_filter = projective_filter[None, ...] * ctf_filters
 
-    # Setup iterator object with tqdm for progress bar
+    # Iterate over the Euler angle offsets in batches
     num_batches = euler_angle_offsets.shape[0] // orientation_batch_size
-    orientation_batch_iterator = tqdm.tqdm(
+    tqdm_iter = tqdm.tqdm(
         range(num_batches),
-        desc=f"Refining particle {particle_index}",
-        leave=True,
         total=num_batches,
-        dynamic_ncols=True,
+        desc=f"Refining particle {particle_index}",
+        leave=False,
     )
-
-    for i in orientation_batch_iterator:
+    for i in tqdm_iter:
         euler_angle_offsets_batch = euler_angle_offsets[
             i * orientation_batch_size : (i + 1) * orientation_batch_size
         ]
         rot_matrix_batch = roma.euler_to_rotmat(
-            "ZYZ",
+            EULER_ANGLE_FMT,
             euler_angle_offsets_batch,
             degrees=True,
             device=particle_image_dft.device,
         )
-        rot_matrix_batch = roma.rotmat_composition(
-            (default_rot_matrix, rot_matrix_batch)
-        )
         rot_matrix_batch = rot_matrix_batch.to(torch.float32)
 
-        # Cast to float32 for updating statistics
-        euler_angle_offsets_batch = euler_angle_offsets_batch.to(torch.float32)
+        # Rotate the default (best) orientation by the offsets
+        rot_matrix_batch = roma.rotmat_composition(
+            (rot_matrix_batch, default_rot_matrix)
+        )
 
         # Calculate the cross-correlation
-        cross_correlation = _do_bached_orientation_cross_correlate(
-            image_dft=particle_image_dft,
-            template_dft=template_dft,
-            rotation_matrices=rot_matrix_batch,
-            projective_filters=combined_projective_filter,
-        )
+        if particle_image_dft.device.type == "cuda":
+            cross_correlation = _do_bached_orientation_cross_correlate(
+                image_dft=particle_image_dft,
+                template_dft=template_dft,
+                rotation_matrices=rot_matrix_batch,
+                projective_filters=combined_projective_filter,
+            )
+        else:
+            cross_correlation = _do_bached_orientation_cross_correlate_cpu(
+                image_dft=particle_image_dft,
+                template_dft=template_dft,
+                rotation_matrices=rot_matrix_batch,
+                projective_filters=combined_projective_filter,
+            )
 
         cross_correlation = cross_correlation[..., :crop_H, :crop_W]  # valid crop
 
         # Update the best refined statistics
+        euler_angle_offsets_batch = euler_angle_offsets_batch.to(torch.float32)
         max_values, max_indices = torch.max(
             cross_correlation.view(-1, crop_H, crop_W), dim=0
         )

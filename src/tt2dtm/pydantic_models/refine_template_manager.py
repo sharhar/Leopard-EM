@@ -22,8 +22,30 @@ class RefineTemplateManager(BaseModel2DTM):
 
     Attributes
     ----------
-    TODO: Fill in attributes.
+    template_volume_path : str
+        Path to the template volume MRC file.
+    particle_stack : ParticleStack
+        Particle stack object containing particle data.
+    defocus_refinement_config : DefocusSearchConfig
+        Configuration for defocus refinement.
+    orientation_refinement_config : RefineOrientationConfig
+        Configuration for orientation refinement.
+    preprocessing_filters : PreprocessingFilters
+        Filters to apply to the particle images.
+    computational_config : ComputationalConfig
+        What computational resources to allocate for the program.
+    template_volume : ExcludedTensor
+        The template volume tensor (excluded from serialization).
 
+    Methods
+    -------
+    TODO serialization/import methods
+    __init__(self, skip_mrc_preloads: bool = False, **data: Any)
+        Initialize the refine template manager.
+    make_backend_core_function_kwargs(self) -> dict[str, Any]
+        Create the kwargs for the backend refine_template core function.
+    run_refine_template(self, particle_batch_size: int = 64) -> None
+        Run the refine template program.
     """
 
     model_config: ClassVar = ConfigDict(arbitrary_types_allowed=True)
@@ -99,6 +121,11 @@ class RefineTemplateManager(BaseModel2DTM):
 
     def make_backend_core_function_kwargs(self) -> dict[str, Any]:
         """Create the kwargs for the backend refine_template core function."""
+        device = self.computational_config.gpu_devices()
+        if len(device) > 1:
+            raise ValueError("Only single-device execution is currently supported.")
+        device = device[0]
+
         if self.template_volume is None:
             self.template_volume = load_mrc_volume(self.template_volume_path)
         if not isinstance(self.template_volume, torch.Tensor):
@@ -174,31 +201,30 @@ class RefineTemplateManager(BaseModel2DTM):
         defocus_offsets = self.defocus_refinement_config.defocus_values
 
         # Keyword arguments for the CTF filter calculation call
-        # NOTE: We must enforce the parameters (other than the defocus values) are
+        # NOTE: We currently enforce the parameters (other than the defocus values) are
         # all the same. This could be updated in the future...
-        assert self.particle_stack.pixel_size.unique().shape[0] == 1
-        assert self.particle_stack.voltage.unique().shape[0] == 1
-        assert self.particle_stack.spherical_aberration.unique().shape[0] == 1
-        assert self.particle_stack.amplitude_contrast_ratio.unique().shape[0] == 1
-        assert self.particle_stack.phase_shift.unique().shape[0] == 1
-        assert self.particle_stack.ctf_B_factor.unique().shape[0] == 1
+        part_stk = self.particle_stack
+        assert part_stk.pixel_size.unique().shape[0] == 1
+        assert part_stk.voltage.unique().shape[0] == 1
+        assert part_stk.spherical_aberration.unique().shape[0] == 1
+        assert part_stk.amplitude_contrast_ratio.unique().shape[0] == 1
+        assert part_stk.phase_shift.unique().shape[0] == 1
+        assert part_stk.ctf_B_factor.unique().shape[0] == 1
 
         ctf_kwargs = {
-            "voltage": self.particle_stack.voltage[0].item(),
-            "spherical_aberration": self.particle_stack.spherical_aberration[0].item(),
-            "amplitude_contrast": self.particle_stack.amplitude_contrast_ratio[
-                0
-            ].item(),
-            "b_factor": self.particle_stack.ctf_B_factor[0].item(),
-            "phase_shift": self.particle_stack.phase_shift[0].item(),
-            "pixel_size": self.particle_stack.pixel_size[0].item(),
+            "voltage": part_stk.voltage[0].item(),
+            "spherical_aberration": part_stk.spherical_aberration[0].item(),
+            "amplitude_contrast": part_stk.amplitude_contrast_ratio[0].item(),
+            "b_factor": part_stk.ctf_B_factor[0].item(),
+            "phase_shift": part_stk.phase_shift[0].item(),
+            "pixel_size": part_stk.pixel_size[0].item(),
             "image_shape": template_shape,
             "rfft": True,
             "fftshift": False,
         }
 
         return {
-            "particle_stack_dft": particle_images_dft.to(torch.device("cuda")),
+            "particle_stack_dft": particle_images_dft.to(device),
             "template_dft": template_dft,
             "euler_angles": euler_angles,
             "euler_angle_offsets": euler_angle_offsets,

@@ -4,9 +4,11 @@ from typing import Annotated, Literal
 
 import torch
 from pydantic import Field
-from torch_so3 import get_local_high_resolution_angles, get_uniform_euler_angles
+from torch_so3 import get_uniform_euler_angles
 
 from tt2dtm.pydantic_models.types import BaseModel2DTM
+
+EPS = 1e-6
 
 
 class OrientationSearchConfig(BaseModel2DTM):
@@ -121,9 +123,9 @@ class RefineOrientationConfig(BaseModel2DTM):
     """
 
     in_plane_angular_step_coarse: Annotated[float, Field(..., ge=0.0)] = 1.5
-    in_plane_angular_step_fine: Annotated[float, Field(..., ge=0.0)] = 0.1
+    in_plane_angular_step_fine: Annotated[float, Field(..., ge=0.0)] = 0.15
     out_of_plane_angular_step_coarse: Annotated[float, Field(..., ge=0.0)] = 2.5
-    out_of_plane_angular_step_fine: Annotated[float, Field(..., ge=0.0)] = 0.1
+    out_of_plane_angular_step_fine: Annotated[float, Field(..., ge=0.0)] = 0.25
 
     @property
     def euler_angles_offsets(self) -> torch.Tensor:
@@ -139,11 +141,23 @@ class RefineOrientationConfig(BaseModel2DTM):
             search over. The columns represent the psi, theta, and phi angles,
             respectively, in the 'ZYZ' convention.
         """
-        euler_angles_offsets = get_local_high_resolution_angles(
-            coarse_in_plane_step=self.in_plane_angular_step_coarse,
-            coarse_out_of_plane_step=self.out_of_plane_angular_step_coarse,
-            fine_in_plane_step=self.in_plane_angular_step_fine,
-            fine_out_of_plane_step=self.out_of_plane_angular_step_fine,
+        psi_values = torch.arange(
+            -self.in_plane_angular_step_coarse,
+            self.in_plane_angular_step_coarse + EPS,
+            self.in_plane_angular_step_fine,
         )
+        theta_values = torch.arange(
+            0.0,
+            self.out_of_plane_angular_step_coarse + EPS,
+            self.out_of_plane_angular_step_fine,
+        )
+        phi_values = torch.arange(
+            -self.out_of_plane_angular_step_coarse,
+            self.out_of_plane_angular_step_coarse + EPS,
+            self.out_of_plane_angular_step_fine,
+        )
+
+        grid = torch.meshgrid(psi_values, theta_values, phi_values, indexing="ij")
+        euler_angles_offsets = torch.stack(grid, dim=-1).reshape(-1, 3)
 
         return euler_angles_offsets

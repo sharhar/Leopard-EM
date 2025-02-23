@@ -17,10 +17,7 @@ from tt2dtm.pydantic_models.optics_group import OpticsGroup
 from tt2dtm.pydantic_models.orientation_search import OrientationSearchConfig
 from tt2dtm.pydantic_models.types import BaseModel2DTM, ExcludedTensor
 from tt2dtm.utils.data_io import load_mrc_image, load_mrc_volume
-from tt2dtm.utils.pre_processing import (
-    calculate_ctf_filter_stack,
-    select_gpu_devices,
-)
+from tt2dtm.utils.pre_processing import calculate_ctf_filter_stack
 
 
 class MatchTemplateManager(BaseModel2DTM):
@@ -208,10 +205,11 @@ class MatchTemplateManager(BaseModel2DTM):
         )
 
         # Grab the Euler angles from the orientation search configuration
+        # (psi, theta, phi) for ZYZ convention
         euler_angles = self.orientation_search_config.euler_angles
         euler_angles = euler_angles.to(torch.float32)
 
-        device_list = select_gpu_devices(self.computational_config.gpu_ids)
+        device_list = self.computational_config.gpu_devices
 
         # Calculate the DFT of the template to take Fourier slices from
         # NOTE: There is an extra FFTshift step before the RFFT since, for some reason,
