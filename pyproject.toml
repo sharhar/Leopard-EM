@@ -48,7 +48,7 @@ dependencies = [
     "roma",
     "tqdm",
     "torch-fourier-slice==v0.0.5",
-    "torch-fourier-filter==v0.2.1",
+    "torch-fourier-filter==v0.2.2",
     "torch-so3>=v0.1.2",
     "torch_image_lerp==v0.0.5",
 ]
