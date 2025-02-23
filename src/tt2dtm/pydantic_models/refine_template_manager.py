@@ -210,7 +210,7 @@ class RefineTemplateManager(BaseModel2DTM):
             "projective_filters": projective_filters,
         }
 
-    def run_refine_template(self, particle_batch_size: int = 1024) -> None:
+    def run_refine_template(self, particle_batch_size: int = 64) -> None:
         """Run the refine template program."""
         backend_kwargs = self.make_backend_core_function_kwargs()
 
