@@ -2,6 +2,7 @@
 
 from typing import Any, ClassVar
 
+import numpy as np
 import pandas as pd
 import torch
 from pydantic import ConfigDict
@@ -122,7 +123,7 @@ class RefineTemplateManager(BaseModel2DTM):
 
     def make_backend_core_function_kwargs(self) -> dict[str, Any]:
         """Create the kwargs for the backend refine_template core function."""
-        device = self.computational_config.gpu_devices()
+        device = self.computational_config.gpu_devices
         if len(device) > 1:
             raise ValueError("Only single-device execution is currently supported.")
         device = device[0]
@@ -259,9 +260,11 @@ class RefineTemplateManager(BaseModel2DTM):
         # Copy dataframe from particle stack and add results
         df_refined = self.particle_stack._df.copy()
         refined_mip = result["refined_cross_correlation"]
-        refined_scaled_mip = (refined_mip - df_refined["corr_average"]) / df_refined[
-            "corr_variance"
-        ]
+        refined_scaled_mip = refined_mip - df_refined["correlation_mean"]
+        refined_scaled_mip = refined_scaled_mip / np.sqrt(
+            df_refined["correlation_variance"]
+        )
+
         pos_offset_y = result["refined_pos_y"]
         pos_offset_x = result["refined_pos_x"]
         pos_offset_y_ang = pos_offset_y * df_refined["pixel_size"]

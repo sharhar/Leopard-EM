@@ -40,6 +40,7 @@ class ComputationalConfig(BaseModel):
 
         return v
 
+    @property
     def gpu_devices(self) -> list[torch.device]:
         """Convert requested GPU IDs to torch device objects.
 

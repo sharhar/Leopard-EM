@@ -232,7 +232,10 @@ class MatchTemplateManager(BaseModel2DTM):
         }
 
     def run_match_template(
-        self, orientation_batch_size: int = 1, do_result_export: bool = True
+        self,
+        orientation_batch_size: int = 1,
+        do_result_export: bool = True,
+        do_valid_cropping: bool = True,
     ) -> None:
         """Runs the base match template in pytorch.
 
@@ -243,6 +246,8 @@ class MatchTemplateManager(BaseModel2DTM):
         do_result_export : bool
             If True, call the `MatchTemplateResult.export_results` method to save the
             results to disk directly after running the match template. Default is True.
+        do_valid_cropping : bool
+            If True, apply the valid cropping mode to the results. Default is True.
 
         Returns
         -------
@@ -270,6 +275,11 @@ class MatchTemplateManager(BaseModel2DTM):
         self.match_template_result.total_projections = results["total_projections"]
         self.match_template_result.total_orientations = results["total_orientations"]
         self.match_template_result.total_defocus = results["total_defocus"]
+
+        # Apply the valid cropping mode to the results
+        if do_valid_cropping:
+            nx = self.template_volume.shape[-1]
+            self.match_template_result.apply_valid_cropping((nx, nx))
 
         if do_result_export:
             self.match_template_result.export_results()
