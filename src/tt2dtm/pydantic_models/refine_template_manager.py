@@ -161,8 +161,8 @@ class RefineTemplateManager(BaseModel2DTM):
         bp_filter_image = bp_config.calculate_bandpass_filter(
             particle_images_dft.shape[-2:]
         )
-        dimensionality = bp_filter_image.sum() + bp_filter_image[:, 1:-1].sum()
-        particle_images_dft /= dimensionality**0.5
+        dimensionality = bp_filter_image.sum()
+        particle_images_dft *= dimensionality**0.5
 
         # Calculate the filters applied to each template (besides CTF)
         projective_filters = self.particle_stack.construct_filter_stack(
