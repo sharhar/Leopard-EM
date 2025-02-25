@@ -10,6 +10,7 @@ from tt2dtm.backend.core_refine_template import core_refine_template
 from tt2dtm.pydantic_models.computational_config import ComputationalConfig
 from tt2dtm.pydantic_models.correlation_filters import PreprocessingFilters
 from tt2dtm.pydantic_models.defocus_search import DefocusSearchConfig
+from tt2dtm.pydantic_models.formats import REFINED_DF_COLUMN_ORDER
 from tt2dtm.pydantic_models.match_template_manager import MatchTemplateManager
 from tt2dtm.pydantic_models.orientation_search import RefineOrientationConfig
 from tt2dtm.pydantic_models.particle_stack import ParticleStack
@@ -44,7 +45,7 @@ class RefineTemplateManager(BaseModel2DTM):
         Initialize the refine template manager.
     make_backend_core_function_kwargs(self) -> dict[str, Any]
         Create the kwargs for the backend refine_template core function.
-    run_refine_template(self, particle_batch_size: int = 64) -> None
+    run_refine_template(self, orientation_batch_size: int = 64) -> None
         Run the refine template program.
     """
 
@@ -237,12 +238,22 @@ class RefineTemplateManager(BaseModel2DTM):
         }
 
     def run_refine_template(
-        self, output_dataframe_path: str, particle_batch_size: int = 64
+        self, output_dataframe_path: str, orientation_batch_size: int = 64
     ) -> None:
-        """Run the refine template program."""
+        """Run the refine template program and saves the resultant DataFrame to csv.
+
+        Parameters
+        ----------
+        output_dataframe_path : str
+            Path to save the refined particle data.
+        orientation_batch_size : int
+            Number of orientations to process at once. Defaults to 64.
+        """
         backend_kwargs = self.make_backend_core_function_kwargs()
 
-        result = core_refine_template(batch_size=particle_batch_size, **backend_kwargs)
+        result = core_refine_template(
+            batch_size=orientation_batch_size, **backend_kwargs
+        )
         result = {k: v.cpu().numpy() for k, v in result.items()}
 
         # Copy dataframe from particle stack and add results
@@ -275,6 +286,9 @@ class RefineTemplateManager(BaseModel2DTM):
         df_refined["refined_pos_x_img_angstrom"] = (
             pos_offset_x_ang + df_refined["pos_x_img_angstrom"]
         )
+
+        # Reorder the columns
+        df_refined = df_refined.reindex(columns=REFINED_DF_COLUMN_ORDER)
 
         # Save the refined DataFrame to disk
         df_refined.to_csv(output_dataframe_path)

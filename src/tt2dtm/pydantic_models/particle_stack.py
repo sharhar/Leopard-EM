@@ -7,6 +7,7 @@ import torch
 from pydantic import ConfigDict
 
 from tt2dtm.pydantic_models.correlation_filters import PreprocessingFilters
+from tt2dtm.pydantic_models.formats import MATCH_TEMPLATE_DF_COLUMN_ORDER
 from tt2dtm.utils.data_io import load_mrc_image
 from tt2dtm.utils.particle_stack import get_cropped_image_regions
 
@@ -51,8 +52,25 @@ class ParticleStack(BaseModel2DTM):
             self.load_df()
 
     def load_df(self) -> None:
-        """Load the DataFrame from the specified path."""
-        self._df = pd.read_csv(self.df_path)
+        """Load the DataFrame from the specified path.
+
+        Raises
+        ------
+        ValueError
+            If the DataFrame is missing required columns.
+        """
+        tmp_df = pd.read_csv(self.df_path)
+
+        # Validate the DataFrame columns
+        missing_columns = [
+            col for col in MATCH_TEMPLATE_DF_COLUMN_ORDER if col not in tmp_df.columns
+        ]
+        if missing_columns:
+            raise ValueError(
+                f"Missing the following columns in DataFrame: {missing_columns}"
+            )
+
+        self._df = tmp_df
 
     def construct_image_stack(
         self,
