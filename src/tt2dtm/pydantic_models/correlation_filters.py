@@ -1,6 +1,6 @@
 """Set of classes for configuring correlation filters in 2DTM."""
 
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 
 import torch
 from pydantic import Field
@@ -171,21 +171,66 @@ class BandpassFilterConfig(BaseModel2DTM):
     enabled : bool
         If True, apply a bandpass filter to correlation during template
         matching. Default is False.
-    low_pass : Optional[float]
+    low_freq_cutoff : Optional[float]
         Low pass filter cutoff frequency. Default is None, which is no low
         pass filter.
-    high_pass : Optional[float]
+    high_freq_cutoff : Optional[float]
         High pass filter cutoff frequency. Default is None, which is no high
         pass filter.
     falloff : Optional[float]
         Falloff factor for bandpass filter. Default is 0.0, which is no
         falloff.
+
+    Methods
+    -------
+    from_spatial_resolution(low_resolution, high_resolution, pixel_size, **kwargs)
+        Helper method to instantiate a bandpass filter from spatial resolutions and
+        a pixel size.
+    calculate_bandpass_filter(output_shape)
+        Helper function for bandpass filter based on the desired output shape. This
+        method returns a filter for a RFFT'd and unshifted (zero-frequency component
+        at the top-left corner) image.
     """
 
     enabled: bool = False
-    low_pass: Optional[Annotated[float, Field(ge=0.0)]] = None
-    high_pass: Optional[Annotated[float, Field(ge=0.0)]] = None
+    low_freq_cutoff: Optional[Annotated[float, Field(ge=0.0)]] = None
+    high_freq_cutoff: Optional[Annotated[float, Field(ge=0.0)]] = None
     falloff: Optional[Annotated[float, Field(ge=0.0)]] = None
+
+    @classmethod
+    def from_spatial_resolution(
+        cls,
+        low_resolution: float,
+        high_resolution: float,
+        pixel_size: float,
+        **kwargs: dict[str, Any],
+    ) -> "BandpassFilterConfig":
+        """Helper method to instantiate a bandpass filter from spatial resolutions.
+
+        Parameters
+        ----------
+        low_resolution : float
+            Low resolution cutoff frequency in Angstroms.
+        high_resolution : float
+            High resolution cutoff frequency in Angstroms.
+        pixel_size : float
+            Pixel size in Angstroms.
+        **kwargs
+            Additional keyword arguments to pass to the constructor method.
+
+        Returns
+        -------
+        BandpassFilterConfig
+            Bandpass filter configuration object.
+        """
+        low_freq_cutoff = pixel_size / low_resolution
+        high_freq_cutoff = pixel_size / high_resolution
+
+        return cls(
+            low_freq_cutoff=low_freq_cutoff,
+            high_freq_cutoff=high_freq_cutoff,
+            **kwargs,
+        )
 
     def calculate_bandpass_filter(self, output_shape: tuple[int, ...]) -> torch.Tensor:
         """Helper function for bandpass filter based on the desired output shape.
@@ -209,10 +254,18 @@ class BandpassFilterConfig(BaseModel2DTM):
         if not self.enabled:
             return torch.ones(output_shape, dtype=torch.float32)
 
+        # Account for None values
+        low = self.low_freq_cutoff if self.low_freq_cutoff is not None else 0.0
+        high = self.high_freq_cutoff if self.high_freq_cutoff is not None else 1.0
+        falloff = self.falloff if self.falloff is not None else 0.0
+
+        # Convert to real-space shape for function call
+        output_shape = output_shape[:-1] + (2 * (output_shape[-1] - 1),)
+
         return bandpass_filter(
-            low=self.low_pass,
-            high=self.high_pass,
-            falloff=self.falloff,
+            low=low,
+            high=high,
+            falloff=falloff,
             image_shape=output_shape,
             rfft=True,
             fftshift=False,
@@ -295,6 +348,13 @@ class PreprocessingFilters(BaseModel2DTM):
         Configuration for the bandpass filter.
     phase_randomization_filter_config : PhaseRandomizationFilterConfig
         Configuration for the phase randomization filter.
+    arbitrary_curve_filter_config : ArbitraryCurveFilterConfig
+        Configuration for the arbitrary curve filter.
+
+    Methods
+    -------
+    combined_filter(ref_img_rfft, output_shape)
+        Calculate and combine all Fourier filters into a single filter.
     """
 
     whitening_filter: WhiteningFilterConfig = WhiteningFilterConfig()
@@ -303,3 +363,50 @@ class PreprocessingFilters(BaseModel2DTM):
         PhaseRandomizationFilterConfig()
     )
     arbitrary_curve_filter: ArbitraryCurveFilterConfig = ArbitraryCurveFilterConfig()
+
+    def get_combined_filter(
+        self, ref_img_rfft: torch.Tensor, output_shape: tuple[int, ...]
+    ) -> torch.Tensor:
+        """Combine all filters into a single filter.
+
+        Parameters
+        ----------
+        ref_img_rfft : torch.Tensor
+            Reference image to use for calculating the filters.
+        output_shape : tuple[int, ...]
+            Desired output shape of the combined filter in Fourier space. This is the
+            filter shape in Fourier space *not* real space (like in the
+            torch_fourier_filter package).
+
+        Returns
+        -------
+        torch.Tensor
+            The combined filter for the desired output shape.
+        """
+        # NOTE: Phase randomization filter is not currently enabled
+        # pr_config = self.phase_randomization_filter
+        wf_config = self.whitening_filter
+        bf_config = self.bandpass_filter
+        ac_config = self.arbitrary_curve_filter
+
+        # Calculate each of the filters in turn
+        # phase_randomization_filter = pr_config.calculate_phase_randomization_filter(
+        #     ref_img_rfft=ref_img_rfft
+        # )
+        whitening_filter_tensor = wf_config.calculate_whitening_filter(
+            ref_img_rfft=ref_img_rfft, output_shape=output_shape
+        )
+        bandpass_filter_tensor = bf_config.calculate_bandpass_filter(
+            output_shape=output_shape
+        )
+        arbitrary_curve_filter_tensor = ac_config.calculate_arbitrary_curve_filter(
+            output_shape=output_shape
+        )
+
+        combined_filter = (
+            whitening_filter_tensor
+            * bandpass_filter_tensor
+            * arbitrary_curve_filter_tensor
+        )
+
+        return combined_filter

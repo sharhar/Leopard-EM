@@ -2,11 +2,11 @@
 
 import json
 import os
-from typing import Annotated, Optional
+from typing import Annotated, ClassVar, Optional
 
 import torch
 import yaml  # type: ignore
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Extra, Field
 from pydantic.json_schema import SkipJsonSchema
 
 # Pydantic type-hint to exclude tensor from JSON schema/dump (still attribute)
@@ -36,6 +36,8 @@ class BaseModel2DTM(BaseModel):
     to_yaml(yaml_path: str | os.PathLike) -> None
         Serialize the BaseModel2DTM subclass to a YAML file.
     """
+
+    model_config: ClassVar = ConfigDict(extra=Extra.forbid)
 
     #####################################
     ### Import/instantiation methods ###
