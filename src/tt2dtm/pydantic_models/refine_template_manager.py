@@ -247,31 +247,33 @@ class RefineTemplateManager(BaseModel2DTM):
 
         # Copy dataframe from particle stack and add results
         df_refined = self.particle_stack._df.copy()
+        refined_mip = result["refined_cross_correlation"]
+        refined_scaled_mip = (refined_mip - df_refined["corr_average"]) / df_refined[
+            "corr_variance"
+        ]
+        pos_offset_y = result["refined_pos_y"]
+        pos_offset_x = result["refined_pos_x"]
+        pos_offset_y_ang = pos_offset_y * df_refined["pixel_size"]
+        pos_offset_x_ang = pos_offset_x * df_refined["pixel_size"]
 
         # Add the new columns to the DataFrame
-        df_refined["refined_mip"] = result["refined_cross_correlation"]
-        df_refined["refined_scaled_mip"] = None  # TODO: Add this via scaling
+        df_refined["refined_mip"] = refined_mip
+        df_refined["refined_scaled_mip"] = refined_scaled_mip
         df_refined["refined_psi"] = result["refined_euler_angles"][:, 0]
         df_refined["refined_theta"] = result["refined_euler_angles"][:, 1]
         df_refined["refined_phi"] = result["refined_euler_angles"][:, 2]
         df_refined["refined_relative_defocus"] = (
             result["refined_defocus_offset"] + df_refined["relative_defocus"]
         )
-        df_refined["refined_pos_y"] = result["refined_pos_y"] + df_refined["pos_y"]
-        df_refined["refined_pos_x"] = result["refined_pos_x"] + df_refined["pos_x"]
-        df_refined["refined_pos_y_img"] = (
-            result["refined_pos_y"] + df_refined["pos_y_img"]
-        )
-        df_refined["refined_pos_x_img"] = (
-            result["refined_pos_x"] + df_refined["pos_x_img"]
-        )
+        df_refined["refined_pos_y"] = pos_offset_y + df_refined["pos_y"]
+        df_refined["refined_pos_x"] = pos_offset_x + df_refined["pos_x"]
+        df_refined["refined_pos_y_img"] = pos_offset_y + df_refined["pos_y_img"]
+        df_refined["refined_pos_x_img"] = pos_offset_x + df_refined["pos_x_img"]
         df_refined["refined_pos_y_img_angstrom"] = (
-            result["refined_pos_y"] * df_refined["pixel_size"]
-            + df_refined["pos_y_img_angstrom"]
+            pos_offset_y_ang + df_refined["pos_y_img_angstrom"]
         )
         df_refined["refined_pos_x_img_angstrom"] = (
-            result["refined_pos_x"] * df_refined["pixel_size"]
-            + df_refined["pos_x_img_angstrom"]
+            pos_offset_x_ang + df_refined["pos_x_img_angstrom"]
         )
 
         # Save the refined DataFrame to disk
