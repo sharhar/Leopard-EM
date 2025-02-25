@@ -1,4 +1,4 @@
-# tt2DTM todo list
+# TODO list for template matching
 
 Some items to consider both in terms of boosting the sensitivity of 2DTM, improving general accessibility of the method, and increasing the speed/efficiency of the code.
 
@@ -12,18 +12,18 @@ Items that need completed before releasing the codebase to a general audience.
   - [x] Put in the pydantic models for input/output
   - [x] Test the program input/outputs
 - [ ] Write program for make template results
-- [ ] Write program for refine template
+- [x] Write program for refine template
 
 ### Documentation
  - [x] Create example notebook for how to use Pydantic models
- - [ ] Write an example python script for running a single match template job
- - [ ] Deploy some rudimentary documentation on readthedocs
+ - [x] Write an example python script for running a single match template job
+ - [x] Deploy some rudimentary documentation on readthedocs
 
 ### Maintainability and Organization
  - [ ] Write basic unit tests for the Pydantic models & associated methods
  - [ ] Write basic unit tests for the pre-processing steps/functions
  - [ ] Add complexity limit within pre-commit hooks (improves readability of functions)
- - [ ] Ensure `pyproject.toml` has strict versioning requirements which work across platform(s) -- should we target anything but Linux?
+ - [x] Ensure `pyproject.toml` has strict versioning requirements which work across platform(s) -- should we target anything but Linux?
 
 ## Increasing efficiency/speed
 

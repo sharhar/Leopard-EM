@@ -1,4 +1,4 @@
-# tt2DTM
+# Leopard-EM: Python based template matching
 
 [![License](https://img.shields.io/pypi/l/tt2DTM.svg?color=green)](https://github.com/jdickerson95/tt2DTM/raw/main/LICENSE)
 [![PyPI](https://img.shields.io/pypi/v/tt2DTM.svg?color=green)](https://pypi.org/project/tt2DTM)
@@ -6,59 +6,82 @@
 [![CI](https://github.com/jdickerson95/tt2DTM/actions/workflows/ci.yml/badge.svg)](https://github.com/jdickerson95/tt2DTM/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/jdickerson95/tt2DTM/branch/main/graph/badge.svg)](https://codecov.io/gh/jdickerson95/tt2DTM)
 
-Two-dimensional template-matching implemented in Python.
+Leopard-EM (**L**ocation & ori**E**ntati**O**n of **PAR**ticles found using two-**D**imensional t**E**mplate **M**atching) is a python package for running two-dimensional template matching (2DTM) on cryo-EM images.
 
-## Documentation and Examples
+<!-- ## Documentation and Examples
 
 See the `/examples` directory for a set of Jupyter notebooks demonstrating some basic usage of the package.
-More extensive documentation can be found at (TODO: Add link to documentation site).
+More extensive documentation can be found at (TODO: Add link to documentation site). -->
 
-## Installation
+## Basic Installation
 
 The newest released version of the package can be installed from PyPI using pip:
 
 ```bash
-pip install tt2DTM
-```
-
-Or you can alternatively install from source:
-
-```bash
-git clone https://github.com/jdickerson95/tt2DTM.git
-cd tt2DTM
-pip install .
-```
-
-### For Developers
-
-To install the package with the necessary development dependencies in an editable configuration, run:
-
-```bash
-git clone https://github.com/jdickerson95/tt2DTM.git
-cd tt2DTM
-pip install -e '.[dev,test]'
+pip install leopard-em
 ```
 
 ## Usage
 
-Inputs to the template matching programs are contained within Pydantic model objects which run validation on the input data. These inputs can be set in a Python script like below:
+### Template Matching
 
-*TODO*: Add example
-
-Alternatively, configurations can be set in a YAML file and loaded into the `MatchTemplateManager` object. See the notebook `examples/01-config_import_export.ipynb` further information on configuration fields and import/export functionality.
+Inputs to the template matching programs can be configured with Pydantic models (see online documentation for examples and use cases).
+Alternatively, configurations can be set in YAML files and loaded into the `MatchTemplateManager` object.
+The [example YAML configuration file](match_template_example_config.yaml) acts as a template for configuring your own runs.
+Once configured with the proper paths, parameters, etc., the program can run as follows:
 
 ```python
 from tt2dtm.pydantic_models import MatchTemplateManager
 
-YAML_CONFIG_PATH = "path/to/config.yaml"
+YAML_CONFIG_PATH = "path/to/mt_config.yaml"
 ORIENTATION_BATCH_SIZE = 8
 
 def main():
-    mtm = MatchTemplateManager.from_yaml(YAML_CONFIG_PATH)
-    mtm.run_match_template(ORIENTATION_BATCH_SIZE)
+    mt_manager = MatchTemplateManager.from_yaml(YAML_CONFIG_PATH)
+    mt_manager.run_match_template(ORIENTATION_BATCH_SIZE)
+    df.results_to_dataframe()
+    df.to_csv("/path/to/results.csv")
 
 # NOTE: invoking from `if __name__ == "__main__"` is necessary
 # for proper multiprocessing/GPU-distribution behavior
 if __name__ == "__main__":
     main()
 ```
+
+### Template Refinement
+
+Particle orientations and locations can be refined using the `RefineTemplateManager` objects after a template matching run.
+The `RefineTemplateManager` is similarly a set of Pydantic models capable of configuration via YAML files.
+The [example YAML configuration file](refine_template_example_config.yaml) acts as a template for configuring your own runs.
+Once configured with the proper paths, parameters, etc., the program can run as follows:
+
+```python
+from tt2dtm.pydantic_models import RefineTemplateManager
+
+YAML_PATH = "/path/to/rt_config.yaml"
+ORIENTATION_BATCH_SIZE = 80
+
+def main():
+    rt_manager = RefineTemplateManager.from_yaml(YAML_PATH)
+    rt_manager.run_refine_template(
+        output_dataframe_path="/path/to/refined_results.csv",
+        orientation_batch_size=ORIENTATION_BATCH_SIZE,
+    )
+
+
+if __name__ == "__main__":
+    main()
+
+```
+
+## Installation for Development
+
+The package can be installed from source in editable mode with the optional development libraries via pip.
+
+```bash
+git clone https://github.com/jdickerson95/tt2DTM.git
+cd tt2DTM
+pip install -e '.[dev,test, docs]'
+```
+
+Further information on development and contributing to the repo can be found in our online documentation.

@@ -15,9 +15,9 @@ sources = ["src"]
 
 # https://peps.python.org/pep-0621/
 [project]
-name = "tt2DTM"
+name = "Leopard-EM"
 dynamic = ["version"]
-description = "2DTM in pyTorch"
+description = "Location & Orientation of Particles using Two-Dimensional Template Matching"
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "BSD-3-Clause" }
@@ -71,7 +71,13 @@ dev = [
     "ruff",
 ]
 # Documentation dependencies
-docs = ["mkdocs", "mkdocs-material", "mkdocs-jupyter", "python-markdown-math", "mkdocs-inline-select-svg-plugin"]
+docs = [
+    "mkdocs",
+    "mkdocs-material",
+    "mkdocs-jupyter",
+    "python-markdown-math",
+    "mkdocs-inline-select-svg-plugin",
+]
 
 [project.urls]
 homepage = "https://github.com/jdickerson95/tt2DTM"
@@ -81,10 +87,8 @@ repository = "https://github.com/jdickerson95/tt2DTM"
 # https://peps.python.org/pep-0621/#entry-points
 # same as console_scripts entry point
 # [project.scripts]
-# tt2DTM-cli = "tt2dtm:main_cli"
-
-# [project.entry-points."some.group"]
-# tomatoes = "tt2dtm:main_tomatoes"
+# match-template-cli = "tt2dtm:programs:match_template:main_cli"
+# refine-template-cli = "tt2dtm:programs:refine_template:main_cli"
 
 # https://docs.astral.sh/ruff
 [tool.ruff]

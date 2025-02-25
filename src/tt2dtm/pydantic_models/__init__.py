@@ -1,4 +1,4 @@
-"""Pydantic models for the `tt2dtm` package."""
+"""Pydantic models for the Leopard-EM package."""
 
 from .computational_config import ComputationalConfig
 from .correlation_filters import (

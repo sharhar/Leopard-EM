@@ -1,4 +1,4 @@
-* tt2DTM version:
+* Leopard-EM version:
 * Python version:
 * Operating System:
 
