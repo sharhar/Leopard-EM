@@ -37,7 +37,7 @@ Note that same mode pads the image with zeros along the edges and *does not* inc
 In each case, the position in the map at \( (i, j) \) corresponds to the top-left corner of the template at that position, *not* the center of the template.
 Below is an example comparing the two correlation modes:
 
-<img src="../static/correlation_modes.svg" alt="Diagram showing correlation modes and output sizes" width="500">
+<img src="../static/correlation_modes.svg" alt="Diagram showing correlation modes and output sizes" style="width: 50%;">
 
 ### Match template **DataFrame**
 
@@ -94,6 +94,8 @@ New columns are listed below:
 
 | Column Name                   | Type  | Description |
 |-------------------------------|-------|-------------|
+| `refined_mip`                 | float | New maximum cross-correlation over refinement search space.
+| `refined_scaled_mip`          | float | New scaled MIP value (z-score) normalized by cross-correlation mean and variance.
 | `refined_pos_x`               | int   | The refined x position of the particle, top-left corner of the template.
 | `refined_pos_y`               | int   | The refined y position of the particle, top-left corner of the template.
 | `refined_pos_x_img`           | int   | The refined x position of the particle, center of the particle in the micrograph.
