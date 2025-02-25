@@ -17,7 +17,55 @@ from .types import BaseModel2DTM, ExcludedTensor
 class ParticleStack(BaseModel2DTM):
     """Pydantic model for dealing with particle stack data.
 
-    TODO: Complete docstring
+    Attributes
+    ----------
+    df_path : str
+        Path to the DataFrame containing the particle data. The DataFrame must have
+        the following columns (see the documentation for further information):
+          - mip
+          - scaled_mip
+          - correlation_mean
+          - correlation_variance
+          - total_correlations
+          - pos_x
+          - pos_y
+          - pos_x_img
+          - pos_y_img
+          - pos_x_img_angstrom
+          - pos_y_img_angstrom
+          - psi
+          - theta
+          - phi
+          - relative_defocus
+          - refined_relative_defocus
+          - defocus_u
+          - defocus_v
+          - astigmatism_angle
+          - pixel_size
+          - voltage
+          - spherical_aberration
+          - amplitude_contrast_ratio
+          - phase_shift
+          - ctf_B_factor
+          - micrograph_path
+          - template_path
+          - mip_path
+          - scaled_mip_path
+          - psi_path
+          - theta_path
+          - phi_path
+          - defocus_path
+          - correlation_average_path
+          - correlation_variance_path
+    extracted_box_size : tuple[int, int]
+        The size of the extracted particle boxes in pixels in units of pixels.
+    original_template_size : tuple[int, int]
+        The original size of the template used during the matching process. Should be
+        smaller than the extracted box size.
+    image_stack : ExcludedTensor
+        The stack of images extracted from the micrographs. Is effectively a pytorch
+        Tensor with shape (N, H, W) where N is the number of particles and (H, W) is
+        the extracted box size.
     """
 
     model_config: ClassVar = ConfigDict(arbitrary_types_allowed=True)
@@ -26,8 +74,6 @@ class ParticleStack(BaseModel2DTM):
     df_path: str
     extracted_box_size: tuple[int, int]
     original_template_size: tuple[int, int]
-
-    # TODO: Ensure the extracted box size is at least the same size as the template size
 
     # Imported tabular data (not serialized)
     _df: pd.DataFrame
