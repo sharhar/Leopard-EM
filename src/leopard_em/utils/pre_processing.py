@@ -3,7 +3,7 @@
 import torch
 from torch_fourier_filter.ctf import calculate_ctf_2d
 
-from tt2dtm.pydantic_models import WhiteningFilterConfig
+from leopard_em.pydantic_models import WhiteningFilterConfig
 
 
 def calculate_ctf_filter_stack(

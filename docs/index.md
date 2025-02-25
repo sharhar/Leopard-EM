@@ -1,16 +1,16 @@
-# Py2DTM
+# Leopard-EM
 
 Two-dimensional template-matching (2DTM) for *in situ* structural biology implemented in Python.
 This package reflects most of the functionality described in Lucas, *et al.* (2021)[^1].
 
 ## Installation
 
-Pre-packaged versions of Py2DTM are released on the Python Package Index (PyPI).
+Pre-packaged versions of Leopard-EM are released on the Python Package Index (PyPI).
 We target Linux operating systems on Python 3.9 and above for these releases, and the PyTorch GPU acceleration backend is only tested against NVIDIA GPUs.
 With these caveats in mind, the package can be installed using pip:
 
 ```bash
-pip install py2dtm
+pip install leopard-em
 ```
 
 We also recommend you install the package in a virtual environment (such as [conda](https://docs.conda.io/en/latest/)) to avoid conflicts with other packages.
@@ -20,18 +20,17 @@ We also recommend you install the package in a virtual environment (such as [con
 To install the package from source, first clone the repository and install the package using pip:
 
 ```bash
-git clone https://github.com/jdickerson95/tt2DTM.git
-cd tt2DTM
+git clone https://github.com/Lucaslab-Berkeley/Leopard-EM.git
+cd Leopard-EM
 pip install .
 ```
 
 ### For Developers
 
-For developers interested in contributing to the package, we recommend installing the package in an editable configuration with the necessary development dependencies:
+For developers interested in contributing to the package, we recommend installing the package in an editable configuration with the necessary development dependencies.
+After cloning the repository, navigate to the root directory of the repository and run the following command:
 
 ```bash
-git clone https://github.com/jdickerson95/tt2DTM.git
-cd tt2DTM
 pip install -e '.[dev,test,docs]'
 ```
 
@@ -43,11 +42,11 @@ A minimally working example of running the `match_template` program in a python 
 Please see the examples page for more extensive explanations and demonstrations on how to configure, use, and extend the package.
 
 ```python
-from tt2dtm.pydantic_models import MatchTemplateManager
-from tt2dtm.pydantic_models import MatchTemplateResult
-from tt2dtm.pydantic_models import OpticsGroup
-from tt2dtm.pydantic_models import DefocusSearchConfig
-from tt2dtm.pydantic_models import OrientationSearchConfig
+from leopard_em.pydantic_models import MatchTemplateManager
+from leopard_em.pydantic_models import MatchTemplateResult
+from leopard_em.pydantic_models import OpticsGroup
+from leopard_em.pydantic_models import DefocusSearchConfig
+from leopard_em.pydantic_models import OrientationSearchConfig
 
 # Microscope imaging parameters
 my_optics_group = OpticsGroup(
@@ -119,7 +118,7 @@ TODO: Get some autodocs to parse the docstrings and generate API documentation.
 
 ## Contributing
 We encourage contributions to this package from the broader cryo-EM/ET and structural biology communities.
-Py2DTM is configured with a set of development dependencies to help contributors maintain code quality and consistency.
+Leopard-EM is configured with a set of development dependencies to help contributors maintain code quality and consistency.
 See the [Installation -- For Developers](#for-developers) section for instructions on how to install these dependencies.
 
 ### Using `pre-commit`
@@ -140,7 +139,7 @@ This will go through the staged files, check that all the changed code adheres t
 If all the tests pass, you can commit the changes.
 
 ### Running Tests
-Py2DTM uses the `pytest` package for running tests.
+Leopard-EM uses the `pytest` package for running tests.
 To run the tests, simply run the following command from the root directory of the repository:
 
 ```bash
@@ -150,7 +149,7 @@ pytest
 Note that we are still working on expanding the unit tests to cover more of the package, but we ask that any new code contributions include tests where appropriate.
 
 ### Building Documentation
-The documentation for Py2DTM is built using [MkDocs](https://www.mkdocs.org) and [Material for MkDocs](https://squidfunk.github.io/mkdocs-material/) for generating the documentation site.
+The documentation for Leopard-EM is built using [MkDocs](https://www.mkdocs.org) and [Material for MkDocs](https://squidfunk.github.io/mkdocs-material/) for generating the documentation site.
 If you've installed the package with the optional `docs` dependencies, you can build the documentation site with the following command:
 
 ```bash

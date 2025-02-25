@@ -6,7 +6,7 @@ import torch
 from pydantic import Field
 from torch_so3 import get_uniform_euler_angles
 
-from tt2dtm.pydantic_models.types import BaseModel2DTM
+from leopard_em.pydantic_models.types import BaseModel2DTM
 
 EPS = 1e-6
 

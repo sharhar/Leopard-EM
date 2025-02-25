@@ -6,10 +6,10 @@ import pandas as pd
 import torch
 from pydantic import ConfigDict
 
-from tt2dtm.pydantic_models.correlation_filters import PreprocessingFilters
-from tt2dtm.pydantic_models.formats import MATCH_TEMPLATE_DF_COLUMN_ORDER
-from tt2dtm.utils.data_io import load_mrc_image
-from tt2dtm.utils.particle_stack import get_cropped_image_regions
+from leopard_em.pydantic_models.correlation_filters import PreprocessingFilters
+from leopard_em.pydantic_models.formats import MATCH_TEMPLATE_DF_COLUMN_ORDER
+from leopard_em.utils.data_io import load_mrc_image
+from leopard_em.utils.particle_stack import get_cropped_image_regions
 
 from .types import BaseModel2DTM, ExcludedTensor
 

@@ -15,7 +15,7 @@ sources = ["src"]
 
 # https://peps.python.org/pep-0621/
 [project]
-name = "Leopard-EM"
+name = "leopard_em"
 dynamic = ["version"]
 description = "Location & Orientation of Particles using Two-Dimensional Template Matching"
 readme = "README.md"
@@ -80,15 +80,15 @@ docs = [
 ]
 
 [project.urls]
-homepage = "https://github.com/jdickerson95/tt2DTM"
-repository = "https://github.com/jdickerson95/tt2DTM"
+homepage = "https://github.com/Lucaslab-Berkeley/Leopard-EM"
+repository = "https://github.com/Lucaslab-Berkeley/Leopard-EM"
 
 # Entry points
 # https://peps.python.org/pep-0621/#entry-points
 # same as console_scripts entry point
 # [project.scripts]
-# match-template-cli = "tt2dtm:programs:match_template:main_cli"
-# refine-template-cli = "tt2dtm:programs:refine_template:main_cli"
+# match-template-cli = "leopard_em:programs:match_template:main_cli"
+# refine-template-cli = "leopard_em:programs:refine_template:main_cli"
 
 # https://docs.astral.sh/ruff
 [tool.ruff]
@@ -160,7 +160,7 @@ exclude_lines = [
 ]
 
 [tool.coverage.run]
-source = ["tt2dtm"]
+source = ["/src/leopard-em"]
 
 # https://github.com/mgedmin/check-manifest#configuration
 # add files that you want check-manifest to explicitly ignore here

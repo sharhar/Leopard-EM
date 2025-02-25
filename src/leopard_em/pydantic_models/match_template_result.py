@@ -7,14 +7,14 @@ import pandas as pd
 from pydantic import ConfigDict, Field, model_validator
 from typing_extensions import Self
 
-from tt2dtm.analysis.pick_match_template_peaks import (
+from leopard_em.analysis.pick_match_template_peaks import (
     MatchTemplatePeaks,
     extract_peaks_and_statistics,
     match_template_peaks_to_dataframe,
     match_template_peaks_to_dict,
 )
-from tt2dtm.pydantic_models.types import BaseModel2DTM, ExcludedTensor
-from tt2dtm.utils.data_io import load_mrc_image, write_mrc_from_tensor
+from leopard_em.pydantic_models.types import BaseModel2DTM, ExcludedTensor
+from leopard_em.utils.data_io import load_mrc_image, write_mrc_from_tensor
 
 
 def check_file_path_and_permissions(path: str, allow_overwrite: bool) -> None:

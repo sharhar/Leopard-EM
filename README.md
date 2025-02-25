@@ -1,10 +1,10 @@
 # Leopard-EM: Python based template matching
 
-[![License](https://img.shields.io/pypi/l/tt2DTM.svg?color=green)](https://github.com/jdickerson95/tt2DTM/raw/main/LICENSE)
-[![PyPI](https://img.shields.io/pypi/v/tt2DTM.svg?color=green)](https://pypi.org/project/tt2DTM)
-[![Python Version](https://img.shields.io/pypi/pyversions/tt2DTM.svg?color=green)](https://python.org)
-[![CI](https://github.com/jdickerson95/tt2DTM/actions/workflows/ci.yml/badge.svg)](https://github.com/jdickerson95/tt2DTM/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/jdickerson95/tt2DTM/branch/main/graph/badge.svg)](https://codecov.io/gh/jdickerson95/tt2DTM)
+[![License](https://img.shields.io/pypi/l/Leopard-EM.svg?color=green)](https://github.com/Lucaslab-Berkeley/Leopard-EM/raw/main/LICENSE)
+[![PyPI](https://img.shields.io/pypi/v/Leopard-EM.svg?color=green)](https://pypi.org/project/Leopard-EM)
+[![Python Version](https://img.shields.io/pypi/pyversions/Leopard-EM.svg?color=green)](https://python.org)
+[![CI](https://github.com/Lucaslab-Berkeley/Leopard-EM/actions/workflows/ci.yml/badge.svg)](https://github.com/Lucaslab-Berkeley/Leopard-EM/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/Lucaslab-Berkeley/Leopard-EM/branch/main/graph/badge.svg)](https://github.com/Lucaslab-Berkeley/Leopard-EM)
 
 Leopard-EM (**L**ocation & ori**E**ntati**O**n of **PAR**ticles found using two-**D**imensional t**E**mplate **M**atching) is a python package for running two-dimensional template matching (2DTM) on cryo-EM images.
 
@@ -31,7 +31,7 @@ The [example YAML configuration file](match_template_example_config.yaml) acts a
 Once configured with the proper paths, parameters, etc., the program can run as follows:
 
 ```python
-from tt2dtm.pydantic_models import MatchTemplateManager
+from leopard_em.pydantic_models import MatchTemplateManager
 
 YAML_CONFIG_PATH = "path/to/mt_config.yaml"
 ORIENTATION_BATCH_SIZE = 8
@@ -56,7 +56,7 @@ The [example YAML configuration file](refine_template_example_config.yaml) acts 
 Once configured with the proper paths, parameters, etc., the program can run as follows:
 
 ```python
-from tt2dtm.pydantic_models import RefineTemplateManager
+from leopard_em.pydantic_models import RefineTemplateManager
 
 YAML_PATH = "/path/to/rt_config.yaml"
 ORIENTATION_BATCH_SIZE = 80
@@ -79,8 +79,8 @@ if __name__ == "__main__":
 The package can be installed from source in editable mode with the optional development libraries via pip.
 
 ```bash
-git clone https://github.com/jdickerson95/tt2DTM.git
-cd tt2DTM
+git clone https://github.com/Lucaslab-Berkeley/Leopard-EM.git
+cd Leopard-EM
 pip install -e '.[dev,test, docs]'
 ```
 

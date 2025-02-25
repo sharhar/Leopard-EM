@@ -6,7 +6,7 @@ import torch
 from scipy.signal import fftconvolve
 from skimage import data
 
-from tt2dtm.utils.cross_correlation_core import cross_correlate
+from leopard_em.utils.cross_correlation_core import cross_correlate
 
 
 def fftcorrelate(in1, in2, **kwargs):

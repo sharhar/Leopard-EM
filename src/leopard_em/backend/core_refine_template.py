@@ -8,12 +8,12 @@ import tqdm
 from torch_fourier_filter.ctf import calculate_ctf_2d
 from torch_fourier_slice import extract_central_slices_rfft_3d
 
-from tt2dtm.backend.core_match_template import (
+from leopard_em.backend.core_match_template import (
     _do_bached_orientation_cross_correlate,
     _do_bached_orientation_cross_correlate_cpu,
 )
-from tt2dtm.backend.utils import normalize_template_projection
-from tt2dtm.utils.cross_correlation import handle_correlation_mode
+from leopard_em.backend.utils import normalize_template_projection
+from leopard_em.utils.cross_correlation import handle_correlation_mode
 
 # BUG: unsure why the 'zyz' extrinsic rotation is necessary here...
 # The refine template program is using 'ZYZ' intrinsic rotations...

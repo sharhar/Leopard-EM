@@ -1,4 +1,4 @@
-site_name: Py2DTM -- Two-Dimensional Template Matching in Python
+site_name: "Leopard-EM: Two-Dimensional Template Matching in Python"
 theme:
   name: material
 plugins:

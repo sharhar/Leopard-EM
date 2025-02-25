@@ -37,7 +37,6 @@ def aggregate_distributed_results(
         for result in results
     ]
 
-
     # Find which device had the highest MIP for each pixel and index stats accordingly.
     # Results after 'take_along_axis' have extra dimension at idx 0.
     mips = np.stack([result["mip"] for result in results], axis=0)

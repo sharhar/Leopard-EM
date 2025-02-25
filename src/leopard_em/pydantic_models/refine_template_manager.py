@@ -6,15 +6,15 @@ import numpy as np
 import torch
 from pydantic import ConfigDict
 
-from tt2dtm.backend.core_refine_template import core_refine_template
-from tt2dtm.pydantic_models.computational_config import ComputationalConfig
-from tt2dtm.pydantic_models.correlation_filters import PreprocessingFilters
-from tt2dtm.pydantic_models.defocus_search import DefocusSearchConfig
-from tt2dtm.pydantic_models.formats import REFINED_DF_COLUMN_ORDER
-from tt2dtm.pydantic_models.orientation_search import RefineOrientationConfig
-from tt2dtm.pydantic_models.particle_stack import ParticleStack
-from tt2dtm.pydantic_models.types import BaseModel2DTM, ExcludedTensor
-from tt2dtm.utils.data_io import load_mrc_volume
+from leopard_em.backend.core_refine_template import core_refine_template
+from leopard_em.pydantic_models.computational_config import ComputationalConfig
+from leopard_em.pydantic_models.correlation_filters import PreprocessingFilters
+from leopard_em.pydantic_models.defocus_search import DefocusSearchConfig
+from leopard_em.pydantic_models.formats import REFINED_DF_COLUMN_ORDER
+from leopard_em.pydantic_models.orientation_search import RefineOrientationConfig
+from leopard_em.pydantic_models.particle_stack import ParticleStack
+from leopard_em.pydantic_models.types import BaseModel2DTM, ExcludedTensor
+from leopard_em.utils.data_io import load_mrc_volume
 
 
 class RefineTemplateManager(BaseModel2DTM):

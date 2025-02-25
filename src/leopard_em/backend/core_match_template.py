@@ -7,11 +7,11 @@ import torch
 import tqdm
 from torch_fourier_slice import extract_central_slices_rfft_3d
 
-from tt2dtm.backend.process_results import (
+from leopard_em.backend.process_results import (
     aggregate_distributed_results,
     scale_mip,
 )
-from tt2dtm.backend.utils import (
+from leopard_em.backend.utils import (
     do_iteration_statistics_updates,
     normalize_template_projection,
 )
