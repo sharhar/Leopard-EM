@@ -138,25 +138,3 @@ def do_image_preprocessing(
     image_rfft *= npix_real**0.5
 
     return image_rfft
-
-
-def select_gpu_devices(gpu_ids: int | list[int]) -> list[torch.device]:
-    """Convert requested GPU IDs to torch device objects.
-
-    Parameters
-    ----------
-    gpu_ids : int | list[int]
-        GPU ID(s) to use for computation.
-
-    Returns
-    -------
-    list[torch.device]
-    """
-    if isinstance(gpu_ids, int):
-        if gpu_ids < -1:  # -2 or lower means CPU
-            return [torch.device("cpu")]
-        gpu_ids = [gpu_ids]
-
-    devices = [torch.device(f"cuda:{gpu_id}") for gpu_id in gpu_ids]
-
-    return devices
