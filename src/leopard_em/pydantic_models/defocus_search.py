@@ -37,7 +37,18 @@ class DefocusSearchConfig(BaseModel2DTM):
 
     @property
     def defocus_values(self) -> list[float]:
-        """Relative defocus values to search over based on held params."""
+        """Relative defocus values to search over based on held params.
+
+        Returns
+        -------
+        list[float]
+            List of relative defocus values to search over, in units of Angstroms.
+
+        Raises
+        ------
+        ValueError
+            If defocus search parameters result in no defocus values to search over.
+        """
         # Return a relative defocus of 0.0 if search is disabled.
         if not self.enabled:
             return [0.0]
@@ -48,5 +59,14 @@ class DefocusSearchConfig(BaseModel2DTM):
             self.defocus_step,
         )
         vals = vals.tolist()
+
+        # Ensure that there is at least one defocus value to search over.
+        if len(vals) == 0:
+            raise ValueError(
+                "Defocus search parameters result in no values to search over!\n"
+                f"  self.defocus_min: {self.defocus_min}\n"
+                f"  self.defocus_max: {self.defocus_max}\n"
+                f"  self.defocus_step: {self.defocus_step}\n"
+            )
 
         return vals  # type: ignore
