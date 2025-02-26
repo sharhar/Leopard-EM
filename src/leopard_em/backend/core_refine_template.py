@@ -15,9 +15,9 @@ from leopard_em.backend.core_match_template import (
 from leopard_em.backend.utils import normalize_template_projection
 from leopard_em.utils.cross_correlation import handle_correlation_mode
 
-# BUG: unsure why the 'zyz' extrinsic rotation is necessary here...
-# The refine template program is using 'ZYZ' intrinsic rotations...
-EULER_ANGLE_FMT = "zyz"
+# This is assuming the Euler angles are in the ZYZ intrinsic format
+# AND that the angles are ordered in (phi, theta, psi)
+EULER_ANGLE_FMT = "ZYZ"
 
 
 def combine_euler_angles(angle_a: torch.Tensor, angle_b: torch.Tensor) -> torch.Tensor:
