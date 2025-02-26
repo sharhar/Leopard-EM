@@ -158,7 +158,7 @@ def core_match_template(
     total_projections = aggregated_results["total_projections"]
 
     mip_scaled = torch.empty_like(mip)
-    mip, mip_scaled = scale_mip(
+    mip, mip_scaled, correlation_mean, correlation_variance = scale_mip(
         mip=mip,
         mip_scaled=mip_scaled,
         correlation_sum=correlation_sum,
@@ -173,8 +173,8 @@ def core_match_template(
         "best_theta": best_theta,
         "best_psi": best_psi,
         "best_defocus": best_defocus,
-        "correlation_sum": correlation_sum,
-        "correlation_squared_sum": correlation_squared_sum,
+        "correlation_mean": correlation_mean,
+        "correlation_variance": correlation_variance,
         "total_projections": total_projections,
         "total_orientations": euler_angles.shape[0],
         "total_defocus": defocus_values.shape[0],

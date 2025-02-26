@@ -262,16 +262,15 @@ class MatchTemplateManager(BaseModel2DTM):
         self.match_template_result.mip = results["mip"]
         self.match_template_result.scaled_mip = results["scaled_mip"]
 
-        self.match_template_result.correlation_average = results["correlation_sum"]
+        self.match_template_result.correlation_average = results["correlation_mean"]
         self.match_template_result.correlation_variance = results[
-            "correlation_squared_sum"
+            "correlation_variance"
         ]
         self.match_template_result.orientation_psi = results["best_psi"]
         self.match_template_result.orientation_theta = results["best_theta"]
         self.match_template_result.orientation_phi = results["best_phi"]
         self.match_template_result.relative_defocus = results["best_defocus"]
 
-        # TODO: Implement pixel size calculation
         self.match_template_result.total_projections = results["total_projections"]
         self.match_template_result.total_orientations = results["total_orientations"]
         self.match_template_result.total_defocus = results["total_defocus"]

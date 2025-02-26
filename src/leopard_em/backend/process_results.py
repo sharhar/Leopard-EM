@@ -125,7 +125,7 @@ def scale_mip(
     correlation_sum: torch.Tensor,
     correlation_squared_sum: torch.Tensor,
     total_correlation_positions: int,
-) -> tuple[torch.Tensor, torch.Tensor]:
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
     """Scale the MIP to Z-score map by the mean and variance of the correlation values.
 
     Z-score is accounting for the variation in image intensity and spurious correlations
@@ -156,17 +156,12 @@ def scale_mip(
     Returns
     -------
     tuple[torch.Tensor, torch.Tensor]
-        Tuple containing the MIP and scaled MIP
+        Tuple containing, in order, the MIP, scaled MIP, correlation mean, and
+        correlation variance.
     """
     corr_mean, corr_variance = correlation_sum_and_squared_sum_to_mean_and_variance(
         correlation_sum, correlation_squared_sum, total_correlation_positions
     )
-
-    # Convert sum and squared sum to mean and variance in-place
-    correlation_sum = correlation_sum / total_correlation_positions
-    correlation_squared_sum = correlation_squared_sum / total_correlation_positions
-    correlation_squared_sum -= correlation_sum**2
-    correlation_squared_sum = torch.sqrt(torch.clamp(correlation_squared_sum, min=0))
 
     # Calculate normalized MIP
     mip_scaled = mip - corr_mean
@@ -177,8 +172,8 @@ def scale_mip(
         out=mip_scaled,
     )
 
-    # Update correlation_sum and correlation_squared_sum to mean and variance
-    correlation_sum.copy_(corr_mean)
-    correlation_squared_sum.copy_(corr_variance)
+    # # Update correlation_sum and correlation_squared_sum to mean and variance
+    # correlation_sum.copy_(corr_mean)
+    # correlation_squared_sum.copy_(corr_variance)
 
-    return mip, mip_scaled
+    return mip, mip_scaled, corr_mean, corr_variance
