@@ -11,10 +11,8 @@ def calculate_ctf_filter_stack(
     template_shape: tuple[int, int],
     defocus_u: float,  # in um, *NOT* Angstrom
     defocus_v: float,  # in um, *NOT* Angstrom
+    defocus_offsets: list[float],  # in um, *NOT* Angstrom
     astigmatism_angle: float,
-    defocus_min: float,  # in um, *NOT* Angstrom
-    defocus_max: float,  # in um, *NOT* Angstrom
-    defocus_step: float,  # in um, *NOT* Angstrom
     amplitude_contrast_ratio: float = 0.07,
     spherical_aberration: float = 2.7,
     phase_shift: float = 0.0,
@@ -37,14 +35,10 @@ def calculate_ctf_filter_stack(
         The defocus in the u direction, in um.
     defocus_v : float
         The defocus in the v direction, in um.
+    defocus_offsets : list[float]
+        The offsets to apply to the defocus, in um.
     astigmatism_angle : float
         The angle of defocus astigmatism, in degrees.
-    defocus_min : float
-        The minimum relative defocus to consider, in um.
-    defocus_max : float
-        The maximum relative defocus to consider, in um.
-    defocus_step : float
-        The step size between defocus values, in um.
     amplitude_contrast_ratio : float, optional
         The amplitude contrast ratio, by default 0.07.
     spherical_aberration : float, optional
@@ -58,7 +52,7 @@ def calculate_ctf_filter_stack(
     """
     ctf_filters = []
 
-    for delta_df in torch.arange(defocus_min, defocus_max + 1e-8, defocus_step):
+    for delta_df in defocus_offsets:
         defocus = (defocus_u + defocus_v) / 2 + delta_df
         astigmatism = abs(defocus_u - defocus_v) / 2
 
@@ -79,7 +73,7 @@ def calculate_ctf_filter_stack(
 
         ctf_filters.append(ctf)
 
-    return torch.stack(ctf_filters, dim=0).squeeze()
+    return torch.stack(ctf_filters, dim=0).squeeze(1)
 
 
 def do_image_preprocessing(

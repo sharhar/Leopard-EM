@@ -188,16 +188,14 @@ class MatchTemplateManager(BaseModel2DTM):
 
         # Calculate the CTF filters at each defocus value
         defocus_values = self.defocus_search_config.defocus_values
-        defocus_values = torch.tensor(defocus_values, dtype=torch.float32)
+        defocus_values = [x * 1e-4 for x in defocus_values]  # A to um
         ctf_filters = calculate_ctf_filter_stack(
             pixel_size=self.optics_group.pixel_size,
             template_shape=(template_shape[0], template_shape[0]),
             defocus_u=self.optics_group.defocus_u * 1e-4,  # A to um
             defocus_v=self.optics_group.defocus_v * 1e-4,  # A to um
+            defocus_offsets=defocus_values,
             astigmatism_angle=self.optics_group.astigmatism_angle,
-            defocus_min=self.defocus_search_config.defocus_min * 1e-4,  # A to um
-            defocus_max=self.defocus_search_config.defocus_max * 1e-4,  # A to um
-            defocus_step=self.defocus_search_config.defocus_step * 1e-4,  # A to um
             amplitude_contrast_ratio=self.optics_group.amplitude_contrast_ratio,
             spherical_aberration=self.optics_group.spherical_aberration,
             phase_shift=self.optics_group.phase_shift,
