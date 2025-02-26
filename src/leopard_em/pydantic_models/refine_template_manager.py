@@ -130,9 +130,9 @@ class RefineTemplateManager(BaseModel2DTM):
         # The set of "best" euler angles from match template search
         euler_angles = torch.stack(
             (
-                torch.tensor(self.particle_stack["psi"]),
-                torch.tensor(self.particle_stack["theta"]),
                 torch.tensor(self.particle_stack["phi"]),
+                torch.tensor(self.particle_stack["theta"]),
+                torch.tensor(self.particle_stack["psi"]),
             ),
             dim=-1,
         )
