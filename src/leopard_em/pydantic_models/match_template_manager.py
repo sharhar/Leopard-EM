@@ -188,13 +188,13 @@ class MatchTemplateManager(BaseModel2DTM):
 
         # Calculate the CTF filters at each defocus value
         defocus_values = self.defocus_search_config.defocus_values
-        defocus_values = [x * 1e-4 for x in defocus_values]  # A to um
+        defocus_values = torch.tensor(defocus_values, dtype=torch.float32)
         ctf_filters = calculate_ctf_filter_stack(
             pixel_size=self.optics_group.pixel_size,
             template_shape=(template_shape[0], template_shape[0]),
             defocus_u=self.optics_group.defocus_u * 1e-4,  # A to um
             defocus_v=self.optics_group.defocus_v * 1e-4,  # A to um
-            defocus_offsets=defocus_values,
+            defocus_offsets=defocus_values * 1e-4,  # type: ignore
             astigmatism_angle=self.optics_group.astigmatism_angle,
             amplitude_contrast_ratio=self.optics_group.amplitude_contrast_ratio,
             spherical_aberration=self.optics_group.spherical_aberration,
@@ -204,7 +204,7 @@ class MatchTemplateManager(BaseModel2DTM):
         )
 
         # Grab the Euler angles from the orientation search configuration
-        # (psi, theta, phi) for ZYZ convention
+        # (phi, theta, psi) for ZYZ convention
         euler_angles = self.orientation_search_config.euler_angles
         euler_angles = euler_angles.to(torch.float32)
 
