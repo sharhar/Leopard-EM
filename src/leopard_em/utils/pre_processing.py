@@ -11,7 +11,7 @@ def calculate_ctf_filter_stack(
     template_shape: tuple[int, int],
     defocus_u: float,  # in um, *NOT* Angstrom
     defocus_v: float,  # in um, *NOT* Angstrom
-    defocus_offsets: list[float],  # in um, *NOT* Angstrom
+    defocus_offsets: torch.Tensor,  # in um, *NOT* Angstrom
     astigmatism_angle: float,
     amplitude_contrast_ratio: float = 0.07,
     spherical_aberration: float = 2.7,
@@ -35,7 +35,7 @@ def calculate_ctf_filter_stack(
         The defocus in the u direction, in um.
     defocus_v : float
         The defocus in the v direction, in um.
-    defocus_offsets : list[float]
+    defocus_offsets : torch.Tensor
         The offsets to apply to the defocus, in um.
     astigmatism_angle : float
         The angle of defocus astigmatism, in degrees.
@@ -50,30 +50,27 @@ def calculate_ctf_filter_stack(
     ctf_B_factor : float, optional
         The additional B factor for the CTF, by default 60.0.
     """
-    ctf_filters = []
+    defocus_u_vals = defocus_offsets + defocus_u
+    defocus_v_vals = defocus_offsets + defocus_v
+    defocus = (defocus_u_vals + defocus_v_vals) / 2
+    astigmatism = abs(defocus_u - defocus_v) / 2
 
-    for delta_df in defocus_offsets:
-        defocus = (defocus_u + defocus_v) / 2 + delta_df
-        astigmatism = abs(defocus_u - defocus_v) / 2
+    ctf = calculate_ctf_2d(
+        defocus=defocus,
+        astigmatism=astigmatism,
+        astigmatism_angle=astigmatism_angle,
+        voltage=voltage,
+        spherical_aberration=spherical_aberration,
+        amplitude_contrast=amplitude_contrast_ratio,
+        b_factor=ctf_B_factor,
+        phase_shift=phase_shift,
+        pixel_size=pixel_size,
+        image_shape=template_shape,
+        rfft=True,
+        fftshift=False,
+    )
 
-        ctf = calculate_ctf_2d(
-            defocus=defocus,
-            astigmatism=astigmatism,
-            astigmatism_angle=astigmatism_angle,
-            voltage=voltage,
-            spherical_aberration=spherical_aberration,
-            amplitude_contrast=amplitude_contrast_ratio,
-            b_factor=ctf_B_factor,
-            phase_shift=phase_shift,
-            pixel_size=pixel_size,
-            image_shape=template_shape,
-            rfft=True,
-            fftshift=False,
-        )
-
-        ctf_filters.append(ctf)
-
-    return torch.stack(ctf_filters, dim=0).squeeze(1)
+    return ctf
 
 
 def do_image_preprocessing(
@@ -132,3 +129,68 @@ def do_image_preprocessing(
     image_rfft *= npix_real**0.5
 
     return image_rfft
+
+
+'''
+
+def get_Cs_range(
+    pixel_size: float,
+    pixel_size_min: float,
+    pixel_size_max: float,
+    pixel_size_step: float,
+    Cs: float = 2.7,
+) -> torch.Tensor:
+    """Get the Cs values for a  range of pixel sizes.
+
+    Parameters
+    ----------
+    pixel_size : float
+        The nominal pixel size.
+    pixel_size_min : float
+        The minimum pixel size offset.
+    pixel_size_max : float
+        The maximum pixel size offset.
+    pixel_size_step : float
+        The step size for the pixel size.
+    Cs : float, optional
+        The Cs value, by default 2.7.
+
+    Returns
+    -------
+    torch.Tensor
+        The Cs values for the range of pixel sizes.
+    """
+    pixel_sizes = torch.arange(
+        pixel_size + pixel_size_min,
+        pixel_size + pixel_size_max + 1E-10,
+        pixel_size_step,
+    )
+    #If pixel_size not in pixel sizes add it, but keep it 1D
+    if pixel_size not in pixel_sizes:
+        pixel_sizes = torch.cat([pixel_sizes, torch.tensor([pixel_size])])
+
+    #re-sort pixel sizes
+    pixel_sizes = torch.sort(pixel_sizes)[0]
+    Cs_values = Cs / torch.pow(pixel_sizes / pixel_size, 4)
+    return Cs_values
+
+def Cs_to_pixel_size(
+    Cs_vals: torch.Tensor,
+    nominal_pixel_size: float,
+    nominal_Cs: float = 2.7,
+) -> torch.Tensor:
+    """Convert Cs values to pixel sizes.
+
+    Parameters
+    ----------
+    Cs_vals : torch.Tensor
+        The Cs values.
+    nominal_pixel_size : float
+        The nominal pixel size.
+    nominal_Cs : float, optional
+        The nominal Cs value, by default 2.7.
+    """
+    pixel_size = torch.pow(nominal_Cs / Cs_vals, 0.25) * nominal_pixel_size
+    return pixel_size
+
+'''
