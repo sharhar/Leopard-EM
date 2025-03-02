@@ -171,7 +171,7 @@ class RefineTemplateManager(BaseModel2DTM):
             "amplitude_contrast_ratio": part_stk["amplitude_contrast_ratio"][0].item(),
             "ctf_B_factor": part_stk["ctf_B_factor"][0].item(),
             "phase_shift": part_stk["phase_shift"][0].item(),
-            "pixel_size": part_stk["pixel_size"][0].item(),
+            "pixel_size": part_stk["refined_pixel_size"][0].item(),
             "template_shape": template_shape,
             "rfft": True,
             "fftshift": False,
