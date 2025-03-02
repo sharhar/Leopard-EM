@@ -132,11 +132,16 @@ class RefineTemplateManager(BaseModel2DTM):
         template_dft = torch.fft.fftshift(template_dft, dim=(-3, -2))  # skip rfft dim
 
         # The set of "best" euler angles from match template search
+        # Check if refined angles exist, otherwise use the original angles
+        phi = self.particle_stack.get("refined_phi", self.particle_stack["phi"])
+        theta = self.particle_stack.get("refined_theta", self.particle_stack["theta"])
+        psi = self.particle_stack.get("refined_psi", self.particle_stack["psi"])
+
         euler_angles = torch.stack(
             (
-                torch.tensor(self.particle_stack["phi"]),
-                torch.tensor(self.particle_stack["theta"]),
-                torch.tensor(self.particle_stack["psi"]),
+                torch.tensor(phi),
+                torch.tensor(theta),
+                torch.tensor(psi),
             ),
             dim=-1,
         )
