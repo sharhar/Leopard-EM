@@ -133,9 +133,21 @@ class RefineTemplateManager(BaseModel2DTM):
 
         # The set of "best" euler angles from match template search
         # Check if refined angles exist, otherwise use the original angles
-        phi = self.particle_stack.get("refined_phi", self.particle_stack["phi"])
-        theta = self.particle_stack.get("refined_theta", self.particle_stack["theta"])
-        psi = self.particle_stack.get("refined_psi", self.particle_stack["psi"])
+        phi = (
+            self.particle_stack["refined_phi"]
+            if "refined_phi" in self.particle_stack
+            else self.particle_stack["phi"]
+        )
+        theta = (
+            self.particle_stack["refined_theta"]
+            if "refined_theta" in self.particle_stack
+            else self.particle_stack["theta"]
+        )
+        psi = (
+            self.particle_stack["refined_psi"]
+            if "refined_psi" in self.particle_stack
+            else self.particle_stack["psi"]
+        )
 
         euler_angles = torch.stack(
             (
