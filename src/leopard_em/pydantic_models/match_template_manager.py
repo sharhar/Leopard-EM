@@ -354,7 +354,7 @@ class MatchTemplateManager(BaseModel2DTM):
         df["defocus_v"] = self.optics_group.defocus_v
         df["astigmatism_angle"] = self.optics_group.astigmatism_angle
         df["pixel_size"] = pixel_size
-        df["refined_relative_pixel_size"] = 0.0
+        df["refined_pixel_size"] = pixel_size
         df["voltage"] = self.optics_group.voltage
         df["spherical_aberration"] = self.optics_group.spherical_aberration
         df["amplitude_contrast_ratio"] = self.optics_group.amplitude_contrast_ratio
