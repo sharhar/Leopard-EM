@@ -249,6 +249,7 @@ def _core_refine_template_single_thread(
     refined_theta_offset = 0.0
     refined_psi_offset = 0.0
     refined_defocus_offset = 0.0
+    refined_pixel_size_offset = 0.0
     refined_pos_y = 0
     refined_pos_x = 0
 

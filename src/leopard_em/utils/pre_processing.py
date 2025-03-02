@@ -85,9 +85,13 @@ def calculate_ctf_filter_stack(
     )
 
     # The CTF will have a shape of (n_Cs n_defoc, nx, ny)
-    # Unless no pixel size search is enabled
     if ctf.ndim == 3:
         ctf = einops.rearrange(ctf, "n_defoc nx ny -> 1 n_defoc nx ny")
+    elif ctf.ndim == 4:
+        ctf = einops.rearrange(ctf, "n_defoc nCs nx ny -> nCs n_defoc nx ny")
+    elif ctf.ndim == 5:
+        ctf = ctf[0]  # remove dim 0
+        ctf = einops.rearrange(ctf, "n_defoc nCs nx ny -> nCs n_defoc nx ny")
 
     return ctf
 

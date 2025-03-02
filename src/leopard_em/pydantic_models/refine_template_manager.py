@@ -172,7 +172,7 @@ class RefineTemplateManager(BaseModel2DTM):
             "ctf_B_factor": part_stk["ctf_B_factor"][0].item(),
             "phase_shift": part_stk["phase_shift"][0].item(),
             "pixel_size": part_stk["pixel_size"][0].item(),
-            "image_shape": template_shape,
+            "template_shape": template_shape,
             "rfft": True,
             "fftshift": False,
         }
