@@ -171,6 +171,23 @@ def core_refine_template(
             ),
         )
         refined_euler_angles[i, :] = composed_refined_angle
+        # wrap the euler angles back to original ranges,
+        # If phi or psi less then 0 add 360
+    refined_euler_angles[:, 0] = torch.where(
+        refined_euler_angles[:, 0] < 0,
+        refined_euler_angles[:, 0] + 360,
+        refined_euler_angles[:, 0],
+    )
+    refined_euler_angles[:, 1] = torch.where(
+        refined_euler_angles[:, 1] < 0,
+        refined_euler_angles[:, 1] + 180,
+        refined_euler_angles[:, 1],
+    )
+    refined_euler_angles[:, 2] = torch.where(
+        refined_euler_angles[:, 2] < 0,
+        refined_euler_angles[:, 2] + 360,
+        refined_euler_angles[:, 2],
+    )
 
     return {
         "refined_cross_correlation": refined_cross_correlation.cpu(),

@@ -188,7 +188,7 @@ class RefineTemplateManager(BaseModel2DTM):
             "amplitude_contrast_ratio": part_stk["amplitude_contrast_ratio"][0].item(),
             "ctf_B_factor": part_stk["ctf_B_factor"][0].item(),
             "phase_shift": part_stk["phase_shift"][0].item(),
-            "pixel_size": part_stk["refined_pixel_size"][0].item(),
+            "pixel_size": part_stk["refined_pixel_size"].mean().item(),
             "template_shape": template_shape,
             "rfft": True,
             "fftshift": False,
@@ -243,9 +243,11 @@ class RefineTemplateManager(BaseModel2DTM):
         # Add the new columns to the DataFrame
         df_refined["refined_mip"] = refined_mip
         df_refined["refined_scaled_mip"] = refined_scaled_mip
+
         df_refined["refined_psi"] = result["refined_euler_angles"][:, 2]
         df_refined["refined_theta"] = result["refined_euler_angles"][:, 1]
         df_refined["refined_phi"] = result["refined_euler_angles"][:, 0]
+
         df_refined["refined_relative_defocus"] = (
             result["refined_defocus_offset"] + df_refined["relative_defocus"]
         )
