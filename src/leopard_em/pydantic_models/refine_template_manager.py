@@ -13,6 +13,7 @@ from leopard_em.pydantic_models.defocus_search import DefocusSearchConfig
 from leopard_em.pydantic_models.formats import REFINED_DF_COLUMN_ORDER
 from leopard_em.pydantic_models.orientation_search import RefineOrientationConfig
 from leopard_em.pydantic_models.particle_stack import ParticleStack
+from leopard_em.pydantic_models.pixel_size_search import PixelSizeSearchConfig
 from leopard_em.pydantic_models.types import BaseModel2DTM, ExcludedTensor
 from leopard_em.utils.data_io import load_mrc_volume
 
@@ -28,6 +29,8 @@ class RefineTemplateManager(BaseModel2DTM):
         Particle stack object containing particle data.
     defocus_refinement_config : DefocusSearchConfig
         Configuration for defocus refinement.
+    pixel_size_refinement_config : PixelSizeSearchConfig
+        Configuration for pixel size refinement.
     orientation_refinement_config : RefineOrientationConfig
         Configuration for orientation refinement.
     preprocessing_filters : PreprocessingFilters
@@ -53,6 +56,7 @@ class RefineTemplateManager(BaseModel2DTM):
     template_volume_path: str  # In df per-particle, but ensure only one reference
     particle_stack: ParticleStack
     defocus_refinement_config: DefocusSearchConfig
+    pixel_size_refinement_config: PixelSizeSearchConfig
     orientation_refinement_config: RefineOrientationConfig
     preprocessing_filters: PreprocessingFilters
     computational_config: ComputationalConfig
@@ -148,11 +152,13 @@ class RefineTemplateManager(BaseModel2DTM):
         # The relative defocus values to search over
         defocus_offsets = self.defocus_refinement_config.defocus_values
 
+        # The relative pixel size values to search over
+        pixel_size_offsets = self.pixel_size_refinement_config.pixel_size_values
+
         # Keyword arguments for the CTF filter calculation call
         # NOTE: We currently enforce the parameters (other than the defocus values) are
         # all the same. This could be updated in the future...
         part_stk = self.particle_stack
-        assert part_stk["pixel_size"].nunique() == 1
         assert part_stk["voltage"].nunique() == 1
         assert part_stk["spherical_aberration"].nunique() == 1
         assert part_stk["amplitude_contrast_ratio"].nunique() == 1
@@ -180,6 +186,7 @@ class RefineTemplateManager(BaseModel2DTM):
             "defocus_v": defocus_v,
             "defocus_angle": defocus_angle,
             "defocus_offsets": defocus_offsets,
+            "pixel_size_offsets": pixel_size_offsets,
             "ctf_kwargs": ctf_kwargs,
             "projective_filters": projective_filters,
         }
@@ -224,6 +231,9 @@ class RefineTemplateManager(BaseModel2DTM):
         df_refined["refined_phi"] = result["refined_euler_angles"][:, 2]
         df_refined["refined_relative_defocus"] = (
             result["refined_defocus_offset"] + df_refined["relative_defocus"]
+        )
+        df_refined["refined_pixel_size"] = (
+            result["refined_pixel_size_offset"] + df_refined["pixel_size"]
         )
         df_refined["refined_pos_y"] = pos_offset_y + df_refined["pos_y"]
         df_refined["refined_pos_x"] = pos_offset_x + df_refined["pos_x"]

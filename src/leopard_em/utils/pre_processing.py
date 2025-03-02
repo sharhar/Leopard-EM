@@ -20,6 +20,8 @@ def calculate_ctf_filter_stack(
     phase_shift: float = 0.0,
     voltage: float = 300.0,
     ctf_B_factor: float = 60.0,
+    rfft: bool = True,
+    fftshift: bool = False,
 ) -> torch.Tensor:
     """Calculate stack (batch) of CTF filters to apply to projections during 2DTM.
 
@@ -53,10 +55,12 @@ def calculate_ctf_filter_stack(
         The voltage of the microscope, in kV, by default 300.0.
     ctf_B_factor : float, optional
         The additional B factor for the CTF, by default 60.0.
+    rfft : bool, optional
+        Whether to use RFFT, by default True.
+    fftshift : bool, optional
+        Whether to shift the FFT, by default False.
     """
-    defocus_u_vals = defocus_offsets + defocus_u
-    defocus_v_vals = defocus_offsets + defocus_v
-    defocus = (defocus_u_vals + defocus_v_vals) / 2
+    defocus = (defocus_u + defocus_v) / 2 + defocus_offsets
     astigmatism = abs(defocus_u - defocus_v) / 2
 
     Cs_vals = get_Cs_range(
@@ -76,8 +80,8 @@ def calculate_ctf_filter_stack(
         phase_shift=phase_shift,
         pixel_size=pixel_size,
         image_shape=template_shape,
-        rfft=True,
-        fftshift=False,
+        rfft=rfft,
+        fftshift=fftshift,
     )
 
     # The CTF will have a shape of (n_Cs n_defoc, nx, ny)

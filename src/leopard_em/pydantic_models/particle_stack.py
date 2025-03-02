@@ -42,6 +42,7 @@ class ParticleStack(BaseModel2DTM):
           - defocus_v
           - astigmatism_angle
           - pixel_size
+          - refined_pixel_size
           - voltage
           - spherical_aberration
           - amplitude_contrast_ratio

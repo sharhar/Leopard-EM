@@ -560,7 +560,7 @@ def _do_bached_orientation_cross_correlate_cpu(
     fourier_slice *= -1  # flip contrast
 
     # Apply the projective filters on a new batch dimension
-    fourier_slice = fourier_slice[None, ...] * projective_filters[:, None, ...]
+    fourier_slice = fourier_slice[None, None, ...] * projective_filters[:, :, None, ...]
 
     # Inverse Fourier transform into real space and normalize
     projections = torch.fft.irfftn(fourier_slice, dim=(-2, -1))
@@ -572,7 +572,7 @@ def _do_bached_orientation_cross_correlate_cpu(
     projections_dft[..., 0, 0] = 0 + 0j  # zero out the DC component (mean zero)
 
     # Cross correlation step by element-wise multiplication
-    projections_dft = image_dft[None, None, ...] * projections_dft.conj()
+    projections_dft = image_dft[None, None, None, ...] * projections_dft.conj()
     cross_correlation = torch.fft.irfftn(projections_dft, dim=(-2, -1))
 
     return cross_correlation

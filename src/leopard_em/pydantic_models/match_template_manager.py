@@ -8,7 +8,7 @@ import pandas as pd
 import torch
 from pydantic import ConfigDict, field_validator
 
-from leopard_em.backend import core_match_template
+from leopard_em.backend.core_match_template import core_match_template
 from leopard_em.pydantic_models.computational_config import ComputationalConfig
 from leopard_em.pydantic_models.correlation_filters import PreprocessingFilters
 from leopard_em.pydantic_models.defocus_search import DefocusSearchConfig
@@ -354,6 +354,7 @@ class MatchTemplateManager(BaseModel2DTM):
         df["defocus_v"] = self.optics_group.defocus_v
         df["astigmatism_angle"] = self.optics_group.astigmatism_angle
         df["pixel_size"] = pixel_size
+        df["refined_relative_pixel_size"] = 0.0
         df["voltage"] = self.optics_group.voltage
         df["spherical_aberration"] = self.optics_group.spherical_aberration
         df["amplitude_contrast_ratio"] = self.optics_group.amplitude_contrast_ratio
