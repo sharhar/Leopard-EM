@@ -168,7 +168,7 @@ class RefineTemplateManager(BaseModel2DTM):
         ctf_kwargs = {
             "voltage": part_stk["voltage"][0].item(),
             "spherical_aberration": part_stk["spherical_aberration"][0].item(),
-            "amplitude_contrast": part_stk["amplitude_contrast_ratio"][0].item(),
+            "amplitude_contrast_ratio": part_stk["amplitude_contrast_ratio"][0].item(),
             "b_factor": part_stk["ctf_B_factor"][0].item(),
             "phase_shift": part_stk["phase_shift"][0].item(),
             "pixel_size": part_stk["pixel_size"][0].item(),
