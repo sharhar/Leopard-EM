@@ -274,8 +274,8 @@ def _core_refine_template_single_thread(
     default_rot_matrix = roma.euler_to_rotmat(
         EULER_ANGLE_FMT, euler_angles, degrees=True, device=particle_image_dft.device
     )
-    default_rot_matrix = default_rot_matrix.to(torch.float32)
 
+    default_rot_matrix = default_rot_matrix.to(torch.float32)
     # Calculate the CTF filters with the relative offsets
     ctf_filters = calculate_ctf_filter_stack(
         defocus_u=defocus_u * 1e-4,  # to µm

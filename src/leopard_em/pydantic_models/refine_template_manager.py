@@ -221,6 +221,15 @@ class RefineTemplateManager(BaseModel2DTM):
             Number of orientations to process at once. Defaults to 64.
         """
         backend_kwargs = self.make_backend_core_function_kwargs()
+        if not self.orientation_refinement_config.enabled:
+            orientation_batch_size = 1
+        elif (
+            self.orientation_refinement_config.euler_angles_offsets.shape[0]
+            > orientation_batch_size
+        ):
+            orientation_batch_size = (
+                self.orientation_refinement_config.euler_angles_offsets.shape[0]
+            )
 
         result = core_refine_template(
             batch_size=orientation_batch_size, **backend_kwargs
@@ -270,6 +279,41 @@ class RefineTemplateManager(BaseModel2DTM):
 
         # Save the refined DataFrame to disk
         df_refined.to_csv(output_dataframe_path)
+
+    def get_refine_result(
+        self, backend_kwargs: dict, orientation_batch_size: int = 64
+    ) -> dict[str, np.ndarray]:
+        """Get refine template result.
+
+        Parameters
+        ----------
+        backend_kwargs : dict
+            Keyword arguments for the backend processing
+        orientation_batch_size : int
+            Number of orientations to process at once. Defaults to 64.
+
+        Returns
+        -------
+        dict[str, np.ndarray]
+            The result of the refine template program.
+        """
+        # Adjust batch size if orientation search is disabled
+        if not self.orientation_refinement_config.enabled:
+            orientation_batch_size = 1
+        elif (
+            self.orientation_refinement_config.euler_angles_offsets.shape[0]
+            > orientation_batch_size
+        ):
+            orientation_batch_size = (
+                self.orientation_refinement_config.euler_angles_offsets.shape[0]
+            )
+
+        result: dict[str, np.ndarray] = {}
+        result = core_refine_template(
+            batch_size=orientation_batch_size, **backend_kwargs
+        )
+        result = {k: v.cpu().numpy() for k, v in result.items()}
+        return result
 
     # @classmethod
     # def from_dataframe(cls, dataframe: pd.DataFrame) -> "RefineTemplateManager":

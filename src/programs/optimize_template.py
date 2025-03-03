@@ -6,11 +6,10 @@ import numpy as np
 import torch
 from ttsim3d.models import Simulator, SimulatorConfig
 
-from leopard_em.backend.core_refine_template import core_refine_template
 from leopard_em.pydantic_models import RefineTemplateManager
 
-YAML_NO_SEARCH_CONFIG_PATH = "refine_template_example_config_coarse_px.yaml"
-YAML_SEARCH_CONFIG_PATH = "refine_template_example_config_search.yaml"
+YAML_NO_SEARCH_CONFIG_PATH = "refine_config_no-search.yaml"
+YAML_SEARCH_CONFIG_PATH = "refine_config_search.yaml"
 PDB_PATH = "parsed_6Q8Y_whole_LSU_match3.pdb"
 ORIENTATION_BATCH_SIZE = 16
 GPU_IDS = None
@@ -41,6 +40,7 @@ def run_ttsim3d(
         dose_end=50.0,
         dose_filter_modify_signal="rel_diff",
         upsampling=-1,
+        mtf_reference="/home/jdickerson/git/teamtomo/ttsim3d/src/data/mtf_falcon4EC_300kV.star",
     )
 
     sim = Simulator(
@@ -70,8 +70,9 @@ def evaluate_peaks(rtm: RefineTemplateManager, backend_kwargs: dict) -> float:
     float
         Mean SNR value from peak detection
     """
-    result = core_refine_template(batch_size=ORIENTATION_BATCH_SIZE, **backend_kwargs)
-    result = {k: v.cpu().numpy() for k, v in result.items()}
+    result = rtm.get_refine_result(
+        backend_kwargs, orientation_batch_size=ORIENTATION_BATCH_SIZE
+    )
     df_refined = rtm.particle_stack._df.copy()
     refined_mip = result["refined_cross_correlation"]
     refined_scaled_mip = refined_mip - df_refined["correlation_mean"]
@@ -79,12 +80,11 @@ def evaluate_peaks(rtm: RefineTemplateManager, backend_kwargs: dict) -> float:
         df_refined["correlation_variance"]
     )
     mean_snr = float(refined_scaled_mip.mean())
+    print(f"max snr: {refined_scaled_mip.max()}, min snr: {refined_scaled_mip.min()}")
     return mean_snr
 
 
-def evaluate_template_px(
-    px_value: float, rtm: RefineTemplateManager, backend_kwargs: dict
-) -> float:
+def evaluate_template_px(px_value: float, rtm: RefineTemplateManager) -> float:
     """
     Evaluate a single template pixel size and return the mean SNR.
 
@@ -94,8 +94,6 @@ def evaluate_template_px(
         Template pixel size to evaluate
     rtm : RefineTemplateManager
         Manager object containing template matching parameters and methods
-    backend_kwargs : dict
-        Additional keyword arguments for the backend processing
 
     Returns
     -------
@@ -104,13 +102,13 @@ def evaluate_template_px(
     """
     template_volume = run_ttsim3d(px_value=px_value, gpu_ids=GPU_IDS)
     rtm.template_volume = template_volume
+    backend_kwargs = rtm.make_backend_core_function_kwargs()
     return evaluate_peaks(rtm, backend_kwargs)
 
 
 def optimize_pixel_size_grid(
     rtm: RefineTemplateManager,
     initial_px: float,
-    backend_kwargs: dict,
     coarse_range: float = 0.05,
     coarse_step: float = 0.01,
     fine_range: float = 0.005,
@@ -125,8 +123,6 @@ def optimize_pixel_size_grid(
         Manager object containing template matching parameters and methods
     initial_px : float
         Initial pixel size guess
-    backend_kwargs : dict
-        Additional keyword arguments for the backend processing
     coarse_range : float, optional
         Range for coarse search, by default 0.05
     coarse_step : float, optional
@@ -150,7 +146,7 @@ def optimize_pixel_size_grid(
 
     print("Starting coarse search...")
     for px in coarse_px_values:
-        snr = evaluate_template_px(px.item(), rtm, backend_kwargs)
+        snr = evaluate_template_px(px.item(), rtm)
         print(f"Pixel size: {px:.3f}, SNR: {snr:.3f}")
         if snr > best_snr:
             best_snr = snr
@@ -162,7 +158,7 @@ def optimize_pixel_size_grid(
 
     print("\nStarting fine search...")
     for px in fine_px_values:
-        snr = evaluate_template_px(px.item(), rtm, backend_kwargs)
+        snr = evaluate_template_px(px.item(), rtm)
         print(f"Pixel size: {px:.3f}, SNR: {snr:.3f}")
         if snr > best_snr:
             best_snr = snr
@@ -172,7 +168,7 @@ def optimize_pixel_size_grid(
     return best_px
 
 
-def optimize_b_grid(rtm: RefineTemplateManager, backend_kwargs: dict) -> float:
+def optimize_b_grid(rtm: RefineTemplateManager) -> float:
     """
     Optimize the CTF B-factor using grid search.
 
@@ -180,8 +176,6 @@ def optimize_b_grid(rtm: RefineTemplateManager, backend_kwargs: dict) -> float:
     ----------
     rtm : RefineTemplateManager
         Manager object containing template matching parameters and methods
-    backend_kwargs : dict
-        Additional keyword arguments for the backend processing
 
     Returns
     -------
@@ -193,7 +187,8 @@ def optimize_b_grid(rtm: RefineTemplateManager, backend_kwargs: dict) -> float:
     best_snr = float("-inf")
     best_b = 0.0
     for b in ctf_b:
-        backend_kwargs["ctf_kwargs"]["ctf_B_factor"] = b
+        rtm.particle_stack["ctf_B_factor"][:] = b
+        backend_kwargs = rtm.make_backend_core_function_kwargs()
         snr = evaluate_peaks(rtm, backend_kwargs)
         if snr > best_snr:
             best_snr = snr
@@ -206,24 +201,22 @@ def optimize_b_grid(rtm: RefineTemplateManager, backend_kwargs: dict) -> float:
 def main_grid() -> None:
     """Main function for grid search optimization."""
     rtm = RefineTemplateManager.from_yaml(YAML_NO_SEARCH_CONFIG_PATH)
-    backend_kwargs = rtm.make_backend_core_function_kwargs()
     # Optimize template pixel size
     part_stk = rtm.particle_stack
     initial_template_px = part_stk["refined_pixel_size"].mean().item()
+    print(f"Initial template px: {initial_template_px:.3f} Å")
     optimal_template_px = optimize_pixel_size_grid(
         rtm,
         initial_template_px,
-        backend_kwargs=backend_kwargs,
     )
 
     # Generate model with optimal px
     template_volume = run_ttsim3d(px_value=optimal_template_px, gpu_ids=GPU_IDS)
     # run refine tm on mtm results with diff b's
-    rtm = RefineTemplateManager.from_yaml(YAML_SEARCH_CONFIG_PATH)
-    backend_kwargs = rtm.make_backend_core_function_kwargs()
+    rtm = RefineTemplateManager.from_yaml(YAML_NO_SEARCH_CONFIG_PATH)
     rtm.template_volume = template_volume
     # This time we'll do the angle and defoc search
-    best_b = optimize_b_grid(rtm, backend_kwargs)
+    best_b = optimize_b_grid(rtm)
 
     # print template px and ctf b recommnendations
     print(f"Optimal template px: {optimal_template_px:.3f} Å")

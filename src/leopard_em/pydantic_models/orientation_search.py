@@ -143,7 +143,7 @@ class RefineOrientationConfig(BaseModel2DTM):
             respectively, in the 'ZYZ' convention.
         """
         if not self.enabled:
-            return torch.tensor([0.0, 0.0, 0.0])
+            return torch.zeros((1, 3))
 
         psi_values = torch.arange(
             -self.in_plane_angular_step_coarse,
