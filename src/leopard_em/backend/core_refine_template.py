@@ -159,7 +159,6 @@ def core_refine_template(
     refined_euler_angles = torch.empty((num_particles, 3), device=device)
     for i, stats in enumerate(refined_statistics):
         composed_refined_angle = combine_euler_angles(
-            euler_angles[i, :],  # original angle
             torch.tensor(
                 [
                     stats["refined_phi_offset"],
@@ -169,10 +168,12 @@ def core_refine_template(
                 dtype=euler_angles.dtype,
                 device=device,
             ),
+            euler_angles[i, :],  # original angle
         )
         refined_euler_angles[i, :] = composed_refined_angle
         # wrap the euler angles back to original ranges,
         # If phi or psi less then 0 add 360
+
     refined_euler_angles[:, 0] = torch.where(
         refined_euler_angles[:, 0] < 0,
         refined_euler_angles[:, 0] + 360,
@@ -298,9 +299,9 @@ def _core_refine_template_single_thread(
         leave=False,
     )
     for i in tqdm_iter:
-        euler_angle_offsets_batch = euler_angle_offsets[
-            i * orientation_batch_size : (i + 1) * orientation_batch_size
-        ]
+        start_idx = i * orientation_batch_size
+        end_idx = min((i + 1) * orientation_batch_size, euler_angle_offsets.shape[0])
+        euler_angle_offsets_batch = euler_angle_offsets[start_idx:end_idx]
         rot_matrix_batch = roma.euler_to_rotmat(
             EULER_ANGLE_FMT,
             euler_angle_offsets_batch,
@@ -331,14 +332,40 @@ def _core_refine_template_single_thread(
             )
 
         cross_correlation = cross_correlation[..., :crop_H, :crop_W]  # valid crop
-
+        # shape xc is (Npx, Ndefoc, Nang, y, x)
         # Update the best refined statistics (only if max is greater than previous)
         if cross_correlation.max() > max_cc:
             max_cc = cross_correlation.max()
-            max_idx = torch.argmax(cross_correlation)
+            """
+            max_idx = torch.argmax(cross_correlation.flatten())
             px_idx, defocus_idx, angle_idx, y_idx, x_idx = torch.unravel_index(
                 max_idx, cross_correlation.shape
             )
+
+            refined_phi_offset = euler_angle_offsets_batch[angle_idx, 0]
+            refined_theta_offset = euler_angle_offsets_batch[angle_idx, 1]
+            refined_psi_offset = euler_angle_offsets_batch[angle_idx, 2]
+            refined_defocus_offset = defocus_offsets[defocus_idx]
+            refined_pixel_size_offset = pixel_size_offsets[px_idx]
+            refined_pos_y = y_idx
+            refined_pos_x = x_idx
+            """
+
+            # Find the maximum value and its indices
+            max_values, max_indices = torch.max(
+                cross_correlation.view(-1, crop_H, crop_W), dim=0
+            )
+            # Get the overall maximum value and its position
+            max_value, max_pos = torch.max(max_values.view(-1), dim=0)
+            y_idx, x_idx = max_pos // crop_W, max_pos % crop_W
+
+            # Calculate the indices for each dimension
+            flat_idx = max_indices[y_idx, x_idx]
+            px_idx = flat_idx // (len(defocus_offsets) * len(euler_angle_offsets_batch))
+            defocus_idx = (flat_idx // len(euler_angle_offsets_batch)) % len(
+                defocus_offsets
+            )
+            angle_idx = flat_idx % len(euler_angle_offsets_batch)
 
             refined_phi_offset = euler_angle_offsets_batch[angle_idx, 0]
             refined_theta_offset = euler_angle_offsets_batch[angle_idx, 1]

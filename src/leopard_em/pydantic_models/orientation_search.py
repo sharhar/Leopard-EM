@@ -65,6 +65,7 @@ class OrientationSearchConfig(BaseModel2DTM):
     phi_min: float = 0.0
     phi_max: float = 360.0
     base_grid_method: Literal["uniform", "healpix"] = "uniform"
+    symmetry: str = "C1"
 
     @property
     def euler_angles(self) -> torch.Tensor:
@@ -124,7 +125,7 @@ class RefineOrientationConfig(BaseModel2DTM):
 
     enabled: bool = True
     in_plane_angular_step_coarse: Annotated[float, Field(..., ge=0.0)] = 1.5
-    in_plane_angular_step_fine: Annotated[float, Field(..., ge=0.0)] = 0.15
+    in_plane_angular_step_fine: Annotated[float, Field(..., ge=0.0)] = 0.1
     out_of_plane_angular_step_coarse: Annotated[float, Field(..., ge=0.0)] = 2.5
     out_of_plane_angular_step_fine: Annotated[float, Field(..., ge=0.0)] = 0.25
 
@@ -161,7 +162,7 @@ class RefineOrientationConfig(BaseModel2DTM):
             self.out_of_plane_angular_step_fine,
         )
 
-        grid = torch.meshgrid(psi_values, theta_values, phi_values, indexing="ij")
+        grid = torch.meshgrid(phi_values, theta_values, psi_values, indexing="ij")
         euler_angles_offsets = torch.stack(grid, dim=-1).reshape(-1, 3)
 
         return euler_angles_offsets

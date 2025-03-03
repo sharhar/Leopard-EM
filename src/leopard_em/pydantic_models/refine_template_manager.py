@@ -135,17 +135,17 @@ class RefineTemplateManager(BaseModel2DTM):
         # Check if refined angles exist, otherwise use the original angles
         phi = (
             self.particle_stack["refined_phi"]
-            if "refined_phi" in self.particle_stack
+            if "refined_phi" in self.particle_stack._df.columns
             else self.particle_stack["phi"]
         )
         theta = (
             self.particle_stack["refined_theta"]
-            if "refined_theta" in self.particle_stack
+            if "refined_theta" in self.particle_stack._df.columns
             else self.particle_stack["theta"]
         )
         psi = (
             self.particle_stack["refined_psi"]
-            if "refined_psi" in self.particle_stack
+            if "refined_psi" in self.particle_stack._df.columns
             else self.particle_stack["psi"]
         )
 
@@ -298,7 +298,7 @@ class RefineTemplateManager(BaseModel2DTM):
         df_refined["refined_phi"] = result["refined_euler_angles"][:, 0]
 
         df_refined["refined_relative_defocus"] = (
-            result["refined_defocus_offset"] + df_refined["relative_defocus"]
+            result["refined_defocus_offset"] + df_refined["refined_relative_defocus"]
         )
         df_refined["refined_pixel_size"] = (
             result["refined_pixel_size_offset"] + df_refined["pixel_size"]
