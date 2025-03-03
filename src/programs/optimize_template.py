@@ -109,8 +109,9 @@ def evaluate_template_px(px_value: float, rtm: RefineTemplateManager) -> float:
 def optimize_pixel_size_grid(
     rtm: RefineTemplateManager,
     initial_px: float,
-    coarse_range: float = 0.05,
-    coarse_step: float = 0.01,
+    do_fine_search: bool = True,
+    coarse_range: float = 0.005,
+    coarse_step: float = 0.001,
     fine_range: float = 0.005,
     fine_step: float = 0.001,
 ) -> float:
@@ -123,6 +124,8 @@ def optimize_pixel_size_grid(
         Manager object containing template matching parameters and methods
     initial_px : float
         Initial pixel size guess
+    do_fine_search : bool, optional
+        Whether to perform a fine search, by default True
     coarse_range : float, optional
         Range for coarse search, by default 0.05
     coarse_step : float, optional
@@ -152,17 +155,18 @@ def optimize_pixel_size_grid(
             best_snr = snr
             best_px = px.item()
 
-    fine_px_values = torch.arange(
-        best_px - fine_range, best_px + fine_range + 1e-10, fine_step
-    )
+    if do_fine_search:
+        fine_px_values = torch.arange(
+            best_px - fine_range, best_px + fine_range + 1e-10, fine_step
+        )
 
-    print("\nStarting fine search...")
-    for px in fine_px_values:
-        snr = evaluate_template_px(px.item(), rtm)
-        print(f"Pixel size: {px:.3f}, SNR: {snr:.3f}")
-        if snr > best_snr:
-            best_snr = snr
-            best_px = px.item()
+        print("\nStarting fine search...")
+        for px in fine_px_values:
+            snr = evaluate_template_px(px.item(), rtm)
+            print(f"Pixel size: {px:.3f}, SNR: {snr:.3f}")
+            if snr > best_snr:
+                best_snr = snr
+                best_px = px.item()
 
     print(f"\nOptimal pixel size: {best_px:.3f} Å with SNR: {best_snr:.3f}")
     return best_px
@@ -187,7 +191,7 @@ def optimize_b_grid(rtm: RefineTemplateManager) -> float:
     best_snr = float("-inf")
     best_b = 0.0
     for b in ctf_b:
-        rtm.particle_stack["ctf_B_factor"][:] = b
+        rtm.particle_stack._df["ctf_B_factor"] = b.item()
         backend_kwargs = rtm.make_backend_core_function_kwargs()
         snr = evaluate_peaks(rtm, backend_kwargs)
         if snr > best_snr:
@@ -208,6 +212,11 @@ def main_grid() -> None:
     optimal_template_px = optimize_pixel_size_grid(
         rtm,
         initial_template_px,
+        do_fine_search=False,
+        coarse_range=0.001,
+        coarse_step=0.001,
+        fine_range=0.005,
+        fine_step=0.001,
     )
 
     # Generate model with optimal px

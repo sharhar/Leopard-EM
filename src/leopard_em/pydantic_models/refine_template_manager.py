@@ -182,6 +182,8 @@ class RefineTemplateManager(BaseModel2DTM):
         assert part_stk["phase_shift"].nunique() == 1
         assert part_stk["ctf_B_factor"].nunique() == 1
 
+        print(f"B factor: {part_stk['ctf_B_factor'][0].item()}")
+
         ctf_kwargs = {
             "voltage": part_stk["voltage"][0].item(),
             "spherical_aberration": part_stk["spherical_aberration"][0].item(),
