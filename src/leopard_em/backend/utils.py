@@ -144,11 +144,11 @@ def do_iteration_statistics_updates(
     W : int
         Width of the cross-correlation values.
     """
-    nCs, nDefoc, nAng = cross_correlation.shape[0:3]
+    num_Cs, num_defocs, num_orientations = cross_correlation.shape[0:3]
     max_values, max_indices = torch.max(cross_correlation.view(-1, H, W), dim=0)
-    max_cs_idx = (max_indices // (nDefoc * nAng)) % nCs
-    max_defocus_idx = (max_indices // nAng) % nDefoc
-    max_orientation_idx = max_indices % nAng
+    max_cs_idx = (max_indices // (num_defocs * num_orientations)) % num_Cs
+    max_defocus_idx = (max_indices // num_orientations) % num_defocs
+    max_orientation_idx = max_indices % num_orientations
 
     # using torch.where directly
     update_mask = max_values > mip

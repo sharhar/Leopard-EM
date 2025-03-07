@@ -31,9 +31,10 @@ class DefocusSearchConfig(BaseModel2DTM):
     """
 
     enabled: bool = True
-    defocus_min: float
-    defocus_max: float
-    defocus_step: Annotated[float, Field(..., gt=0.0)]
+    defocus_min: float = -1000.0
+    defocus_max: float = 1000.0
+    defocus_step: Annotated[float, Field(..., gt=0.0)] = 200.0
+    skip_enforce_zero: bool = False
 
     @property
     def defocus_values(self) -> torch.Tensor:
@@ -59,11 +60,11 @@ class DefocusSearchConfig(BaseModel2DTM):
             self.defocus_step,
             dtype=torch.float32,
         )
-        # If 0 not in defocuses add it, but keep it 1D
-        if 0.0 not in vals:
+        # If 0 not in defoci add it, but keep it 1D
+        if 0.0 not in vals and not self.skip_enforce_zero:
             vals = torch.cat([vals, torch.tensor([0.0])])
 
-        # re-sort defocuses
+        # re-sort defoci
         vals = torch.sort(vals)[0]
 
         # Ensure that there is at least one defocus value to search over.

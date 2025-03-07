@@ -29,9 +29,10 @@ class PixelSizeSearchConfig(BaseModel2DTM):
     """
 
     enabled: bool = False
-    pixel_size_min: float
-    pixel_size_max: float
-    pixel_size_step: Annotated[float, Field(..., gt=0.0)]
+    pixel_size_min: float = 0.0
+    pixel_size_max: float = 0.0
+    pixel_size_step: Annotated[float, Field(..., gt=0.0)] = 0.0
+    skip_enforce_zero: bool = False
 
     @property
     def pixel_size_values(self) -> torch.Tensor:
@@ -58,7 +59,7 @@ class PixelSizeSearchConfig(BaseModel2DTM):
             dtype=torch.float32,
         )
         # If 0 not in pixel sizes add it, but keep it 1D
-        if 0.0 not in vals:
+        if 0.0 not in vals and not self.skip_enforce_zero:
             vals = torch.cat([vals, torch.tensor([0.0])])
 
         # Re-sort pixel sizes

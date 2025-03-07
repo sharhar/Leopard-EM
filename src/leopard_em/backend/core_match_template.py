@@ -504,7 +504,7 @@ def _do_bached_orientation_cross_correlate(
     # Cross correlation step by element-wise multiplication
     projections_dft = image_dft[None, None, None, ...] * projections_dft.conj()
     cross_correlation = torch.fft.irfftn(projections_dft, dim=(-2, -1))
-    # shape is (n_Cs n_defoc n_Ang, H, W)
+    # shape is (n_Cs n_defoc n_orientations, H, W)
     return cross_correlation
 
 

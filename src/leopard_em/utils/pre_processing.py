@@ -195,6 +195,11 @@ def Cs_to_pixel_size(
         The nominal pixel size.
     nominal_Cs : float, optional
         The nominal Cs value, by default 2.7.
+
+    Returns
+    -------
+    torch.Tensor
+        The pixel sizes.
     """
     pixel_size = torch.pow(nominal_Cs / Cs_vals, 0.25) * nominal_pixel_size
     return pixel_size

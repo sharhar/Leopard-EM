@@ -332,7 +332,7 @@ def _core_refine_template_single_thread(
             )
 
         cross_correlation = cross_correlation[..., :crop_H, :crop_W]  # valid crop
-        # shape xc is (Npx, Ndefoc, Nang, y, x)
+        # shape xc is (Npx, Ndefoc, Norientations, y, x)
         # Update the best refined statistics (only if max is greater than previous)
         if cross_correlation.max() > max_cc:
             max_cc = cross_correlation.max()
