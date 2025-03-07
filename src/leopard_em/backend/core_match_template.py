@@ -492,7 +492,6 @@ def _do_bached_orientation_cross_correlate(
 
     # Apply the projective filters on a new batch dimension
     fourier_slice = fourier_slice[None, None, ...] * projective_filters[:, :, None, ...]
-
     # Inverse Fourier transform into real space and normalize
     projections = torch.fft.irfftn(fourier_slice, dim=(-2, -1))
     projections = torch.fft.ifftshift(projections, dim=(-2, -1))
