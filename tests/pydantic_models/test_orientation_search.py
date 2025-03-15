@@ -46,7 +46,7 @@ def test_orientation_search_euler_angles():
 def test_refine_orientation_default_values():
     config = RefineOrientationConfig()
     assert config.in_plane_angular_step_coarse == 1.5
-    assert config.in_plane_angular_step_fine == 0.15
+    assert config.in_plane_angular_step_fine == 0.1
     assert config.out_of_plane_angular_step_coarse == 2.5
     assert config.out_of_plane_angular_step_fine == 0.25
 

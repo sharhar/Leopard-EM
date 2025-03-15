@@ -52,26 +52,25 @@ class PixelSizeSearchConfig(BaseModel2DTM):
         if not self.enabled:
             return torch.tensor([0.0])
 
-        vals = torch.arange(
-            self.pixel_size_min,
-            self.pixel_size_max + self.pixel_size_step,
-            self.pixel_size_step,
-            dtype=torch.float32,
-        )
-        # If 0 not in pixel sizes add it, but keep it 1D
-        if 0.0 not in vals and not self.skip_enforce_zero:
-            vals = torch.cat([vals, torch.tensor([0.0])])
-
-        # Re-sort pixel sizes
-        vals = torch.sort(vals)[0]
-
-        # Ensure that there is at least one pixel size value to search over.
-        if vals.numel() == 0:
+        # Check if parameters would result in valid range before calling arange
+        if self.pixel_size_max < self.pixel_size_min:
             raise ValueError(
                 "Pixel size search parameters result in no values to search over!\n"
                 f"  self.pixel_size_min: {self.pixel_size_min}\n"
                 f"  self.pixel_size_max: {self.pixel_size_max}\n"
                 f"  self.pixel_size_step: {self.pixel_size_step}\n"
             )
+
+        vals = torch.arange(
+            self.pixel_size_min,
+            self.pixel_size_max + self.pixel_size_step,
+            self.pixel_size_step,
+            dtype=torch.float32,
+        )
+
+        if 0.0 not in vals and not self.skip_enforce_zero:
+            vals = torch.cat([vals, torch.tensor([0.0])])
+            # Re-sort pixel sizes
+            vals = torch.sort(vals)[0]
 
         return vals
