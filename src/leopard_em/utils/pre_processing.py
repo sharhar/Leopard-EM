@@ -69,30 +69,34 @@ def calculate_ctf_filter_stack(
         Cs=spherical_aberration,
     )
 
-    ctf = calculate_ctf_2d(
-        defocus=defocus,
-        astigmatism=astigmatism,
-        astigmatism_angle=astigmatism_angle,
-        voltage=voltage,
-        spherical_aberration=Cs_vals,
-        amplitude_contrast=amplitude_contrast_ratio,
-        b_factor=ctf_B_factor,
-        phase_shift=phase_shift,
-        pixel_size=pixel_size,
-        image_shape=template_shape,
-        rfft=rfft,
-        fftshift=fftshift,
-    )
+    # Loop over Cs_vals one at a time and collect results
+    ctf_list = []
+    for cs_val in Cs_vals:
+        ctf_single = calculate_ctf_2d(
+            defocus=defocus,
+            astigmatism=astigmatism,
+            astigmatism_angle=astigmatism_angle,
+            voltage=voltage,
+            spherical_aberration=cs_val,
+            amplitude_contrast=amplitude_contrast_ratio,
+            b_factor=ctf_B_factor,
+            phase_shift=phase_shift,
+            pixel_size=pixel_size,
+            image_shape=template_shape,
+            rfft=rfft,
+            fftshift=fftshift,
+        )
 
+        # Ensure we have the defocus dimension
+        if ctf_single.ndim == 2:  # (nx, ny)
+            ctf_single = einops.rearrange(ctf_single, "nx ny -> 1 nx ny")
+
+        ctf_list.append(ctf_single)
+
+    # Stack along the Cs dimension
+    ctf = torch.stack(ctf_list, dim=0)  # (nCs, n_defoc, nx, ny)
     # The CTF will have a shape of (n_Cs n_defoc, nx, ny)
-    if ctf.ndim == 3:
-        ctf = einops.rearrange(ctf, "n_defoc nx ny -> 1 n_defoc nx ny")
-    elif ctf.ndim == 4:
-        ctf = einops.rearrange(ctf, "n_defoc nCs nx ny -> nCs n_defoc nx ny")
-    elif ctf.ndim == 5:
-        ctf = ctf[0]  # remove dim 0
-        ctf = einops.rearrange(ctf, "n_defoc nCs nx ny -> nCs n_defoc nx ny")
-
+    # These will catch any potential errors
     return ctf
 
 
