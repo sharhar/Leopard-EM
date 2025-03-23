@@ -336,20 +336,6 @@ def _core_refine_template_single_thread(
         # Update the best refined statistics (only if max is greater than previous)
         if cross_correlation.max() > max_cc:
             max_cc = cross_correlation.max()
-            """
-            max_idx = torch.argmax(cross_correlation.flatten())
-            px_idx, defocus_idx, angle_idx, y_idx, x_idx = torch.unravel_index(
-                max_idx, cross_correlation.shape
-            )
-
-            refined_phi_offset = euler_angle_offsets_batch[angle_idx, 0]
-            refined_theta_offset = euler_angle_offsets_batch[angle_idx, 1]
-            refined_psi_offset = euler_angle_offsets_batch[angle_idx, 2]
-            refined_defocus_offset = defocus_offsets[defocus_idx]
-            refined_pixel_size_offset = pixel_size_offsets[px_idx]
-            refined_pos_y = y_idx
-            refined_pos_x = x_idx
-            """
 
             # Find the maximum value and its indices
             max_values, max_indices = torch.max(

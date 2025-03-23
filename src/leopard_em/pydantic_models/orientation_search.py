@@ -14,7 +14,7 @@ EPS = 1e-6
 class OrientationSearchConfig(BaseModel2DTM):
     """Serialization and validation of orientation search parameters for 2DTM.
 
-    The angles -- psi, theta, and phi -- represent Euler angles in the 'ZYZ'
+    The angles -- phi, theta, and psi -- represent Euler angles in the 'ZYZ'
     convention.
 
     This model effectively acts as a connector into the
@@ -140,7 +140,7 @@ class RefineOrientationConfig(BaseModel2DTM):
         -------
         torch.Tensor
             A tensor of shape (N, 3) where N is the number of orientations to
-            search over. The columns represent the psi, theta, and phi angles,
+            search over. The columns represent the phi, theta, and psi angles,
             respectively, in the 'ZYZ' convention.
         """
         if not self.enabled:

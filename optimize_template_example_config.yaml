@@ -1,6 +1,6 @@
-###################################################
+#####################################################
 ### OptimizeTemplateManager configuration example ###
-###################################################
+#####################################################
 # An example YAML configuration to modify.
 # Call `OptimizeTemplateManager.from_yaml(path)` to load this configuration.
 particle_stack:

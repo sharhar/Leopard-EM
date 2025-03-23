@@ -14,7 +14,7 @@ def calculate_ctf_filter_stack(
     defocus_v: float,  # in um, *NOT* Angstrom
     defocus_offsets: torch.Tensor,  # in um, *NOT* Angstrom
     astigmatism_angle: float,
-    pixel_size_offsets: torch.Tensor,  # in um, *NOT* Angstrom
+    pixel_size_offsets: torch.Tensor,  # in Angstrom
     amplitude_contrast_ratio: float = 0.07,
     spherical_aberration: float = 2.7,
     phase_shift: float = 0.0,

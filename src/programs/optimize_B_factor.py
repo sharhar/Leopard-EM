@@ -8,7 +8,7 @@ from leopard_em.pydantic_models import MatchTemplateManager
 MATCH_YAML_PATH = "match_template_manager_example_crop.yaml"
 # the B-factor range to optimize over
 B_MIN = 0
-B_MAX = 20
+B_MAX = 200
 B_STEP = 10
 # the optimize metric can be:
 # all: optimize mean SNR of peaks
@@ -35,8 +35,6 @@ def get_metric(df: pd.DataFrame, mtm: MatchTemplateManager) -> float:
     float
         The metric for the given dataframe.
     """
-    # subtract_background =
-    # df["scaled_mip"].subtract(mtm.match_template_result.scaled_mip.mean())
     subtract_background = df["scaled_mip"]
     if OPTIMIZE_METRIC == "mean":
         return float(subtract_background.mean())
@@ -57,8 +55,8 @@ def main() -> None:
     best_b = 0
     consecutive_decreases = 0
     previous_metric = float("-inf")
+    mtm = MatchTemplateManager.from_yaml(MATCH_YAML_PATH)
     for b in b_values:
-        mtm = MatchTemplateManager.from_yaml(MATCH_YAML_PATH)
         mtm.optics_group.ctf_B_factor = b
         mtm.run_match_template(
             orientation_batch_size=16, do_result_export=False, do_valid_cropping=False
@@ -82,7 +80,7 @@ def main() -> None:
 
         previous_metric = metric
     print(f"Best B-factor: {best_b} with a {OPTIMIZE_METRIC} of {best_metric}")
-    with open("results/optimize_B_results.txt", "w") as f:
+    with open("optimize_B_results.txt", "w") as f:
         f.write(f"Best B-factor: {best_b} with a {OPTIMIZE_METRIC} of {best_metric}")
 
 

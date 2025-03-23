@@ -190,6 +190,7 @@ class MatchTemplateManager(BaseModel2DTM):
         defocus_values = self.defocus_search_config.defocus_values
         # set pixel search to 0.0 for match template
         pixel_size_offsets = torch.tensor([0.0], dtype=torch.float32)
+        print(f"ctf_B_factor: {self.optics_group.ctf_B_factor}")
         ctf_filters = calculate_ctf_filter_stack(
             pixel_size=self.optics_group.pixel_size,
             template_shape=(template_shape[0], template_shape[0]),
@@ -234,7 +235,7 @@ class MatchTemplateManager(BaseModel2DTM):
 
     def run_match_template(
         self,
-        orientation_batch_size: int = 1,
+        orientation_batch_size: int = 16,
         do_result_export: bool = True,
         do_valid_cropping: bool = True,
     ) -> None:

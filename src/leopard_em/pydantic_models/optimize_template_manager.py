@@ -1,4 +1,4 @@
-"""Pydantic model for running the refine template program."""
+"""Pydantic model for running the optimize template program."""
 
 from typing import Any, ClassVar
 
@@ -16,7 +16,7 @@ from leopard_em.pydantic_models.types import BaseModel2DTM, ExcludedTensor
 
 
 class OptimizeTemplateManager(BaseModel2DTM):
-    """Model holding parameters necessary for running the refine template program.
+    """Model holding parameters necessary for running the optimize template program.
 
     Attributes
     ----------
@@ -37,11 +37,11 @@ class OptimizeTemplateManager(BaseModel2DTM):
     -------
     TODO serialization/import methods
     __init__(self, skip_mrc_preloads: bool = False, **data: Any)
-        Initialize the refine template manager.
+        Initialize the optimize template manager.
     make_backend_core_function_kwargs(self) -> dict[str, Any]
-        Create the kwargs for the backend refine_template core function.
-    run_refine_template(self, orientation_batch_size: int = 64) -> None
-        Run the refine template program.
+        Create the kwargs for the backend optimize_template core function.
+    run_optimize_template(self, output_text_path: str) -> None
+        Run the optimize template program.
     """
 
     model_config: ClassVar = ConfigDict(arbitrary_types_allowed=True)
@@ -292,7 +292,7 @@ class OptimizeTemplateManager(BaseModel2DTM):
         return mean_snr
 
     def get_correlation_result(
-        self, backend_kwargs: dict, orientation_batch_size: int = 1
+        self, backend_kwargs: dict, orientation_batch_size: int = 64
     ) -> dict[str, np.ndarray]:
         """Get correlation result.
 
@@ -316,12 +316,12 @@ class OptimizeTemplateManager(BaseModel2DTM):
         return result
 
     def results_to_snr(self, result: dict[str, np.ndarray]) -> float:
-        """Convert refine template result to dataframe.
+        """Convert optimize template result to mean SNR.
 
         Parameters
         ----------
         result : dict[str, np.ndarray]
-            The result of the refine template program.
+            The result of the optimize template program.
 
         Returns
         -------
