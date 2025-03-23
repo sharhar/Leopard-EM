@@ -164,8 +164,8 @@ class ParticleStack(BaseModel2DTM):
             img = load_mrc_image(img_path)
 
             # with reference to center pixel
-            pos_y = self._df.loc[indexes, "pos_y_img"]
-            pos_x = self._df.loc[indexes, "pos_x_img"]
+            pos_y = self._df.loc[indexes, "pos_y_img"].to_numpy()
+            pos_x = self._df.loc[indexes, "pos_x_img"].to_numpy()
             pos_y = torch.tensor(pos_y)
             pos_x = torch.tensor(pos_x)
 
