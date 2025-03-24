@@ -18,7 +18,7 @@ from leopard_em.pydantic_models.optics_group import OpticsGroup
 from leopard_em.pydantic_models.orientation_search import OrientationSearchConfig
 from leopard_em.pydantic_models.types import BaseModel2DTM, ExcludedTensor
 from leopard_em.utils.data_io import load_mrc_image, load_mrc_volume
-from leopard_em.utils.pre_processing import calculate_ctf_filter_stack
+from leopard_em.utils.filter_preprocessing import calculate_ctf_filter_stack
 
 
 class MatchTemplateManager(BaseModel2DTM):
