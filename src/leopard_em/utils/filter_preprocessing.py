@@ -1,10 +1,59 @@
-"""Helper functions for pre-processing data for 2DTM."""
+"""Helper functions for the CTF filter preprocessing."""
 
 import einops
 import torch
 from torch_fourier_filter.ctf import calculate_ctf_2d
 
-from leopard_em.pydantic_models import WhiteningFilterConfig
+
+def get_Cs_range(
+    pixel_size: float,
+    pixel_size_offsets: torch.Tensor,
+    Cs: float = 2.7,
+) -> torch.Tensor:
+    """Get the Cs values for a  range of pixel sizes.
+
+    Parameters
+    ----------
+    pixel_size : float
+        The nominal pixel size.
+    pixel_size_offsets : torch.Tensor
+        The pixel size offsets.
+    Cs : float, optional
+        The Cs value, by default 2.7.
+
+    Returns
+    -------
+    torch.Tensor
+        The Cs values for the range of pixel sizes.
+    """
+    pixel_sizes = pixel_size + pixel_size_offsets
+    Cs_values = Cs / torch.pow(pixel_sizes / pixel_size, 4)
+    return Cs_values
+
+
+def Cs_to_pixel_size(
+    Cs_vals: torch.Tensor,
+    nominal_pixel_size: float,
+    nominal_Cs: float = 2.7,
+) -> torch.Tensor:
+    """Convert Cs values to pixel sizes.
+
+    Parameters
+    ----------
+    Cs_vals : torch.Tensor
+        The Cs values.
+    nominal_pixel_size : float
+        The nominal pixel size.
+    nominal_Cs : float, optional
+        The nominal Cs value, by default 2.7.
+
+    Returns
+    -------
+    torch.Tensor
+        The pixel sizes.
+    """
+    pixel_size = torch.pow(nominal_Cs / Cs_vals, 0.25) * nominal_pixel_size
+    return pixel_size
 
 
 def calculate_ctf_filter_stack(
@@ -98,112 +147,3 @@ def calculate_ctf_filter_stack(
     # The CTF will have a shape of (n_Cs n_defoc, nx, ny)
     # These will catch any potential errors
     return ctf
-
-
-def do_image_preprocessing(
-    image_rfft: torch.Tensor,
-    wf_config: WhiteningFilterConfig,
-) -> torch.Tensor:
-    """Pre-processes the input image before running the algorithm.
-
-    1. Zero central pixel (0, 0)
-    2. Calculate a whitening filter
-    3. Do element-wise multiplication with the whitening filter
-    4. Zero central pixel again (superfluous, but following cisTEM)
-    5. Normalize (x /= sqrt(sum(abs(x)**2)); pixelwise)
-
-    Parameters
-    ----------
-    image_rfft : torch.Tensor
-        The input image, RFFT'd and unshifted.
-    wf_config : WhiteningFilterConfig
-        The configuration for the whitening filter.
-
-    Returns
-    -------
-    torch.Tensor
-        The pre-processed image.
-
-    """
-    H, W = image_rfft.shape
-    W = (W - 1) * 2  # Account for RFFT
-    npix_real = H * W
-
-    # Zero out the constant term
-    image_rfft[0, 0] = 0 + 0j
-
-    wf_image = wf_config.calculate_whitening_filter(
-        ref_img_rfft=image_rfft,
-        output_shape=image_rfft.shape,
-    )
-    image_rfft *= wf_image
-    image_rfft[0, 0] = 0 + 0j  # superfluous, but following cisTEM
-
-    # NOTE: Extra indexing happening with squared_sum so that Hermitian pairs are
-    # counted, but we skip the first column of the RFFT which should not be duplicated.
-    squared_image_rfft = torch.abs(image_rfft) ** 2
-    squared_sum = squared_image_rfft.sum() + squared_image_rfft[:, 1:].sum()
-    image_rfft /= torch.sqrt(squared_sum)
-
-    # # real-space image will now have mean=0 and variance=1
-    # image_rfft *= npix_real  # NOTE: This would set the variance to 1 exactly, but...
-
-    # NOTE: We add on extra division by sqrt(num_pixels) so the cross-correlograms
-    # are roughly normalized to have mean 0 and variance 1.
-    # We do this here since Fourier transform is linear, and we don't have to multiply
-    # the cross correlation at each iteration. This *will not* make the image
-    # have variance 1.
-    image_rfft *= npix_real**0.5
-
-    return image_rfft
-
-
-def get_Cs_range(
-    pixel_size: float,
-    pixel_size_offsets: torch.Tensor,
-    Cs: float = 2.7,
-) -> torch.Tensor:
-    """Get the Cs values for a  range of pixel sizes.
-
-    Parameters
-    ----------
-    pixel_size : float
-        The nominal pixel size.
-    pixel_size_offsets : torch.Tensor
-        The pixel size offsets.
-    Cs : float, optional
-        The Cs value, by default 2.7.
-
-    Returns
-    -------
-    torch.Tensor
-        The Cs values for the range of pixel sizes.
-    """
-    pixel_sizes = pixel_size + pixel_size_offsets
-    Cs_values = Cs / torch.pow(pixel_sizes / pixel_size, 4)
-    return Cs_values
-
-
-def Cs_to_pixel_size(
-    Cs_vals: torch.Tensor,
-    nominal_pixel_size: float,
-    nominal_Cs: float = 2.7,
-) -> torch.Tensor:
-    """Convert Cs values to pixel sizes.
-
-    Parameters
-    ----------
-    Cs_vals : torch.Tensor
-        The Cs values.
-    nominal_pixel_size : float
-        The nominal pixel size.
-    nominal_Cs : float, optional
-        The nominal Cs value, by default 2.7.
-
-    Returns
-    -------
-    torch.Tensor
-        The pixel sizes.
-    """
-    pixel_size = torch.pow(nominal_Cs / Cs_vals, 0.25) * nominal_pixel_size
-    return pixel_size

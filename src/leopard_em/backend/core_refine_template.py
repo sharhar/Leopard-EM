@@ -13,7 +13,7 @@ from leopard_em.backend.core_match_template import (
 )
 from leopard_em.backend.utils import normalize_template_projection
 from leopard_em.utils.cross_correlation import handle_correlation_mode
-from leopard_em.utils.pre_processing import calculate_ctf_filter_stack
+from leopard_em.utils.filter_preprocessing import calculate_ctf_filter_stack
 
 # This is assuming the Euler angles are in the ZYZ intrinsic format
 # AND that the angles are ordered in (phi, theta, psi)
