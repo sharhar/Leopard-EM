@@ -61,10 +61,11 @@ class OptimizeTemplateManager(BaseModel2DTM):
 
     def make_backend_core_function_kwargs(self) -> dict[str, Any]:
         """Create the kwargs for the backend refine_template core function."""
-        device = self.computational_config.gpu_devices
-        if len(device) > 1:
-            raise ValueError("Only single-device execution is currently supported.")
-        device = device[0]
+        device_list = self.computational_config.gpu_devices
+        # Remove the single device limitation
+        # if len(device) > 1:
+        #     raise ValueError("Only single-device execution is currently supported.")
+        # device = device[0]
 
         # simulate template volume
         template = self.simulator.run(gpu_ids=self.computational_config.gpu_ids)
@@ -179,7 +180,7 @@ class OptimizeTemplateManager(BaseModel2DTM):
         }
 
         return {
-            "particle_stack_dft": particle_images_dft.to(device),
+            "particle_stack_dft": particle_images_dft,  # Remove device specification
             "template_dft": template_dft,
             "euler_angles": euler_angles,
             "euler_angle_offsets": euler_angle_offsets,
@@ -190,6 +191,7 @@ class OptimizeTemplateManager(BaseModel2DTM):
             "pixel_size_offsets": pixel_size_offsets,
             "ctf_kwargs": ctf_kwargs,
             "projective_filters": projective_filters,
+            "device": device_list,  # Pass all devices to core_refine_template
         }
 
     def run_optimize_template(self, output_text_path: str) -> None:
