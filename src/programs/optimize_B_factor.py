@@ -55,8 +55,9 @@ def main() -> None:
     best_b = 0
     consecutive_decreases = 0
     previous_metric = float("-inf")
-    mtm = MatchTemplateManager.from_yaml(MATCH_YAML_PATH)
+
     for b in b_values:
+        mtm = MatchTemplateManager.from_yaml(MATCH_YAML_PATH)
         mtm.optics_group.ctf_B_factor = b
         mtm.run_match_template(
             orientation_batch_size=16, do_result_export=False, do_valid_cropping=False
