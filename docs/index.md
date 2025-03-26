@@ -5,7 +5,7 @@ description: Overview of the Leopard-EM package for 2DTM in Python
 
 # Leopard-EM
 
-**L**ocation & ori**E**ntati**O**n of **PAR**ticles found using two-**D**imensional t**E**mplate **M**atching (Leopard-EM) is a Python implementation of Two-Dimensional Template Matching (2DTM) using [PyTorch]() for GPU acceleration. This package reflects most of the functionality described in Lucas, *et al.* (2021)[^1] with additional user-friendly features for integrating into broader data science workflows.
+**L**ocation & ori**E**ntati**O**n of **PAR**ticles found using two-**D**imensional t**E**mplate **M**atching (Leopard-EM) is a Python implementation of Two-Dimensional Template Matching (2DTM) using PyTorch for GPU acceleration. This package reflects most of the functionality described in Lucas, *et al.* (2021)[^1] with additional user-friendly features for integrating into broader data science workflows.
 
 ## Installation
 
@@ -47,6 +47,7 @@ See the [Contributing](#contributing) section for more information on how to con
 
 Leopard-EM is most easily used by editing configuration YAML files, loading these YAML files using Python object, then running the program through a python script.
 There are currently 4 main programs under `/src/programs` which can be edited in-place or coped to new Python scripts on your machine:
+
 - `match_template.py`: Runs the whole orientation search a given reference template on a single cryo-EM image.
 - `refine_template.py`: Refines the orientation and defocus parameters for particles identified from the match template program.
 - `optimize_template.py`: Optimizes the pixel size of the reference temple; necessary if the pixel size of the deposited PDB model is much different from the pixel size of the micrograph.
@@ -82,15 +83,16 @@ if __name__ == "__main__":
 
 ## Documentation and Examples
 
-TODO
+Work in progress
 
 ## Theory
 
-TODO
+Work in progress
 
 ## API
 
-TODO: Get some autodocs to parse the docstrings and generate API documentation.
+Work in progress
+<!-- TODO: Get some autodocs to parse the docstrings and generate API documentation. -->
 
 ## Contributing
 We encourage contributions to this package from the broader cryo-EM/ET and structural biology communities.

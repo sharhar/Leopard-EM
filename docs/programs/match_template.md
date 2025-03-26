@@ -135,7 +135,7 @@ preprocessing_filters:
 The final block of the match template configuration file is used to choose which GPUs will run on.
 The `num_cpus` field can currently be ignored and just set to `1`.
 The `gpu_ids` field is a list of integers defining which GPU device index(s) the program will target.
-Configuring the search to be run on two GPUs is shown below.
+Configuring the search to be run on the first two GPUs is shown below.
 
 ```yaml
 computational_config:
@@ -144,6 +144,19 @@ computational_config:
   - 1
   num_cpus: 1
 ```
+
+## Running the match template program
+
+Once you've configured a YAML file, running the match template program is fairly simple.
+We have an example script, [`src/programs/match_template.py`](https://github.com/Lucaslab-Berkeley/Leopard-EM/blob/main/src/programs/match_template.py), which processes a single micrograph against a single reference template.
+Again, you will need to simulate a 3D electron scattering potential from a PDB file (for example with the [ttsim3d](https://github.com/teamtomo/ttsim3d) package) before running the script.
+
+### Match template output files
+
+The above script will output the statistics maps over the image for the search as well as a Pandas DataFrame with compacted information on found particles.
+These data can be passed onto downstream analysis, for example the refine template program.
+More detail about these data is on the [data formats page](../data_formats.md).
+
 
 ## Mathematical description
 
