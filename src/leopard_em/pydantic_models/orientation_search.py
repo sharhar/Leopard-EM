@@ -1,10 +1,12 @@
 """Serialization and validation of orientation search parameters for 2DTM."""
 
+import re
 from typing import Annotated, Literal
 
+import roma
 import torch
 from pydantic import Field
-from torch_so3 import get_uniform_euler_angles
+from torch_so3 import angular_ranges, get_uniform_euler_angles
 
 from leopard_em.pydantic_models.types import BaseModel2DTM
 
@@ -34,18 +36,18 @@ class OrientationSearchConfig(BaseModel2DTM):
     template_symmetry : str
         Symmetry group of the template. Default is 'C1'.
         Currently only 'C1' is supported.
-    psi_min : float
-        Minimum value for the psi angle in degrees.
-    psi_max : float
-        Maximum value for the psi angle in degrees.
-    theta_min : float
-        Minimum value for the theta angle in degrees.
-    theta_max : float
-        Maximum value for the theta angle in degrees.
     phi_min : float
         Minimum value for the phi angle in degrees.
     phi_max : float
         Maximum value for the phi angle in degrees.
+    theta_min : float
+        Minimum value for the theta angle in degrees.
+    theta_max : float
+        Maximum value for the theta angle in degrees.
+    psi_min : float
+        Minimum value for the psi angle in degrees.
+    psi_max : float
+        Maximum value for the psi angle in degrees.
     in_plane_angular_step : float
         Angular step size for in-plane rotations in degrees. Must be greater
         than 0.
@@ -58,12 +60,12 @@ class OrientationSearchConfig(BaseModel2DTM):
 
     in_plane_step: Annotated[float, Field(ge=0.0)] = 1.5
     out_of_plane_step: Annotated[float, Field(ge=0.0)] = 2.5
-    psi_min: float = 0.0
-    psi_max: float = 360.0
-    theta_min: float = 0.0
-    theta_max: float = 180.0
     phi_min: float = 0.0
     phi_max: float = 360.0
+    theta_min: float = 0.0
+    theta_max: float = 180.0
+    psi_min: float = 0.0
+    psi_max: float = 360.0
     base_grid_method: Literal["uniform", "healpix"] = "uniform"
     symmetry: str = "C1"
 
@@ -78,6 +80,31 @@ class OrientationSearchConfig(BaseModel2DTM):
             search over. The columns represent the psi, theta, and phi angles
             respectively.
         """
+        if self.symmetry != "C1":
+            # If the user has not specified the ranges, use the symmetry group
+            if (
+                self.phi_min == 0.0
+                and self.phi_max == 360.0
+                and self.theta_min == 0.0
+                and self.theta_max == 180.0
+                and self.psi_min == 0.0
+                and self.psi_max == 360.0
+            ):
+                # Extract symmetry group and order
+                match = re.match(r"([A-Za-z]+)(\d*)", self.symmetry)
+                if not match:
+                    raise ValueError(f"Invalid symmetry format: {self.symmetry}")
+                sym_group = match.group(1)
+                sym_order = int(match.group(2)) if match.group(2) else 1
+                (
+                    self.phi_min,
+                    self.phi_max,
+                    self.theta_min,
+                    self.theta_max,
+                    self.psi_min,
+                    self.psi_max,
+                ) = angular_ranges(sym_group, sym_order)
+
         return get_uniform_euler_angles(
             in_plane_step=self.in_plane_step,
             out_of_plane_step=self.out_of_plane_step,
@@ -164,5 +191,107 @@ class RefineOrientationConfig(BaseModel2DTM):
 
         grid = torch.meshgrid(phi_values, theta_values, psi_values, indexing="ij")
         euler_angles_offsets = torch.stack(grid, dim=-1).reshape(-1, 3)
+
+        return euler_angles_offsets
+
+
+class ConstrainedOrientationConfig(BaseModel2DTM):
+    """Serialization and validation of constrained orientation parameters.
+
+    Attributes
+    ----------
+    enabled: bool
+        Whether to enable constrained orientation search.
+    in_plane_step: float
+        Angular step size for in-plane rotations in degrees.
+        Must be greater than or equal to 0.
+    out_of_plane_step: float
+        Angular step size for out-of-plane rotations in degrees.
+        Must be greater than or equal to 0.
+    rotation_axis_euler_angles: list[float]
+        List of Euler angles (phi, theta, psi) for the rotation axis.
+    phi_min: float
+        Minimum value for the phi angle in degrees.
+    phi_max: float
+        Maximum value for the phi angle in degrees.
+    theta_min: float
+        Minimum value for the theta angle in degrees.
+    theta_max: float
+        Maximum value for the theta angle in degrees.
+    psi_min: float
+        Minimum value for the psi angle in degrees.
+    psi_max: float
+        Maximum value for the psi angle in degrees.
+    """
+
+    enabled: bool = True
+    in_plane_step: float = 1.5
+    out_of_plane_step: float = 2.5
+    rotation_axis_euler_angles: list[float] = Field(default=[0.0, 0.0, 0.0])
+    phi_min: float = 0.0
+    phi_max: float = 360.0
+    theta_min: float = 0.0
+    theta_max: float = 180.0
+    psi_min: float = 0.0
+    psi_max: float = 360.0
+
+    @property
+    def euler_angles_offsets(self) -> torch.Tensor:
+        """Return the Euler angle offsets to search over.
+
+        Note that this method uses a uniform grid search which approximates SO(3) space
+        well when the angular ranges are small.
+
+        Returns
+        -------
+        torch.Tensor
+            A tensor of shape (N, 3) where N is the number of orientations to
+            search over. The columns represent the phi, theta, and psi angles,
+            respectively, in the 'ZYZ' convention.
+        """
+        if not self.enabled:
+            return torch.zeros((1, 3))
+
+        psi_values = torch.arange(
+            -self.in_plane_angular_step_coarse,
+            self.in_plane_angular_step_coarse + EPS,
+            self.in_plane_angular_step_fine,
+        )
+        theta_values = torch.arange(
+            0.0,
+            self.out_of_plane_angular_step_coarse + EPS,
+            self.out_of_plane_angular_step_fine,
+        )
+        phi_values = torch.arange(
+            -self.out_of_plane_angular_step_coarse,
+            self.out_of_plane_angular_step_coarse + EPS,
+            self.out_of_plane_angular_step_fine,
+        )
+
+        grid = torch.meshgrid(phi_values, theta_values, psi_values, indexing="ij")
+        euler_angles_offsets = torch.stack(grid, dim=-1).reshape(-1, 3)
+        # Convert to rotation matrix
+        rot_z_matrix = roma.euler_to_rotmat(
+            "ZYZ",
+            euler_angles_offsets,
+            degrees=True,
+            device=euler_angles_offsets.device,
+        ).to(torch.float32)
+        # Apply rotation to the template
+        rot_axis_matrix = roma.euler_to_rotmat(
+            "ZYZ",
+            torch.tensor(self.rotation_axis_euler_angles),
+            degrees=True,
+            device=euler_angles_offsets.device,
+        ).to(torch.float32)
+
+        rot_matrix_batch = roma.rotmat_composition(
+            sequence=(rot_axis_matrix, rot_z_matrix, rot_axis_matrix.transpose(-1, -2))
+        )
+
+        # Convert back to Euler angles
+        euler_angles_offsets = roma.rotmat_to_euler(
+            "ZYZ", rot_matrix_batch, degrees=True, device=euler_angles_offsets.device
+        ).to(torch.float32)
 
         return euler_angles_offsets
