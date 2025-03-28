@@ -87,12 +87,20 @@ class RefineTemplateManager(BaseModel2DTM):
 
         template_shape = template.shape[-2:]
 
+        # Extract the necessary data from the particle stack
         particle_images = self.particle_stack.construct_image_stack(
             pos_reference="center",
             padding_value=0.0,
             handle_bounds="pad",
             padding_mode="constant",
         )
+        corr_mean_stack = self.particle_stack.construct_cropped_statistic_stack(
+            "correlation_average"
+        )
+        corr_std_stack = self.particle_stack.construct_cropped_statistic_stack(
+            "correlation_variance"
+        )
+
         particle_images_dft = torch.fft.rfftn(particle_images, dim=(-2, -1))
         particle_images_dft[..., 0, 0] = 0.0 + 0.0j  # Zero out DC component
 
@@ -204,6 +212,8 @@ class RefineTemplateManager(BaseModel2DTM):
             "defocus_angle": defocus_angle,
             "defocus_offsets": defocus_offsets,
             "pixel_size_offsets": pixel_size_offsets,
+            "corr_mean": corr_mean_stack.to(device),
+            "corr_std": corr_std_stack.to(device),
             "ctf_kwargs": ctf_kwargs,
             "projective_filters": projective_filters,
         }
