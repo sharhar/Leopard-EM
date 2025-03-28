@@ -39,7 +39,7 @@ simulator:
     dose_end: 50.0
     dose_filter_modify_signal: "rel_diff"
     upsampling: -1  
-    mtf_reference: "/home/jdickerson/git/teamtomo/ttsim3d/src/data/mtf_falcon4EC_300kV.star"
+    mtf_reference: "falcon4EC_300kv"
   pdb_filepath: "parsed_6Q8Y_whole_LSU_match3.pdb"
   volume_shape: [512, 512, 512]
   b_factor_scaling: 0.5
