@@ -2,7 +2,7 @@
 
 import time
 
-from leopard_em.pydantic_models import MatchTemplateManager
+from programs.match_template import MatchTemplateManager
 
 #######################################
 ### Editable parameters for program ###

@@ -9,13 +9,10 @@ from .correlation_filters import (
     WhiteningFilterConfig,
 )
 from .defocus_search import DefocusSearchConfig
-from .match_template_manager import MatchTemplateManager
 from .match_template_result import MatchTemplateResult
 from .optics_group import OpticsGroup
-from .optimize_template_manager import OptimizeTemplateManager
 from .orientation_search import OrientationSearchConfig
 from .particle_stack import ParticleStack
-from .refine_template_manager import RefineTemplateManager
 from .types import ExcludedTensor
 
 __all__ = [
@@ -24,7 +21,6 @@ __all__ = [
     "ComputationalConfig",
     "DefocusSearchConfig",
     "ExcludedTensor",
-    "MatchTemplateManager",
     "MatchTemplateResult",
     "OpticsGroup",
     "OrientationSearchConfig",
@@ -32,7 +28,5 @@ __all__ = [
     "PhaseRandomizationFilterConfig",
     "PreprocessingFilters",
     "WhiteningFilterConfig",
-    "RefineTemplateManager",
     "ParticleStack",
-    "OptimizeTemplateManager",
 ]
