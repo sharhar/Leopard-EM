@@ -15,7 +15,7 @@ from leopard_em.pydantic_models.formats import REFINED_DF_COLUMN_ORDER
 from leopard_em.pydantic_models.orientation_search import ConstrainedOrientationConfig
 from leopard_em.pydantic_models.particle_stack import ParticleStack
 from leopard_em.pydantic_models.types import BaseModel2DTM, ExcludedTensor
-from leopard_em.utils.data_io import load_mrc_image, load_mrc_volume
+from leopard_em.utils.data_io import load_mrc_volume, read_mrc_to_numpy
 
 
 class ConstrainedSearchManager(BaseModel2DTM):
@@ -41,8 +41,6 @@ class ConstrainedSearchManager(BaseModel2DTM):
         What computational resources to allocate for the program.
     template_volume : ExcludedTensor
         The template volume tensor (excluded from serialization).
-    match_tm_variance : ExcludedTensor
-        The match template variance tensor (excluded from serialization).
 
     Methods
     -------
@@ -58,10 +56,10 @@ class ConstrainedSearchManager(BaseModel2DTM):
     model_config: ClassVar = ConfigDict(arbitrary_types_allowed=True)
 
     template_volume_path: str  # In df per-particle, but ensure only one reference
-    match_tm_variance_path: str
     centre_vector: list[float] = Field(default=[0.0, 0.0, 0.0])
 
-    particle_stack: ParticleStack
+    particle_stack_large: ParticleStack
+    particle_stack_small: ParticleStack
     defocus_refinement_config: DefocusSearchConfig
     orientation_refinement_config: ConstrainedOrientationConfig
     preprocessing_filters: PreprocessingFilters
@@ -77,7 +75,6 @@ class ConstrainedSearchManager(BaseModel2DTM):
         # Load the data from the MRC files
         if not skip_mrc_preloads:
             self.template_volume = load_mrc_volume(self.template_volume_path)
-            self.match_tm_variance = load_mrc_image(self.match_tm_variance_path)
 
     def make_backend_core_function_kwargs(self) -> dict[str, Any]:
         """Create the kwargs for the backend refine_template core function."""
@@ -85,8 +82,6 @@ class ConstrainedSearchManager(BaseModel2DTM):
 
         if self.template_volume is None:
             self.template_volume = load_mrc_volume(self.template_volume_path)
-        if self.match_tm_variance is None:
-            self.match_tm_variance = load_mrc_image(self.match_tm_variance_path)
         if not isinstance(self.template_volume, torch.Tensor):
             template = torch.from_numpy(self.template_volume)
         else:
@@ -94,7 +89,7 @@ class ConstrainedSearchManager(BaseModel2DTM):
 
         template_shape = template.shape[-2:]
 
-        particle_images = self.particle_stack.construct_image_stack(
+        particle_images = self.particle_stack_large.construct_image_stack(
             pos_reference="center",
             padding_value=0.0,
             handle_bounds="pad",
@@ -104,7 +99,7 @@ class ConstrainedSearchManager(BaseModel2DTM):
         particle_images_dft[..., 0, 0] = 0.0 + 0.0j  # Zero out DC component
 
         # Calculate and apply the filters for the particle image stack
-        filter_stack = self.particle_stack.construct_filter_stack(
+        filter_stack = self.particle_stack_large.construct_filter_stack(
             self.preprocessing_filters, output_shape=particle_images_dft.shape[-2:]
         )
         particle_images_dft *= filter_stack
@@ -141,19 +136,19 @@ class ConstrainedSearchManager(BaseModel2DTM):
         # The set of "best" euler angles from match template search
         # Check if refined angles exist, otherwise use the original angles
         phi = (
-            self.particle_stack["refined_phi"]
-            if "refined_phi" in self.particle_stack._df.columns
-            else self.particle_stack["phi"]
+            self.particle_stack_large["refined_phi"]
+            if "refined_phi" in self.particle_stack_large._df.columns
+            else self.particle_stack_large["phi"]
         )
         theta = (
-            self.particle_stack["refined_theta"]
-            if "refined_theta" in self.particle_stack._df.columns
-            else self.particle_stack["theta"]
+            self.particle_stack_large["refined_theta"]
+            if "refined_theta" in self.particle_stack_large._df.columns
+            else self.particle_stack_large["theta"]
         )
         psi = (
-            self.particle_stack["refined_psi"]
-            if "refined_psi" in self.particle_stack._df.columns
-            else self.particle_stack["psi"]
+            self.particle_stack_large["refined_psi"]
+            if "refined_psi" in self.particle_stack_large._df.columns
+            else self.particle_stack_large["psi"]
         )
 
         euler_angles = torch.stack(
@@ -178,22 +173,19 @@ class ConstrainedSearchManager(BaseModel2DTM):
         euler_angle_offsets = self.orientation_refinement_config.euler_angles_offsets
 
         # The best defocus values for each particle (+ astigmatism)
-        defocus_u = self.particle_stack.absolute_defocus_u
+        defocus_u = self.particle_stack_large.absolute_defocus_u
         defocus_u = defocus_u - new_z_diffs
-        defocus_v = self.particle_stack.absolute_defocus_v
+        defocus_v = self.particle_stack_large.absolute_defocus_v
         defocus_v = defocus_v - new_z_diffs
-        defocus_angle = torch.tensor(self.particle_stack["astigmatism_angle"])
+        defocus_angle = torch.tensor(self.particle_stack_large["astigmatism_angle"])
 
         # The relative defocus values to search over
         defocus_offsets = self.defocus_refinement_config.defocus_values
 
-        # The relative pixel size values to search over
-        pixel_size_offsets = self.pixel_size_refinement_config.pixel_size_values
-
         # Keyword arguments for the CTF filter calculation call
         # NOTE: We currently enforce the parameters (other than the defocus values) are
         # all the same. This could be updated in the future...
-        part_stk = self.particle_stack
+        part_stk = self.particle_stack_large
         assert part_stk["voltage"].nunique() == 1
         assert part_stk["spherical_aberration"].nunique() == 1
         assert part_stk["amplitude_contrast_ratio"].nunique() == 1
@@ -212,6 +204,21 @@ class ConstrainedSearchManager(BaseModel2DTM):
             "fftshift": False,
         }
 
+        # Ger corr mean and variance
+        # I want positions of large but vals from small
+        part_stk["correlation_average_path"][:] = self.particle_stack_small[
+            "correlation_average_path"
+        ][0]
+        part_stk["correlation_variance_path"][:] = self.particle_stack_small[
+            "correlation_variance_path"
+        ][0]
+        corr_mean_stack = part_stk.construct_cropped_statistic_stack(
+            "correlation_average"
+        )
+        corr_std_stack = (
+            part_stk.construct_cropped_statistic_stack("correlation_variance") ** 0.5
+        )  # var to std
+
         return {
             "particle_stack_dft": particle_images_dft,
             "template_dft": template_dft,
@@ -221,7 +228,8 @@ class ConstrainedSearchManager(BaseModel2DTM):
             "defocus_v": defocus_v,
             "defocus_angle": defocus_angle,
             "defocus_offsets": defocus_offsets,
-            "pixel_size_offsets": pixel_size_offsets,
+            "corr_mean": corr_mean_stack,
+            "corr_std": corr_std_stack,
             "ctf_kwargs": ctf_kwargs,
             "projective_filters": projective_filters,
             "device": device_list,  # Pass all devices to core_refine_template
@@ -295,31 +303,13 @@ class ConstrainedSearchManager(BaseModel2DTM):
             The result of the refine template program.
         """
         df_refined = self.particle_stack._df.copy()
-        refined_mip = result["refined_cross_correlation"]
-        refined_scaled_mip = refined_mip - df_refined["correlation_mean"]
-        refined_scaled_mip = refined_scaled_mip / np.sqrt(
-            df_refined["correlation_variance"]
-        )
 
+        # x and y positions
         pos_offset_y = result["refined_pos_y"]
         pos_offset_x = result["refined_pos_x"]
         pos_offset_y_ang = pos_offset_y * df_refined["pixel_size"]
         pos_offset_x_ang = pos_offset_x * df_refined["pixel_size"]
 
-        # Add the new columns to the DataFrame
-        df_refined["refined_mip"] = refined_mip
-        df_refined["refined_scaled_mip"] = refined_scaled_mip
-
-        df_refined["refined_psi"] = result["refined_euler_angles"][:, 2]
-        df_refined["refined_theta"] = result["refined_euler_angles"][:, 1]
-        df_refined["refined_phi"] = result["refined_euler_angles"][:, 0]
-
-        df_refined["refined_relative_defocus"] = (
-            result["refined_defocus_offset"] + df_refined["refined_relative_defocus"]
-        )
-        df_refined["refined_pixel_size"] = (
-            result["refined_pixel_size_offset"] + df_refined["pixel_size"]
-        )
         df_refined["refined_pos_y"] = pos_offset_y + df_refined["pos_y"]
         df_refined["refined_pos_x"] = pos_offset_x + df_refined["pos_x"]
         df_refined["refined_pos_y_img"] = pos_offset_y + df_refined["pos_y_img"]
@@ -330,6 +320,52 @@ class ConstrainedSearchManager(BaseModel2DTM):
         df_refined["refined_pos_x_img_angstrom"] = (
             pos_offset_x_ang + df_refined["pos_x_img_angstrom"]
         )
+
+        # Euler angles
+        df_refined["refined_psi"] = result["refined_euler_angles"][:, 2]
+        df_refined["refined_theta"] = result["refined_euler_angles"][:, 1]
+        df_refined["refined_phi"] = result["refined_euler_angles"][:, 0]
+
+        # Defocus
+        df_refined["refined_relative_defocus"] = (
+            result["refined_defocus_offset"] + df_refined["refined_relative_defocus"]
+        )
+
+        # Pixel size
+        df_refined["refined_pixel_size"] = (
+            result["refined_pixel_size_offset"] + df_refined["pixel_size"]
+        )
+
+        # Cross-correlation statistics
+        # Check if correlation statistic files exist and use them if available
+        # This allows for shifts during refinement
+        if (
+            "correlation_average_path" in df_refined.columns
+            and "correlation_variance_path" in df_refined.columns
+        ):
+            # Check if files exist for at least the first entry
+            if (
+                df_refined["correlation_average_path"].iloc[0]
+                and df_refined["correlation_variance_path"].iloc[0]
+            ):
+                # Load the correlation statistics from the files
+                correlation_average = read_mrc_to_numpy(
+                    df_refined["correlation_average_path"].iloc[0]
+                )
+                correlation_variance = read_mrc_to_numpy(
+                    df_refined["correlation_variance_path"].iloc[0]
+                )
+                df_refined["correlation_mean"] = correlation_average[
+                    df_refined["refined_pos_y"], df_refined["refined_pos_x"]
+                ]
+                df_refined["correlation_variance"] = correlation_variance[
+                    df_refined["refined_pos_y"], df_refined["refined_pos_x"]
+                ]
+
+        refined_mip = result["refined_cross_correlation"]
+        refined_scaled_mip = result["refined_z_score"]
+        df_refined["refined_mip"] = refined_mip
+        df_refined["refined_scaled_mip"] = refined_scaled_mip
 
         # Reorder the columns
         df_refined = df_refined.reindex(columns=REFINED_DF_COLUMN_ORDER)
