@@ -235,15 +235,15 @@ class ConstrainedSearchManager(BaseModel2DTM):
             "device": device_list,  # Pass all devices to core_refine_template
         }
 
-    def run_refine_template(
+    def run_constrained_search(
         self, output_dataframe_path: str, orientation_batch_size: int = 64
     ) -> None:
-        """Run the refine template program and saves the resultant DataFrame to csv.
+        """Run the constrained search program and saves the resultant DataFrame to csv.
 
         Parameters
         ----------
         output_dataframe_path : str
-            Path to save the refined particle data.
+            Path to save the constrained search results.
         orientation_batch_size : int
             Number of orientations to process at once. Defaults to 64.
         """
