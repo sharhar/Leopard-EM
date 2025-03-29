@@ -219,8 +219,8 @@ class ParticleStack(BaseModel2DTM):
 
             # with reference to the exact pixel of the statistic (top-left)
             # need to account for relative extracted box size
-            pos_y = self._df.loc[indexes, "pos_y"]
-            pos_x = self._df.loc[indexes, "pos_x"]
+            pos_y = self._df.loc[indexes, "pos_y"].to_numpy()
+            pos_x = self._df.loc[indexes, "pos_x"].to_numpy()
             pos_y = torch.tensor(pos_y)
             pos_x = torch.tensor(pos_x)
             pos_y -= (H - h) // 2

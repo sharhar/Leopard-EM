@@ -73,10 +73,11 @@ class RefineTemplateManager(BaseModel2DTM):
 
     def make_backend_core_function_kwargs(self) -> dict[str, Any]:
         """Create the kwargs for the backend refine_template core function."""
-        device = self.computational_config.gpu_devices
-        if len(device) > 1:
-            raise ValueError("Only single-device execution is currently supported.")
-        device = device[0]
+        device_list = self.computational_config.gpu_devices
+        # Remove the single device limitation
+        # if len(device) > 1:
+        #     raise ValueError("Only single-device execution is currently supported.")
+        # device = device[0]
 
         if self.template_volume is None:
             self.template_volume = load_mrc_volume(self.template_volume_path)
@@ -203,7 +204,7 @@ class RefineTemplateManager(BaseModel2DTM):
         }
 
         return {
-            "particle_stack_dft": particle_images_dft.to(device),
+            "particle_stack_dft": particle_images_dft,
             "template_dft": template_dft,
             "euler_angles": euler_angles,
             "euler_angle_offsets": euler_angle_offsets,
@@ -216,6 +217,7 @@ class RefineTemplateManager(BaseModel2DTM):
             "corr_std": corr_std_stack.to(device),
             "ctf_kwargs": ctf_kwargs,
             "projective_filters": projective_filters,
+            "device": device_list,  # Pass all devices to core_refine_template
         }
 
     def run_refine_template(
