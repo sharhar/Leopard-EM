@@ -98,9 +98,12 @@ class RefineTemplateManager(BaseModel2DTM):
         corr_mean_stack = self.particle_stack.construct_cropped_statistic_stack(
             "correlation_average"
         )
-        corr_std_stack = self.particle_stack.construct_cropped_statistic_stack(
-            "correlation_variance"
-        )
+        corr_std_stack = (
+            self.particle_stack.construct_cropped_statistic_stack(
+                "correlation_variance"
+            )
+            ** 0.5
+        )  # var to std
 
         particle_images_dft = torch.fft.rfftn(particle_images, dim=(-2, -1))
         particle_images_dft[..., 0, 0] = 0.0 + 0.0j  # Zero out DC component
@@ -213,8 +216,8 @@ class RefineTemplateManager(BaseModel2DTM):
             "defocus_angle": defocus_angle,
             "defocus_offsets": defocus_offsets,
             "pixel_size_offsets": pixel_size_offsets,
-            "corr_mean": corr_mean_stack.to(device),
-            "corr_std": corr_std_stack.to(device),
+            "corr_mean": corr_mean_stack,
+            "corr_std": corr_std_stack,
             "ctf_kwargs": ctf_kwargs,
             "projective_filters": projective_filters,
             "device": device_list,  # Pass all devices to core_refine_template
@@ -348,10 +351,7 @@ class RefineTemplateManager(BaseModel2DTM):
                 ]
 
         refined_mip = result["refined_cross_correlation"]
-        refined_scaled_mip = refined_mip - df_refined["correlation_mean"]
-        refined_scaled_mip = refined_scaled_mip / np.sqrt(
-            df_refined["correlation_variance"]
-        )
+        refined_scaled_mip = result["refined_z_score"]
         df_refined["refined_mip"] = refined_mip
         df_refined["refined_scaled_mip"] = refined_scaled_mip
 
