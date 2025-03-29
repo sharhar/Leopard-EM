@@ -108,12 +108,12 @@ class OrientationSearchConfig(BaseModel2DTM):
         return get_uniform_euler_angles(
             in_plane_step=self.in_plane_step,
             out_of_plane_step=self.out_of_plane_step,
-            psi_min=self.psi_min,
-            psi_max=self.psi_max,
-            theta_min=self.theta_min,
-            theta_max=self.theta_max,
             phi_min=self.phi_min,
             phi_max=self.phi_max,
+            theta_min=self.theta_min,
+            theta_max=self.theta_max,
+            psi_min=self.psi_min,
+            psi_max=self.psi_max,
             base_grid_method=self.base_grid_method,
         )
 
@@ -173,20 +173,22 @@ class RefineOrientationConfig(BaseModel2DTM):
         if not self.enabled:
             return torch.zeros((1, 3))
 
-        psi_values = torch.arange(
-            -self.in_plane_angular_step_coarse,
-            self.in_plane_angular_step_coarse + EPS,
-            self.in_plane_angular_step_fine,
+        phi_values = torch.arange(
+            -self.out_of_plane_angular_step_coarse,
+            self.out_of_plane_angular_step_coarse + EPS,
+            self.out_of_plane_angular_step_fine,
         )
+
         theta_values = torch.arange(
             0.0,
             self.out_of_plane_angular_step_coarse + EPS,
             self.out_of_plane_angular_step_fine,
         )
-        phi_values = torch.arange(
-            -self.out_of_plane_angular_step_coarse,
-            self.out_of_plane_angular_step_coarse + EPS,
-            self.out_of_plane_angular_step_fine,
+
+        psi_values = torch.arange(
+            -self.in_plane_angular_step_coarse,
+            self.in_plane_angular_step_coarse + EPS,
+            self.in_plane_angular_step_fine,
         )
 
         grid = torch.meshgrid(phi_values, theta_values, psi_values, indexing="ij")
@@ -252,20 +254,22 @@ class ConstrainedOrientationConfig(BaseModel2DTM):
         if not self.enabled:
             return torch.zeros((1, 3))
 
-        psi_values = torch.arange(
-            -self.in_plane_angular_step_coarse,
-            self.in_plane_angular_step_coarse + EPS,
-            self.in_plane_angular_step_fine,
-        )
-        theta_values = torch.arange(
-            0.0,
-            self.out_of_plane_angular_step_coarse + EPS,
-            self.out_of_plane_angular_step_fine,
-        )
         phi_values = torch.arange(
-            -self.out_of_plane_angular_step_coarse,
-            self.out_of_plane_angular_step_coarse + EPS,
-            self.out_of_plane_angular_step_fine,
+            -self.phi_min,
+            self.phi_max + EPS,
+            self.out_of_plane_step,
+        )
+
+        theta_values = torch.arange(
+            self.theta_min,
+            self.theta_max + EPS,
+            self.out_of_plane_step,
+        )
+
+        psi_values = torch.arange(
+            -self.psi_min,
+            self.psi_max + EPS,
+            self.in_plane_step,
         )
 
         grid = torch.meshgrid(phi_values, theta_values, psi_values, indexing="ij")
