@@ -7,6 +7,7 @@ import roma
 import torch
 from pydantic import ConfigDict, Field
 
+from leopard_em.analysis.pick_match_template_peaks import gaussian_noise_zscore_cutoff
 from leopard_em.backend.core_refine_template import core_refine_template
 from leopard_em.pydantic_models.computational_config import ComputationalConfig
 from leopard_em.pydantic_models.correlation_filters import PreprocessingFilters
@@ -25,8 +26,6 @@ class ConstrainedSearchManager(BaseModel2DTM):
     ----------
     template_volume_path : str
         Path to the template volume MRC file.
-    match_tm_variance_path : str
-        Path to the match template variance MRC file.
     centre_vector : list[float]
         The centre vector of the template volume.
     particle_stack_large : ParticleStack
@@ -43,6 +42,8 @@ class ConstrainedSearchManager(BaseModel2DTM):
         What computational resources to allocate for the program.
     template_volume : ExcludedTensor
         The template volume tensor (excluded from serialization).
+    false_positives : float
+        The number of false positives to allow per particle.
 
     Methods
     -------
@@ -67,9 +68,10 @@ class ConstrainedSearchManager(BaseModel2DTM):
     preprocessing_filters: PreprocessingFilters
     computational_config: ComputationalConfig
 
+    false_positives: float = 0.01  # Default to 1 per 100 particles
+
     # Excluded tensors
     template_volume: ExcludedTensor
-    match_tm_variance: ExcludedTensor
 
     def __init__(self, skip_mrc_preloads: bool = False, **data: Any):
         super().__init__(**data)
@@ -176,8 +178,8 @@ class ConstrainedSearchManager(BaseModel2DTM):
         ]  # This is now a tensor with shape [batch_size]
 
         # The relative Euler angle offsets to search over
-        euler_angle_offsets = self.orientation_refinement_config.euler_angles_offsets
-        euler_angle_offsets = torch.zeros((1, 3))
+        euler_angle_offsets, _ = self.orientation_refinement_config.euler_angles_offsets
+        # euler_angle_offsets = torch.zeros((1, 3))
 
         # The best defocus values for each particle (+ astigmatism)
         defocus_u = self.particle_stack_large.absolute_defocus_u
@@ -384,6 +386,30 @@ class ConstrainedSearchManager(BaseModel2DTM):
 
         # Save the refined DataFrame to disk
         df_refined.to_csv(output_dataframe_path)
+
+        # Save a second dataframe
+        # I also want the original user input offsets back somewhere
+        # This one will have only those above threshold
+        num_projections = (
+            self.defocus_refinement_config.defocus_values.shape[0]
+            * self.orientation_refinement_config.euler_angles_offsets.shape[0]
+        )
+        num_px = (
+            self.particle_stack_large.extracted_box_size[0]
+            * self.particle_stack_large.extracted_box_size[1]
+        )
+        num_correlations = num_projections * num_px
+        threshold = gaussian_noise_zscore_cutoff(num_correlations, self.false_positives)
+        print(
+            f"Threshold: {threshold} which gives {self.false_positives} "
+            "false positives per particle"
+        )
+        df_refined_above_threshold = df_refined[
+            df_refined["refined_scaled_mip"] > threshold
+        ]
+        df_refined_above_threshold.to_csv(
+            output_dataframe_path.replace(".csv", "_above_threshold.csv")
+        )
 
     # @classmethod
     # def from_dataframe(cls, dataframe: pd.DataFrame) -> "RefineTemplateManager":

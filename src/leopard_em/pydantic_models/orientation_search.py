@@ -255,7 +255,7 @@ class ConstrainedOrientationConfig(BaseModel2DTM):
             return torch.zeros((1, 3))
 
         phi_values = torch.arange(
-            -self.phi_min,
+            self.phi_min,
             self.phi_max + EPS,
             self.out_of_plane_step,
         )
@@ -267,7 +267,7 @@ class ConstrainedOrientationConfig(BaseModel2DTM):
         )
 
         psi_values = torch.arange(
-            -self.psi_min,
+            self.psi_min,
             self.psi_max + EPS,
             self.in_plane_step,
         )
@@ -294,8 +294,7 @@ class ConstrainedOrientationConfig(BaseModel2DTM):
         )
 
         # Convert back to Euler angles
-        euler_angles_offsets = roma.rotmat_to_euler(
+        euler_angles_offsets_rotated = roma.rotmat_to_euler(
             "ZYZ", rot_matrix_batch, degrees=True
         ).to(torch.float32)
-
-        return euler_angles_offsets
+        return euler_angles_offsets_rotated, euler_angles_offsets
