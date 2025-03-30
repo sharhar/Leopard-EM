@@ -238,6 +238,153 @@ class ConstrainedOrientationConfig(BaseModel2DTM):
     psi_max: float = 360.0
 
     @property
+    def euler_angles_offsets(self) -> tuple[torch.Tensor, torch.Tensor]:
+        """Return the Euler angle offsets to search over.
+
+        For rotation along a specific axis, this primarily constrains to rotations
+        around that axis using phi parameter, but also allows small variations in
+        theta and psi if specified by the user.
+
+        The rotation_axis_euler_angles field should contain [phi, theta, 0],
+        where phi and theta define the direction of the rotation axis.
+        The third value (psi) is ignored as it doesn't affect the axis direction.
+
+        Returns
+        -------
+        tuple[torch.Tensor, torch.Tensor]
+            A tuple containing:
+            1. A tensor of shape (N, 3) representing the rotated Euler angles
+            2. The original Euler angle grid used to generate the rotated angles
+        """
+        if not self.enabled:
+            return torch.zeros((1, 3)), torch.zeros((1, 3))
+
+        # If rotation axis is [0,0,0], perform a regular grid search
+        if all(angle == 0.0 for angle in self.rotation_axis_euler_angles[:2]):
+            phi_values = torch.arange(
+                self.phi_min,
+                self.phi_max + EPS,
+                self.out_of_plane_step,
+            )
+
+            theta_values = torch.arange(
+                self.theta_min,
+                self.theta_max + EPS,
+                self.out_of_plane_step,
+            )
+
+            psi_values = torch.arange(
+                self.psi_min,
+                self.psi_max + EPS,
+                self.in_plane_step,
+            )
+
+            grid = torch.meshgrid(phi_values, theta_values, psi_values, indexing="ij")
+            euler_angles_offsets = torch.stack(grid, dim=-1).reshape(-1, 3)
+            return euler_angles_offsets, euler_angles_offsets
+
+        # For a constrained search around a specific rotation axis
+        else:
+            # Create angle ranges for primary rotation and small adjustments
+            phi_values = torch.arange(
+                self.phi_min,
+                self.phi_max + EPS,
+                self.out_of_plane_step,
+            )
+
+            # Only create theta values if a range is specified (non-zero range)
+            if self.theta_min != self.theta_max:
+                theta_values = torch.arange(
+                    self.theta_min,
+                    self.theta_max + EPS,
+                    self.out_of_plane_step,
+                )
+            else:
+                theta_values = torch.tensor([0.0])
+
+            # Only create psi values if a range is specified (non-zero range)
+            if self.psi_min != self.psi_max:
+                psi_values = torch.arange(
+                    self.psi_min,
+                    self.psi_max + EPS,
+                    self.in_plane_step,
+                )
+            else:
+                psi_values = torch.tensor([0.0])
+
+            # Extract the rotation axis directly from phi and theta
+            # (ignoring psi as it doesn't affect the axis direction)
+            # 2. Define the rotation axis in Cartesian coordinates
+
+            axis_phi, axis_theta = self.rotation_axis_euler_angles[:2]
+
+            # Convert from degrees to radians
+            axis_phi_tensor = torch.tensor(axis_phi, dtype=torch.float32)
+            axis_theta_tensor = torch.tensor(axis_theta, dtype=torch.float32)
+            axis_phi_rad = axis_phi_tensor * torch.pi / 180.0
+            axis_theta_rad = axis_theta_tensor * torch.pi / 180.0
+
+            # Convert to Cartesian coordinates (unit vector)
+            axis = torch.tensor(
+                [
+                    torch.sin(axis_theta_rad) * torch.cos(axis_phi_rad),
+                    torch.sin(axis_theta_rad) * torch.sin(axis_phi_rad),
+                    torch.cos(axis_theta_rad),
+                ]
+            )
+
+            # Ensure the axis points in the positive z direction
+            if axis[2] < 0:
+                axis = -axis
+                # When flipping the axis, we need to adjust phi by 180 degrees
+                # This ensures we're rotating in the same direction
+                axis_phi = (axis_phi + 180) % 360
+                axis_phi_tensor = torch.tensor(axis_phi, dtype=torch.float32)
+                axis_phi_rad = axis_phi_tensor * torch.pi / 180.0
+
+            # Create the grid of angles to search
+            grid = torch.meshgrid(phi_values, theta_values, psi_values, indexing="ij")
+            original_angles = torch.stack(grid, dim=-1).reshape(-1, 3)
+
+            # Now process each combination of angles
+            rotated_angles = []
+            for phi, theta, psi in original_angles:
+                # Convert to proper tensor if not already
+                phi_tensor = (
+                    phi.clone().detach()
+                    if isinstance(phi, torch.Tensor)
+                    else torch.tensor(phi, dtype=torch.float32)
+                )
+
+                # First apply rotation around the specified axis by phi
+                main_rotation = roma.rotvec_to_rotmat(
+                    axis * (phi_tensor * torch.pi / 180.0)
+                )
+
+                # Then apply small adjustments if specified (convert to matrices)
+                adjustment = roma.euler_to_rotmat(
+                    "ZYZ",
+                    torch.tensor([0.0, theta, psi], dtype=torch.float32),
+                    degrees=True,
+                )
+
+                # Combine rotations
+                combined_rotation = roma.rotmat_composition((main_rotation, adjustment))
+
+                # Convert back to Euler angles
+                euler_angles = roma.rotmat_to_euler(
+                    "ZYZ", combined_rotation, degrees=True
+                )
+                rotated_angles.append(euler_angles)
+
+            # Stack all results
+            euler_angles_rotated = torch.stack(rotated_angles)
+            print(euler_angles_rotated)
+            print(original_angles)
+            return euler_angles_rotated, original_angles
+
+    '''
+    @property
     def euler_angles_offsets(self) -> torch.Tensor:
         """Return the Euler angle offsets to search over.
 
@@ -298,3 +445,4 @@ class ConstrainedOrientationConfig(BaseModel2DTM):
             "ZYZ", rot_matrix_batch, degrees=True
         ).to(torch.float32)
         return euler_angles_offsets_rotated, euler_angles_offsets
+'''

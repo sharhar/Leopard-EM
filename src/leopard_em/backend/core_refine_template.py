@@ -188,6 +188,7 @@ def core_refine_template(
     particle_indices = torch.cat(
         [torch.from_numpy(r["particle_indices"]) for r in results]
     )
+    angle_idx = torch.cat([torch.from_numpy(r["angle_idx"]) for r in results])
     sort_indices = torch.argsort(particle_indices)
 
     refined_cross_correlation = refined_cross_correlation[sort_indices]
@@ -197,7 +198,7 @@ def core_refine_template(
     refined_pixel_size_offset = refined_pixel_size_offset[sort_indices]
     refined_pos_y = refined_pos_y[sort_indices]
     refined_pos_x = refined_pos_x[sort_indices]
-
+    angle_idx = angle_idx[sort_indices]
     # Offset refined_pos_{x,y} by the extracted box size (same as original)
     refined_pos_y -= (H - h + 1) // 2
     refined_pos_x -= (W - w + 1) // 2
@@ -210,6 +211,7 @@ def core_refine_template(
         "refined_pixel_size_offset": refined_pixel_size_offset,
         "refined_pos_y": refined_pos_y,
         "refined_pos_x": refined_pos_x,
+        "angle_idx": angle_idx,
     }
 
 
@@ -454,6 +456,9 @@ def _core_refine_template_single_gpu(
     refined_pos_x = torch.tensor(
         [stats["refined_pos_x"] for stats in refined_statistics], device=device
     )
+    angle_idx = torch.tensor(
+        [stats["angle_idx"] for stats in refined_statistics], device=device
+    )
 
     # Compose the previous Euler angles with the refined offsets
     refined_euler_angles = torch.empty((num_particles, 3), device=device)
@@ -499,6 +504,7 @@ def _core_refine_template_single_gpu(
         "refined_pos_y": refined_pos_y.cpu().numpy(),
         "refined_pos_x": refined_pos_x.cpu().numpy(),
         "particle_indices": particle_indices,  # Include original indices for sorting
+        "angle_idx": angle_idx.cpu().numpy(),
     }
 
     result_dict[device_id] = result
@@ -584,6 +590,7 @@ def _core_refine_template_single_thread(
     refined_phi_offset = 0.0
     refined_theta_offset = 0.0
     refined_psi_offset = 0.0
+    angle_idx = 0
     refined_defocus_offset = 0.0
     refined_pixel_size_offset = 0.0
     refined_pos_y = 0
@@ -696,6 +703,7 @@ def _core_refine_template_single_thread(
         "refined_pixel_size_offset": refined_pixel_size_offset,
         "refined_pos_y": refined_pos_y,
         "refined_pos_x": refined_pos_x,
+        "angle_idx": angle_idx,
     }
 
     return refined_stats

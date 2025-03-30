@@ -4,7 +4,6 @@ import math
 import sys
 
 import mmdf
-import roma
 import torch
 
 sys.argv = [
@@ -77,6 +76,9 @@ def extract_rotation_axis_angle(R: torch.Tensor) -> tuple[torch.Tensor, float]:
         axis_idx = torch.argmax(diag)
         axis = R[:, axis_idx].clone()
         axis = axis / torch.norm(axis)
+        # Ensure the axis points in the positive z direction
+        if axis[2] < 0:
+            axis = -axis
         return axis, angle
 
     # Normal case - extract axis
@@ -85,10 +87,16 @@ def extract_rotation_axis_angle(R: torch.Tensor) -> tuple[torch.Tensor, float]:
     # Normalize the axis
     axis = axis / torch.norm(axis)
 
+    # Ensure the axis points in the positive z direction
+    if axis[2] < 0:
+        axis = -axis
+        angle = -angle  # Also flip the angle when we flip the axis
+        angle = angle + 2 * math.pi if angle < 0 else angle  # Keep angle positive
+
     return axis, angle
 
 
-def calculate_axis_euler_angles(axis: torch.Tensor) -> tuple[float, float, float]:
+def calculate_axis_euler_angles(axis: torch.Tensor) -> tuple[float, float]:
     """Calculate Euler angles (ZYZ) that for the rotation axis.
 
     Attributes
@@ -98,7 +106,7 @@ def calculate_axis_euler_angles(axis: torch.Tensor) -> tuple[float, float, float
 
     Returns
     -------
-    tuple[float, float, float]
+    tuple[float, float]
         The Euler angles.
     """
     # Z-axis unit vector
@@ -106,51 +114,21 @@ def calculate_axis_euler_angles(axis: torch.Tensor) -> tuple[float, float, float
 
     # Handle special cases
     if torch.norm(axis - z_axis) < 1e-6:
-        return 0.0, 0.0, 0.0
+        return 0.0, 0.0  # Axis aligned with z-axis
 
     if torch.norm(axis + z_axis) < 1e-6:
-        return 0.0, 180.0, 0.0
+        return 0.0, 180.0  # Axis anti-aligned with z-axis
 
-    # Calculate rotation matrix that aligns Z-axis with the given axis
-    # First calculate the rotation axis (cross product)
-    align_axis = torch.linalg.cross(z_axis, axis)
+    # Calculate theta - angle from z-axis (polar angle)
+    cos_theta = torch.dot(axis, z_axis)
+    theta = torch.acos(torch.clamp(cos_theta, -1.0, 1.0)) * 180 / math.pi
 
-    # If align_axis is near zero, we need a different approach
-    if torch.norm(align_axis) < 1e-6:
-        return 0.0, 0.0, 0.0  # Z-axis is already aligned with rotation axis
-
-    align_axis = align_axis / torch.norm(align_axis)
-
-    # Calculate the angle between the axis and Z-axis (dot product)
-    cos_angle = torch.dot(axis, z_axis)
-    angle = torch.acos(torch.clamp(cos_angle, -1.0, 1.0))
-
-    # Build rotation matrix using Roma
-    # Create a rotation around the align_axis by the calculated angle
-    rotmat = roma.rotvec_to_rotmat(align_axis * angle)
-
-    # Convert rotation matrix to Euler angles using RoMA
-    euler_angles = roma.rotmat_to_euler(
-        convention="ZYZ", rotmat=rotmat, as_tuple=False, degrees=True
-    )
-
-    # Extract and normalize angles to requested ranges
-    phi = euler_angles[0].item() % 360
+    # Calculate phi - angle in xy plane (azimuthal angle)
+    phi = torch.atan2(axis[1], axis[0]) * 180 / math.pi
     if phi < 0:
-        phi += 360
+        phi += 360.0  # Convert to 0-360 range
 
-    theta = euler_angles[1].item() % 360
-    if theta > 180:
-        theta = 360 - theta
-        phi = (phi + 180) % 360
-        psi = (euler_angles[2].item() + 180) % 360
-    else:
-        psi = euler_angles[2].item() % 360
-
-    if psi < 0:
-        psi += 360
-
-    return phi, theta, psi
+    return phi, theta
 
 
 def main() -> None:
@@ -184,7 +162,7 @@ def main() -> None:
     rotation_axis, rotation_angle = extract_rotation_axis_angle(rotation_matrix)
 
     # Calculate Euler angles for the rotation axis
-    phi, theta, psi = calculate_axis_euler_angles(rotation_axis)
+    phi, theta = calculate_axis_euler_angles(rotation_axis)
 
     # Output results
     angle_degrees = float(rotation_angle) * 180 / math.pi
@@ -199,7 +177,6 @@ def main() -> None:
     print("\nEuler Angles of the rotation axis (ZYZ convention):")
     print(f"  Phi:   {phi:.2f} degrees (range 0-360)")
     print(f"  Theta: {theta:.2f} degrees (range 0-180)")
-    print(f"  Psi:   {psi:.2f} degrees (range 0-360)")
 
     # Write results to output file
     with open(output_file, "w") as f:
@@ -215,12 +192,30 @@ def main() -> None:
         )
         f.write(f"Angle: {angle_degrees:.6f} degrees\n\n")
 
-        f.write("## Euler Angles of the rotation axis (ZYZ convention)\n")
-        f.write(f"Phi: {phi:.6f} degrees\n")
-        f.write(f"Theta: {theta:.6f} degrees\n")
-        f.write(f"Psi: {psi:.6f} degrees\n")
+        f.write("## Axis Orientation Angles (for constrained search config)\n")
+        f.write(f"rotation_axis_euler_angles: [{phi:.2f}, {theta:.2f}, 0.0]\n\n")
+
+        f.write("## Example constrained search config\n")
+        f.write("orientation_refinement_config:\n")
+        f.write("  enabled: true\n")
+        f.write("  out_of_plane_step: 1.0   # Step size around the rotation axis\n")
+        f.write("  in_plane_step: 0.5       # Step size for fine adjustment angles\n")
+        f.write(f"  rotation_axis_euler_angles: [{phi:.2f}, {theta:.2f}, 0.0]\n")
+        suggested_range = min(30.0, max(10.0, angle_degrees / 2))
+        f.write(
+            f"  phi_min: -{suggested_range:.1f}  # Search range for around the axis\n"
+        )
+        f.write(f"  phi_max: {suggested_range:.1f}\n")
+        f.write(
+            "  theta_min: -2.0  # Small adjustments perpendicular to axis (optional)\n"
+        )
+        f.write("  theta_max: 2.0\n")
+        f.write("  psi_min: -2.0    # Small in-plane adjustments (optional)\n")
+        f.write("  psi_max: 2.0\n")
 
     print(f"Rotation analysis written to: {output_file}")
+    print("\nFor your constrained search config.yaml:")
+    print(f"rotation_axis_euler_angles: [{phi:.2f}, {theta:.2f}, 0.0]")
 
 
 if __name__ == "__main__":

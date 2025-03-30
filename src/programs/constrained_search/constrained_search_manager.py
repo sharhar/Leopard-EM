@@ -12,7 +12,7 @@ from leopard_em.backend.core_refine_template import core_refine_template
 from leopard_em.pydantic_models.computational_config import ComputationalConfig
 from leopard_em.pydantic_models.correlation_filters import PreprocessingFilters
 from leopard_em.pydantic_models.defocus_search import DefocusSearchConfig
-from leopard_em.pydantic_models.formats import REFINED_DF_COLUMN_ORDER
+from leopard_em.pydantic_models.formats import CONSTRAINED_DF_COLUMN_ORDER
 from leopard_em.pydantic_models.orientation_search import ConstrainedOrientationConfig
 from leopard_em.pydantic_models.particle_stack import ParticleStack
 from leopard_em.pydantic_models.types import BaseModel2DTM, ExcludedTensor
@@ -289,11 +289,11 @@ class ConstrainedSearchManager(BaseModel2DTM):
         if not self.orientation_refinement_config.enabled:
             orientation_batch_size = 1
         elif (
-            self.orientation_refinement_config.euler_angles_offsets.shape[0]
+            self.orientation_refinement_config.euler_angles_offsets[0].shape[0]
             < orientation_batch_size
         ):
             orientation_batch_size = (
-                self.orientation_refinement_config.euler_angles_offsets.shape[0]
+                self.orientation_refinement_config.euler_angles_offsets[0].shape[0]
             )
 
         result: dict[str, np.ndarray] = {}
@@ -335,9 +335,17 @@ class ConstrainedSearchManager(BaseModel2DTM):
         )
 
         # Euler angles
+        angle_idx = result["angle_idx"]
         df_refined["refined_psi"] = result["refined_euler_angles"][:, 2]
         df_refined["refined_theta"] = result["refined_euler_angles"][:, 1]
         df_refined["refined_phi"] = result["refined_euler_angles"][:, 0]
+
+        _, euler_angle_offsets = self.orientation_refinement_config.euler_angles_offsets
+        euler_angle_offsets_np = euler_angle_offsets.cpu().numpy()
+        # Store the matched original offsets in the dataframe
+        df_refined["original_offset_phi"] = euler_angle_offsets_np[angle_idx, 0]
+        df_refined["original_offset_theta"] = euler_angle_offsets_np[angle_idx, 1]
+        df_refined["original_offset_psi"] = euler_angle_offsets_np[angle_idx, 2]
 
         # Defocus
         df_refined["refined_relative_defocus"] = (
@@ -382,7 +390,7 @@ class ConstrainedSearchManager(BaseModel2DTM):
         df_refined["refined_scaled_mip"] = refined_scaled_mip
 
         # Reorder the columns
-        df_refined = df_refined.reindex(columns=REFINED_DF_COLUMN_ORDER)
+        df_refined = df_refined.reindex(columns=CONSTRAINED_DF_COLUMN_ORDER)
 
         # Save the refined DataFrame to disk
         df_refined.to_csv(output_dataframe_path)
@@ -392,7 +400,7 @@ class ConstrainedSearchManager(BaseModel2DTM):
         # This one will have only those above threshold
         num_projections = (
             self.defocus_refinement_config.defocus_values.shape[0]
-            * self.orientation_refinement_config.euler_angles_offsets.shape[0]
+            * self.orientation_refinement_config.euler_angles_offsets[0].shape[0]
         )
         num_px = (
             self.particle_stack_large.extracted_box_size[0]
@@ -407,6 +415,14 @@ class ConstrainedSearchManager(BaseModel2DTM):
         df_refined_above_threshold = df_refined[
             df_refined["refined_scaled_mip"] > threshold
         ]
+        # Also remove if refined_scaled_mip is inf or nan
+        df_refined_above_threshold = df_refined_above_threshold[
+            df_refined_above_threshold["refined_scaled_mip"] != np.inf
+        ]
+        df_refined_above_threshold = df_refined_above_threshold[
+            df_refined_above_threshold["refined_scaled_mip"] != np.nan
+        ]
+        # Save the above threshold dataframe
         df_refined_above_threshold.to_csv(
             output_dataframe_path.replace(".csv", "_above_threshold.csv")
         )
