@@ -664,9 +664,7 @@ def _core_refine_template_single_thread(
             max_z_score = z_score.max()
 
             # Find the maximum value and its indices
-            max_values, max_indices = torch.max(
-                cross_correlation.view(-1, crop_H, crop_W), dim=0
-            )
+            max_values, max_indices = torch.max(z_score.view(-1, crop_H, crop_W), dim=0)
             # Get the overall maximum value and its position
             max_value, max_pos = torch.max(max_values.view(-1), dim=0)
             y_idx, x_idx = max_pos // crop_W, max_pos % crop_W

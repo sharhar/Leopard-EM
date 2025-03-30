@@ -15,7 +15,7 @@ from leopard_em.pydantic_models.formats import REFINED_DF_COLUMN_ORDER
 from leopard_em.pydantic_models.orientation_search import ConstrainedOrientationConfig
 from leopard_em.pydantic_models.particle_stack import ParticleStack
 from leopard_em.pydantic_models.types import BaseModel2DTM, ExcludedTensor
-from leopard_em.utils.data_io import load_mrc_volume, read_mrc_to_numpy
+from leopard_em.utils.data_io import load_mrc_volume
 
 
 class ConstrainedSearchManager(BaseModel2DTM):
@@ -29,8 +29,10 @@ class ConstrainedSearchManager(BaseModel2DTM):
         Path to the match template variance MRC file.
     centre_vector : list[float]
         The centre vector of the template volume.
-    particle_stack : ParticleStack
-        Particle stack object containing particle data.
+    particle_stack_large : ParticleStack
+        Particle stack object containing particle data large particles.
+    particle_stack_small : ParticleStack
+        Particle stack object containing particle data small particles.
     defocus_refinement_config : DefocusSearchConfig
         Configuration for defocus refinement.
     orientation_refinement_config : RefineOrientationConfig
@@ -119,7 +121,7 @@ class ConstrainedSearchManager(BaseModel2DTM):
         particle_images_dft *= dimensionality**0.5
 
         # Calculate the filters applied to each template (besides CTF)
-        projective_filters = self.particle_stack.construct_filter_stack(
+        projective_filters = self.particle_stack_large.construct_filter_stack(
             self.preprocessing_filters,
             output_shape=(template_shape[-2], template_shape[-1] // 2 + 1),
         )
@@ -165,12 +167,17 @@ class ConstrainedSearchManager(BaseModel2DTM):
             self.centre_vector = torch.tensor(self.centre_vector, dtype=torch.float32)
         rotation_matrices = roma.rotvec_to_rotmat(
             roma.euler_to_rotvec(convention="ZYZ", angles=euler_angles)
-        )
+        ).to(torch.float32)
         rotated_vectors = rotation_matrices @ self.centre_vector
-        new_z_diffs = rotated_vectors[:, 2].item()
+
+        # Get z-component for each particle individually
+        new_z_diffs = rotated_vectors[
+            :, 2
+        ]  # This is now a tensor with shape [batch_size]
 
         # The relative Euler angle offsets to search over
         euler_angle_offsets = self.orientation_refinement_config.euler_angles_offsets
+        euler_angle_offsets = torch.zeros((1, 3))
 
         # The best defocus values for each particle (+ astigmatism)
         defocus_u = self.particle_stack_large.absolute_defocus_u
@@ -181,6 +188,9 @@ class ConstrainedSearchManager(BaseModel2DTM):
 
         # The relative defocus values to search over
         defocus_offsets = self.defocus_refinement_config.defocus_values
+
+        # No pixel size refinement
+        pixel_size_offsets = torch.tensor([0.0])
 
         # Keyword arguments for the CTF filter calculation call
         # NOTE: We currently enforce the parameters (other than the defocus values) are
@@ -206,10 +216,10 @@ class ConstrainedSearchManager(BaseModel2DTM):
 
         # Ger corr mean and variance
         # I want positions of large but vals from small
-        part_stk["correlation_average_path"][:] = self.particle_stack_small[
+        part_stk._df.loc[:, "correlation_average_path"] = self.particle_stack_small[
             "correlation_average_path"
         ][0]
-        part_stk["correlation_variance_path"][:] = self.particle_stack_small[
+        part_stk._df.loc[:, "correlation_variance_path"] = self.particle_stack_small[
             "correlation_variance_path"
         ][0]
         corr_mean_stack = part_stk.construct_cropped_statistic_stack(
@@ -228,6 +238,7 @@ class ConstrainedSearchManager(BaseModel2DTM):
             "defocus_v": defocus_v,
             "defocus_angle": defocus_angle,
             "defocus_offsets": defocus_offsets,
+            "pixel_size_offsets": pixel_size_offsets,
             "corr_mean": corr_mean_stack,
             "corr_std": corr_std_stack,
             "ctf_kwargs": ctf_kwargs,
@@ -302,7 +313,7 @@ class ConstrainedSearchManager(BaseModel2DTM):
         result : dict[str, np.ndarray]
             The result of the refine template program.
         """
-        df_refined = self.particle_stack._df.copy()
+        df_refined = self.particle_stack_large._df.copy()
 
         # x and y positions
         pos_offset_y = result["refined_pos_y"]
@@ -339,6 +350,7 @@ class ConstrainedSearchManager(BaseModel2DTM):
         # Cross-correlation statistics
         # Check if correlation statistic files exist and use them if available
         # This allows for shifts during refinement
+        """
         if (
             "correlation_average_path" in df_refined.columns
             and "correlation_variance_path" in df_refined.columns
@@ -361,7 +373,7 @@ class ConstrainedSearchManager(BaseModel2DTM):
                 df_refined["correlation_variance"] = correlation_variance[
                     df_refined["refined_pos_y"], df_refined["refined_pos_x"]
                 ]
-
+        """
         refined_mip = result["refined_cross_correlation"]
         refined_scaled_mip = result["refined_z_score"]
         df_refined["refined_mip"] = refined_mip

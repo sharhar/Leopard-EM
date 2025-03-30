@@ -295,7 +295,7 @@ class ConstrainedOrientationConfig(BaseModel2DTM):
 
         # Convert back to Euler angles
         euler_angles_offsets = roma.rotmat_to_euler(
-            "ZYZ", rot_matrix_batch, degrees=True, device=euler_angles_offsets.device
+            "ZYZ", rot_matrix_batch, degrees=True
         ).to(torch.float32)
 
         return euler_angles_offsets

@@ -165,8 +165,20 @@ class ParticleStack(BaseModel2DTM):
             img = load_mrc_image(img_path)
 
             # with reference to center pixel
-            pos_y = self._df.loc[indexes, "pos_y_img"].to_numpy()
-            pos_x = self._df.loc[indexes, "pos_x_img"].to_numpy()
+            pos_y = self._df.loc[
+                indexes,
+                "refined_pos_y_img"
+                if "refined_pos_y_img" in self._df.columns
+                else "pos_y_img",
+            ].to_numpy()
+            # Print whether refined positions are being used
+
+            pos_x = self._df.loc[
+                indexes,
+                "refined_pos_x_img"
+                if "refined_pos_x_img" in self._df.columns
+                else "pos_x_img",
+            ].to_numpy()
             pos_y = torch.tensor(pos_y)
             pos_x = torch.tensor(pos_x)
 
@@ -219,8 +231,14 @@ class ParticleStack(BaseModel2DTM):
 
             # with reference to the exact pixel of the statistic (top-left)
             # need to account for relative extracted box size
-            pos_y = self._df.loc[indexes, "pos_y"].to_numpy()
-            pos_x = self._df.loc[indexes, "pos_x"].to_numpy()
+            pos_y = self._df.loc[
+                indexes,
+                "refined_pos_y" if "refined_pos_y" in self._df.columns else "pos_y",
+            ].to_numpy()
+            pos_x = self._df.loc[
+                indexes,
+                "refined_pos_x" if "refined_pos_x" in self._df.columns else "pos_x",
+            ].to_numpy()
             pos_y = torch.tensor(pos_y)
             pos_x = torch.tensor(pos_x)
             pos_y -= (H - h) // 2
