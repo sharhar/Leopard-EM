@@ -68,7 +68,7 @@ class ConstrainedSearchManager(BaseModel2DTM):
     preprocessing_filters: PreprocessingFilters
     computational_config: ComputationalConfig
 
-    false_positives: float = 0.01  # Default to 1 per 100 particles
+    false_positives: float = 0.001  # Default to 1 per 1000 particles
 
     # Excluded tensors
     template_volume: ExcludedTensor

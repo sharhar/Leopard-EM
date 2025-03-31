@@ -61,6 +61,8 @@ class RefineTemplateManager(BaseModel2DTM):
     preprocessing_filters: PreprocessingFilters
     computational_config: ComputationalConfig
 
+    snr_threshold: float = 1.0
+
     # Excluded tensors
     template_volume: ExcludedTensor
 
@@ -360,6 +362,22 @@ class RefineTemplateManager(BaseModel2DTM):
 
         # Save the refined DataFrame to disk
         df_refined.to_csv(output_dataframe_path)
+
+        # Save the above threshold DataFrame to disk
+        df_refined_above_threshold = df_refined[
+            df_refined["refined_scaled_mip"] > self.snr_threshold
+        ]
+        # Also remove if refined_scaled_mip is inf or nan
+        df_refined_above_threshold = df_refined_above_threshold[
+            df_refined_above_threshold["refined_scaled_mip"] != np.inf
+        ]
+        df_refined_above_threshold = df_refined_above_threshold[
+            df_refined_above_threshold["refined_scaled_mip"] != np.nan
+        ]
+        # Save the above threshold dataframe
+        df_refined_above_threshold.to_csv(
+            output_dataframe_path.replace(".csv", "_above_threshold.csv")
+        )
 
     # @classmethod
     # def from_dataframe(cls, dataframe: pd.DataFrame) -> "RefineTemplateManager":
