@@ -1,6 +1,7 @@
 """Submodule for shared formats used in pydantic models."""
 
 MATCH_TEMPLATE_DF_COLUMN_ORDER = [
+    "particle_index",
     "mip",
     "scaled_mip",
     "correlation_mean",
@@ -40,6 +41,7 @@ MATCH_TEMPLATE_DF_COLUMN_ORDER = [
 ]
 
 REFINED_DF_COLUMN_ORDER = [
+    "particle_index",
     "mip",
     "scaled_mip",
     "refined_mip",
@@ -90,6 +92,7 @@ REFINED_DF_COLUMN_ORDER = [
 ]
 
 CONSTRAINED_DF_COLUMN_ORDER = [
+    "particle_index",
     "mip",
     "scaled_mip",
     "refined_mip",
