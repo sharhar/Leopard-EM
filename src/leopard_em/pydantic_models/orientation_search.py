@@ -379,8 +379,6 @@ class ConstrainedOrientationConfig(BaseModel2DTM):
 
             # Stack all results
             euler_angles_rotated = torch.stack(rotated_angles)
-            print(euler_angles_rotated)
-            print(original_angles)
             return euler_angles_rotated, original_angles
 
     '''

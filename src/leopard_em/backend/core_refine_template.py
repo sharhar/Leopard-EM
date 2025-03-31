@@ -590,7 +590,7 @@ def _core_refine_template_single_thread(
     refined_phi_offset = 0.0
     refined_theta_offset = 0.0
     refined_psi_offset = 0.0
-    angle_idx = 0
+    full_angle_idx = 0
     refined_defocus_offset = 0.0
     refined_pixel_size_offset = 0.0
     refined_pos_y = 0
@@ -691,7 +691,7 @@ def _core_refine_template_single_thread(
             refined_pixel_size_offset = pixel_size_offsets[px_idx]
             refined_pos_y = y_idx
             refined_pos_x = x_idx
-
+            full_angle_idx = angle_idx + start_idx
     # Return the refined statistics
     refined_stats = {
         "max_cc": max_cc,
@@ -703,7 +703,7 @@ def _core_refine_template_single_thread(
         "refined_pixel_size_offset": refined_pixel_size_offset,
         "refined_pos_y": refined_pos_y,
         "refined_pos_x": refined_pos_x,
-        "angle_idx": angle_idx,
+        "angle_idx": full_angle_idx,
     }
 
     return refined_stats

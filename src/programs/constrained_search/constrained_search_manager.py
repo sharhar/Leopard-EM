@@ -72,6 +72,7 @@ class ConstrainedSearchManager(BaseModel2DTM):
 
     # Excluded tensors
     template_volume: ExcludedTensor
+    zdiffs: ExcludedTensor = torch.tensor([0.0])
 
     def __init__(self, skip_mrc_preloads: bool = False, **data: Any):
         super().__init__(**data)
@@ -186,6 +187,8 @@ class ConstrainedSearchManager(BaseModel2DTM):
         defocus_u = defocus_u - new_z_diffs
         defocus_v = self.particle_stack_large.absolute_defocus_v
         defocus_v = defocus_v - new_z_diffs
+        # Store defocus values as instance attributes for later access
+        self.zdiffs = new_z_diffs
         defocus_angle = torch.tensor(self.particle_stack_large["astigmatism_angle"])
 
         # The relative defocus values to search over
@@ -349,7 +352,9 @@ class ConstrainedSearchManager(BaseModel2DTM):
 
         # Defocus
         df_refined["refined_relative_defocus"] = (
-            result["refined_defocus_offset"] + df_refined["refined_relative_defocus"]
+            result["refined_defocus_offset"]
+            + df_refined["refined_relative_defocus"]
+            - self.zdiffs.cpu().numpy()
         )
 
         # Pixel size
