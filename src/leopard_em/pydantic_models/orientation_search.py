@@ -7,8 +7,8 @@ import roma
 import torch
 from pydantic import Field
 from torch_so3 import (
-    angular_ranges,
     get_local_high_resolution_angles,
+    get_symmetry_ranges,
     get_uniform_euler_angles,
 )
 
@@ -52,25 +52,25 @@ class OrientationSearchConfig(BaseModel2DTM):
         Minimum value for the psi angle in degrees.
     psi_max : float
         Maximum value for the psi angle in degrees.
-    in_plane_angular_step : float
-        Angular step size for in-plane rotations in degrees. Must be greater
+    psi_step : float
+        Angular step size for psi in degrees. Must be greater
         than 0.
-    out_of_plane_angular_step : float
-        Angular step size for out-of-plane rotations in degrees. Must be
+    theta_step : float
+        Angular step size for theta in degrees. Must be
         greater than 0.
     """
 
     # TODO: Particle symmetry options
 
-    in_plane_step: Annotated[float, Field(ge=0.0)] = 1.5
-    out_of_plane_step: Annotated[float, Field(ge=0.0)] = 2.5
-    phi_min: float = 0.0
-    phi_max: float = 360.0
-    theta_min: float = 0.0
-    theta_max: float = 180.0
-    psi_min: float = 0.0
-    psi_max: float = 360.0
-    base_grid_method: Literal["uniform", "healpix", "basic"] = "uniform"
+    psi_step: Annotated[float, Field(ge=0.0)] = 1.5
+    theta_step: Annotated[float, Field(ge=0.0)] = 2.5
+    phi_min: float | None = None
+    phi_max: float | None = None
+    theta_min: float | None = None
+    theta_max: float | None = None
+    psi_min: float | None = None
+    psi_max: float | None = None
+    base_grid_method: Literal["uniform", "healpix", "cartesian"] = "uniform"
     symmetry: str = "C1"
 
     @property
@@ -84,34 +84,60 @@ class OrientationSearchConfig(BaseModel2DTM):
             search over. The columns represent the psi, theta, and phi angles
             respectively.
         """
-        if self.symmetry != "C1":
-            # If the user has not specified the ranges, use the symmetry group
-            if (
-                self.phi_min == 0.0
-                and self.phi_max == 360.0
-                and self.theta_min == 0.0
-                and self.theta_max == 180.0
-                and self.psi_min == 0.0
-                and self.psi_max == 360.0
-            ):
-                # Extract symmetry group and order
-                match = re.match(r"([A-Za-z]+)(\d*)", self.symmetry)
-                if not match:
-                    raise ValueError(f"Invalid symmetry format: {self.symmetry}")
-                sym_group = match.group(1)
-                sym_order = int(match.group(2)) if match.group(2) else 1
-                (
-                    self.phi_min,
-                    self.phi_max,
-                    self.theta_min,
-                    self.theta_max,
-                    self.psi_min,
-                    self.psi_max,
-                ) = angular_ranges(sym_group, sym_order)
+        # Get symmetry order and group
+        match = re.match(r"([A-Za-z]+)(\d*)", self.symmetry)
+        if not match:
+            raise ValueError(f"Invalid symmetry format: {self.symmetry}")
+        sym_group = match.group(1)
+        sym_order = int(match.group(2)) if match.group(2) else 1
+
+        # Check if all angle parameters are None
+        all_none = all(
+            x is None
+            for x in [
+                self.phi_min,
+                self.phi_max,
+                self.theta_min,
+                self.theta_max,
+                self.psi_min,
+                self.psi_max,
+            ]
+        )
+
+        # Check if all angle parameters are set (not None)
+        all_set = all(
+            x is not None
+            for x in [
+                self.phi_min,
+                self.phi_max,
+                self.theta_min,
+                self.theta_max,
+                self.psi_min,
+                self.psi_max,
+            ]
+        )
+
+        # Error if some are None and some are not
+        if not (all_none or all_set):
+            raise ValueError(
+                "Either all angle parameters (phi_min, phi_max, theta_min, theta_max, "
+                "psi_min, psi_max) must be set or all must be None"
+            )
+
+        # If all are None, use symmetry to set them
+        if all_none:
+            (
+                self.phi_min,
+                self.phi_max,
+                self.theta_min,
+                self.theta_max,
+                self.psi_min,
+                self.psi_max,
+            ) = get_symmetry_ranges(sym_group, sym_order)
 
         return get_uniform_euler_angles(
-            in_plane_step=self.in_plane_step,
-            out_of_plane_step=self.out_of_plane_step,
+            psi_step=self.psi_step,
+            theta_step=self.theta_step,
             phi_min=self.phi_min,
             phi_max=self.phi_max,
             theta_min=self.theta_min,
@@ -136,29 +162,38 @@ class RefineOrientationConfig(BaseModel2DTM):
     template_symmetry : str
         Symmetry group of the template. Default is 'C1'.
         Currently only 'C1' is supported.
-    in_plane_angular_step_coarse : float
-        Angular step size for in-plane rotations in degrees for previous, coarse search.
-        This corresponds to the 'OrientationSearchConfig.in_plane_angular_step' value
+    phi_step_coarse : float
+        Angular step size for phi in degrees for previous, coarse search.
+        This corresponds to the 'OrientationSearchConfig.phi_step' value
         for the match template program. Must be greater than or equal to 0.
-    in_plane_angular_step_fine : float
-        Angular step size for in-plane rotations in degrees for current, fine search.
+    phi_step_fine : float
+        Angular step size for phi in degrees for current, fine search.
         Must be greater than or equal to 0.
-    out_of_plane_angular_step_coarse : float
-        Angular step size for out-of-plane rotations in degrees for previous, coarse
+    theta_step_coarse : float
+        Angular step size for theta in degrees for previous, coarse
         search. This corresponds to the
-        'OrientationSearchConfig.out_of_plane_angular_step' value for the match template
+        'OrientationSearchConfig.theta_step' value for the match template
         program. Must be greater than or equal to 0.
-    out_of_plane_angular_step_fine : float
-        Angular step size for out-of-plane rotations in degrees for current, fine
-        search. Must be greater than or equal to 0.
+    theta_step_fine : float
+        Angular step size for theta in degrees for current, fine search.
+        Must be greater than or equal to 0.
+    psi_step_coarse : float
+        Angular step size for psi in degrees for previous, coarse search.
+        This corresponds to the 'OrientationSearchConfig.psi_step' value
+        for the match template program. Must be greater than or equal to 0.
+    psi_step_fine : float
+        Angular step size for psi in degrees for current, fine search.
+        Must be greater than or equal to 0.
 
     """
 
     enabled: bool = True
-    in_plane_angular_step_coarse: Annotated[float, Field(..., ge=0.0)] = 1.5
-    in_plane_angular_step_fine: Annotated[float, Field(..., ge=0.0)] = 0.1
-    out_of_plane_angular_step_coarse: Annotated[float, Field(..., ge=0.0)] = 2.5
-    out_of_plane_angular_step_fine: Annotated[float, Field(..., ge=0.0)] = 0.25
+    phi_step_coarse: Annotated[float, Field(..., ge=0.0)] = 2.5
+    phi_step_fine: Annotated[float, Field(..., ge=0.0)] = 0.25
+    theta_step_coarse: Annotated[float, Field(..., ge=0.0)] = 2.5
+    theta_step_fine: Annotated[float, Field(..., ge=0.0)] = 0.25
+    psi_step_coarse: Annotated[float, Field(..., ge=0.0)] = 1.5
+    psi_step_fine: Annotated[float, Field(..., ge=0.0)] = 0.1
     base_grid_method: Literal["uniform", "healpix", "basic"] = "uniform"
 
     @property
@@ -179,10 +214,12 @@ class RefineOrientationConfig(BaseModel2DTM):
             return torch.zeros((1, 3))
 
         return get_local_high_resolution_angles(
-            coarse_in_plane_step=self.in_plane_angular_step_coarse,
-            coarse_out_of_plane_step=self.out_of_plane_angular_step_coarse,
-            fine_in_plane_step=self.in_plane_angular_step_fine,
-            fine_out_of_plane_step=self.out_of_plane_angular_step_fine,
+            coarse_phi_step=self.phi_step_coarse,
+            coarse_theta_step=self.theta_step_coarse,
+            coarse_psi_step=self.psi_step_coarse,
+            fine_phi_step=self.phi_step_fine,
+            fine_theta_step=self.theta_step_fine,
+            fine_psi_step=self.psi_step_fine,
             base_grid_method=self.base_grid_method,
         )
 
@@ -194,11 +231,14 @@ class ConstrainedOrientationConfig(BaseModel2DTM):
     ----------
     enabled: bool
         Whether to enable constrained orientation search.
-    in_plane_step: float
-        Angular step size for in-plane rotations in degrees.
+    phi_step: float
+        Angular step size for phi in degrees.
         Must be greater than or equal to 0.
-    out_of_plane_step: float
-        Angular step size for out-of-plane rotations in degrees.
+    theta_step: float
+        Angular step size for theta in degrees.
+        Must be greater than or equal to 0.
+    psi_step: float
+        Angular step size for psi in degrees.
         Must be greater than or equal to 0.
     rotation_axis_euler_angles: list[float]
         List of Euler angles (phi, theta, psi) for the rotation axis.
@@ -217,8 +257,9 @@ class ConstrainedOrientationConfig(BaseModel2DTM):
     """
 
     enabled: bool = True
-    in_plane_step: float = 1.5
-    out_of_plane_step: float = 2.5
+    phi_step: float | None = None
+    theta_step: float = 2.5
+    psi_step: float = 1.5
     rotation_axis_euler_angles: list[float] = Field(default=[0.0, 0.0, 0.0])
     phi_min: float = 0.0
     phi_max: float = 360.0
@@ -246,8 +287,9 @@ class ConstrainedOrientationConfig(BaseModel2DTM):
             return torch.zeros((1, 3))
 
         euler_angles_offsets = get_uniform_euler_angles(
-            in_plane_step=self.in_plane_step,
-            out_of_plane_step=self.out_of_plane_step,
+            phi_step=self.phi_step,
+            theta_step=self.theta_step,
+            psi_step=self.psi_step,
             phi_min=self.phi_min,
             phi_max=self.phi_max,
             theta_min=self.theta_min,
