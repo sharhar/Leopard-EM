@@ -260,7 +260,9 @@ class ConstrainedOrientationConfig(BaseModel2DTM):
     phi_step: float | None = None
     theta_step: float = 2.5
     psi_step: float = 1.5
-    rotation_axis_euler_angles: list[float] = Field(default=[0.0, 0.0, 0.0])
+    rotation_axis_euler_angles: tuple[float, float, float] = Field(
+        default=[0.0, 0.0, 0.0]
+    )
     phi_min: float = 0.0
     phi_max: float = 360.0
     theta_min: float = 0.0
@@ -270,7 +272,7 @@ class ConstrainedOrientationConfig(BaseModel2DTM):
     base_grid_method: Literal["uniform", "healpix", "basic"] = "uniform"
 
     @property
-    def euler_angles_offsets(self) -> torch.Tensor:
+    def euler_angles_offsets(self) -> tuple[torch.Tensor, torch.Tensor]:
         """Return the Euler angle offsets to search over.
 
         Note that this method uses a uniform grid search which approximates SO(3) space
@@ -278,13 +280,15 @@ class ConstrainedOrientationConfig(BaseModel2DTM):
 
         Returns
         -------
-        torch.Tensor
-            A tensor of shape (N, 3) where N is the number of orientations to
-            search over. The columns represent the phi, theta, and psi angles,
-            respectively, in the 'ZYZ' convention.
+        tuple[torch.Tensor, torch.Tensor]
+            A tuple of two tensors of shape (N, 3) where N is the number of
+            orientations to search over. The first tensor represents the Euler
+            angles of the rotated template, and the second tensor represents
+            the Euler angles of the rotation axis. The columns represent the
+            phi, theta, and psi angles, respectively, in the 'ZYZ' convention.
         """
         if not self.enabled:
-            return torch.zeros((1, 3))
+            return torch.zeros((1, 3)), torch.zeros((1, 3))
 
         euler_angles_offsets = get_uniform_euler_angles(
             phi_step=self.phi_step,

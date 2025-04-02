@@ -1,7 +1,6 @@
-"""Calculates the centre vector between two PDB structures."""
+"""Calculates the center vector between two PDB structures."""
 
 import argparse
-import math
 
 import mmdf
 import numpy as np
@@ -84,16 +83,16 @@ def vector_to_euler(
     # For a direction vector, psi can be set to 0
     psi = torch.tensor(0.0)
 
-    # Convert to degrees
-    phi_deg = phi.item() * 180 / math.pi
-    theta_deg = theta.item() * 180 / math.pi
-    psi_deg = psi.item() * 180 / math.pi
+    # Convert to degrees using np.rad2deg
+    phi_deg = np.rad2deg(phi.item())
+    theta_deg = np.rad2deg(theta.item())
+    psi_deg = np.rad2deg(psi.item())
 
     return phi_deg, theta_deg, psi_deg
 
 
 def main() -> None:
-    """Main function to calculate the centre vector between two PDB structures."""
+    """Main function to calculate the center vector between two PDB structures."""
     parser = argparse.ArgumentParser(
         description="Calculate vector between PDB structures"
     )
@@ -166,7 +165,8 @@ def main() -> None:
     defocus_results = []
 
     for i, euler in enumerate(rotations_tensor):
-        phi_rad, theta_rad, psi_rad = (angle * math.pi / 180 for angle in euler)
+        # Convert degrees to radians using np.deg2rad
+        phi_rad, theta_rad, psi_rad = (np.deg2rad(angle.item()) for angle in euler)
 
         # Create rotation matrix using RoMA (ZYZ intrinsic convention)
         euler_angles = torch.tensor([phi_rad, theta_rad, psi_rad])

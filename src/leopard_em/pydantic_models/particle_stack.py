@@ -128,6 +128,10 @@ class ParticleStack(BaseModel2DTM):
     ) -> torch.Tensor:
         """Construct stack of images from the DataFrame (updates image_stack in-place).
 
+        This method preferentially selects refined position columns (refined_pos_x_img,
+        refined_pos_y_img) if they are present in the DataFrame, falling back to
+        unrefined positions (pos_x_img, pos_y_img) otherwise.
+
         Parameters
         ----------
         pos_reference : Literal["center", "top-left"], optional
@@ -165,20 +169,21 @@ class ParticleStack(BaseModel2DTM):
             img = load_mrc_image(img_path)
 
             # with reference to center pixel
-            pos_y = self._df.loc[
-                indexes,
+            # Determine which position columns to use (refined if available)
+            y_col = (
                 "refined_pos_y_img"
                 if "refined_pos_y_img" in self._df.columns
-                else "pos_y_img",
-            ].to_numpy()
-            # Print whether refined positions are being used
-
-            pos_x = self._df.loc[
-                indexes,
+                else "pos_y_img"
+            )
+            x_col = (
                 "refined_pos_x_img"
                 if "refined_pos_x_img" in self._df.columns
-                else "pos_x_img",
-            ].to_numpy()
+                else "pos_x_img"
+            )
+
+            pos_y = self._df.loc[indexes, y_col].to_numpy()
+            pos_x = self._df.loc[indexes, x_col].to_numpy()
+
             pos_y = torch.tensor(pos_y)
             pos_x = torch.tensor(pos_x)
 
