@@ -16,8 +16,8 @@ match_tm_variance_path: /some/path/to/output_correlation_variance.mrc # This is 
 centre_vector: [53.658134, 82.582367, 47.170788] # Vector from large particle to small particle in Angstroms
 orientation_refinement_config:
   enabled: true
-  out_of_plane_step: 1.0   # theta and phi in degrees
-  in_plane_step:     1.0   # psi in degrees
+  psi_step: 1.0   # psi in degrees
+  theta_step: 1.0   # theta and phi in degrees
   rotation_axis_euler_angles: [0.0, 0.0, 0.0] # This is the rotation axis
   phi_min: -12.0
   phi_max: 12.0
