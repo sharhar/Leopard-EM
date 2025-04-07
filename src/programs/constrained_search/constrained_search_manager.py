@@ -383,7 +383,12 @@ class ConstrainedSearchManager(BaseModel2DTM):
         )
         num_px = (
             self.particle_stack_large.extracted_box_size[0]
-            * self.particle_stack_large.extracted_box_size[1]
+            - self.particle_stack_large.original_template_size[0]
+            + 1
+        ) * (
+            self.particle_stack_large.extracted_box_size[1]
+            - self.particle_stack_large.original_template_size[1]
+            + 1
         )
         num_correlations = num_projections * num_px
         threshold = gaussian_noise_zscore_cutoff(num_correlations, self.false_positives)
