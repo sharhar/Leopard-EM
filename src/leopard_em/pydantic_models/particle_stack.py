@@ -284,6 +284,11 @@ class ParticleStack(BaseModel2DTM):
         return filter_stack
 
     @property
+    def df_columns(self) -> list[str]:
+        """Get the columns of the DataFrame."""
+        return list(self._df.columns.tolist())
+
+    @property
     def num_particles(self) -> int:
         """Get the number of particles in the stack."""
         return len(self._df)
