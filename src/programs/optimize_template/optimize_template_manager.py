@@ -341,12 +341,16 @@ class OptimizeTemplateManager(BaseModel2DTM):
         float
             The mean SNR of the template.
         """
-        df_refined = self.particle_stack._df.copy()
-        refined_mip = result["refined_cross_correlation"]
-        refined_scaled_mip = refined_mip - df_refined["correlation_mean"]
-        refined_scaled_mip = refined_scaled_mip / np.sqrt(
-            df_refined["correlation_variance"]
-        )
+        # df_refined = self.particle_stack._df.copy()
+        # refined_mip = result["refined_cross_correlation"]
+        # refined_scaled_mip = refined_mip - df_refined["correlation_mean"]
+        # refined_scaled_mip = refined_scaled_mip / np.sqrt(
+        #    df_refined["correlation_variance"]
+        # )
+        refined_scaled_mip = result["refined_z_score"]
+        # If more than 10 values, keep only the top 10 highest SNRs
+        if len(refined_scaled_mip) > 10:
+            refined_scaled_mip = np.sort(refined_scaled_mip)[-10:]
         mean_snr = float(refined_scaled_mip.mean())
         print(
             f"max snr: {refined_scaled_mip.max()}, min snr: {refined_scaled_mip.min()}"
