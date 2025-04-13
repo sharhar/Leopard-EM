@@ -78,6 +78,15 @@ class OptimizeTemplateManager(BaseModel2DTM):
             handle_bounds="pad",
             padding_mode="constant",
         )
+        corr_mean_stack = self.particle_stack.construct_cropped_statistic_stack(
+            "correlation_average"
+        )
+        corr_std_stack = (
+            self.particle_stack.construct_cropped_statistic_stack(
+                "correlation_variance"
+            )
+            ** 0.5
+        )  # var to std
         particle_images_dft = torch.fft.rfftn(particle_images, dim=(-2, -1))
         particle_images_dft[..., 0, 0] = 0.0 + 0.0j  # Zero out DC component
 
@@ -189,6 +198,8 @@ class OptimizeTemplateManager(BaseModel2DTM):
             "defocus_angle": defocus_angle,
             "defocus_offsets": defocus_offsets,
             "pixel_size_offsets": pixel_size_offsets,
+            "corr_mean": corr_mean_stack,
+            "corr_std": corr_std_stack,
             "ctf_kwargs": ctf_kwargs,
             "projective_filters": projective_filters,
             "device": device_list,  # Pass all devices to core_refine_template
