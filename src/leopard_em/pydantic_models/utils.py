@@ -149,7 +149,7 @@ def calculate_ctf_filter_stack_full_args(
 
     # Ensure defocus and astigmatism have a batch dimension so Cs and defocus can be
     # interleaved correctly
-    if defocus.dim() == 1:
+    if defocus.dim() == 0:
         defocus = defocus.unsqueeze(0)
 
     # Loop over spherical aberrations one at a time and collect results
