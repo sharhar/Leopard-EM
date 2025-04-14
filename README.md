@@ -27,12 +27,12 @@ pip install leopard-em
 ### Template Matching
 
 Inputs to the template matching programs can be configured through a YAML file or a set of Python objects.
-The [example YAML configuration file](match_template_example_config.yaml) acts as a template for configuring your own runs with more details on configuring and running 2DTM on the [programs section of the documentation](https://lucaslab-berkeley.github.io/Leopard-EM/programs/match_template/).
-We also provide a default [`match_template.py`](/src/programs/match_template.py) script with some additional detail, but a compacted version of this script is shown below.
+The [example YAML configuration file](programs/match_template/match_template_example_config.yaml) acts as a template for configuring your own runs with more details on configuring and running 2DTM on the [programs section of the documentation](https://lucaslab-berkeley.github.io/Leopard-EM/programs/match_template/).
+We also provide a default [`match_template.py`](programs/match_template/run_match_template.py) script with some additional detail, but a compacted version of this script is shown below.
 Once configured with the proper paths, parameters, etc., the program can run as follows:
 
 ```python
-from programs.match_template import MatchTemplateManager
+from leopard_em.pydantic_models import MatchTemplateManager
 
 YAML_CONFIG_PATH = "/path/to/match-template-configuration.yaml"
 DATAFRAME_OUTPUT_PATH = "/path/to/match-template-results.csv"
@@ -54,12 +54,12 @@ if __name__ == "__main__":
 
 Particle orientations and locations can be refined using the `RefineTemplateManager` objects after a template matching run.
 The `RefineTemplateManager` is similarly a set of Pydantic models capable of configuration via YAML files.
-The [example YAML configuration file](refine_template_example_config.yaml) acts as a template for configuring your own runs.
-We also provide a default [`refine_template.py`](/src/programs/refine_template.py) script with some additional detail, but a compacted version of this script is shown below.
+The [example YAML configuration file](programs/refine_template/refine_template_example_config.yaml) acts as a template for configuring your own runs.
+We also provide a default [`refine_template.py`](programs/refine_template/run_refine_template.py) script with some additional detail, but a compacted version of this script is shown below.
 Once configured with the proper paths, parameters, etc., the program can run as follows:
 
 ```python
-from programs.refine_template import RefineTemplateManager
+from leopard_em.pydantic_models import RefineTemplateManager
 
 YAML_CONFIG_PATH = "/path/to/refine-template-configuration.yaml"
 DATAFRAME_OUTPUT_PATH = "/path/to/refine-template-results.csv"
