@@ -151,7 +151,6 @@ class PhaseRandomizationFilterConfig(BaseModel2DTM):
             return torch.ones(output_shape, dtype=ref_img_rfft.dtype)
 
         # Fix for underlying shape bug in torch_fourier_filter
-        # TODO: fix this in package
         output_shape = output_shape[:-1] + (2 * (output_shape[-1] - 1),)
 
         return phase_randomize(

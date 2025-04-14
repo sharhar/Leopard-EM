@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from programs.match_template import MatchTemplateManager
+from leopard_em.pydantic_models import MatchTemplateManager
 
 # The config file for the match template
 MATCH_YAML_PATH = "match_template_manager_example_crop.yaml"

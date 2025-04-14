@@ -222,9 +222,9 @@ class MatchTemplateResult(BaseModel2DTM):
         None
         """
         # Assuming all statistic files have the same shape (which should be true!)
-        H, W = self.mip.shape
+        img_h, img_w = self.mip.shape
         h, w = template_shape
-        slice_obj = (slice(H - h + 1), slice(W - w + 1))
+        slice_obj = (slice(img_h - h + 1), slice(img_w - w + 1))
 
         self.mip = self.mip[slice_obj]
         self.scaled_mip = self.scaled_mip[slice_obj]

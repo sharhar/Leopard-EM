@@ -13,6 +13,11 @@ from leopard_em.pydantic_models.correlation_filters import PreprocessingFilters
 from leopard_em.pydantic_models.custom_types import BaseModel2DTM, ExcludedTensor
 from leopard_em.pydantic_models.particle_stack import ParticleStack
 from leopard_em.pydantic_models.pixel_size_search import PixelSizeSearchConfig
+from leopard_em.pydantic_models.utils import (
+    _setup_ctf_kwargs_from_particle_stack,
+    preprocess_image,
+    volume_to_rfft_fourier_slice,
+)
 
 
 class OptimizeTemplateManager(BaseModel2DTM):
@@ -56,19 +61,22 @@ class OptimizeTemplateManager(BaseModel2DTM):
     # Excluded tensors
     template_volume: ExcludedTensor
 
-    def make_backend_core_function_kwargs(self) -> dict[str, Any]:
-        """Create the kwargs for the backend refine_template core function."""
+    def make_backend_core_function_kwargs(
+        self, prefer_refined_angles: bool = True
+    ) -> dict[str, Any]:
+        """Create the kwargs for the backend refine_template core function.
+
+        Parameters
+        ----------
+        prefer_refined_angles : bool
+            Whether to use refined angles or not. Defaults to True.
+        """
         device_list = self.computational_config.gpu_devices
-        # Remove the single device limitation
-        # if len(device) > 1:
-        #     raise ValueError("Only single-device execution is currently supported.")
-        # device = device[0]
 
         # simulate template volume
         template = self.simulator.run(gpu_ids=self.computational_config.gpu_ids)
 
-        template_shape = template.shape[-2:]
-
+        # Extract out the regions of interest (particles) based on the particle stack
         particle_images = self.particle_stack.construct_image_stack(
             pos_reference="center",
             padding_value=0.0,
@@ -79,70 +87,34 @@ class OptimizeTemplateManager(BaseModel2DTM):
         particle_images_dft = torch.fft.rfftn(particle_images, dim=(-2, -1))
         particle_images_dft[..., 0, 0] = 0.0 + 0.0j  # Zero out DC component
 
+        bandpass_filter = (
+            self.preprocessing_filters.bandpass_filter.calculate_bandpass_filter(
+                particle_images_dft.shape[-2:]
+            )
+        )
+
         # Calculate and apply the filters for the particle image stack
         filter_stack = self.particle_stack.construct_filter_stack(
             self.preprocessing_filters, output_shape=particle_images_dft.shape[-2:]
         )
-        particle_images_dft *= filter_stack
 
-        # Normalize each particle image to mean zero variance 1
-        squared_image_dft = torch.abs(particle_images_dft) ** 2
-        squared_sum = torch.sum(squared_image_dft, dim=(-2, -1), keepdim=True)
-        particle_images_dft /= torch.sqrt(squared_sum)
-
-        # Normalize by the effective number of pixels in the particle images
-        # (sum of the bandpass filter). See comments in 'match_template_manager.py'.
-        bp_config = self.preprocessing_filters.bandpass_filter
-        bp_filter_image = bp_config.calculate_bandpass_filter(
-            particle_images_dft.shape[-2:]
+        particle_images_dft = preprocess_image(
+            image_rfft=particle_images_dft,
+            cumulative_fourier_filters=filter_stack,
+            bandpass_filter=bandpass_filter,
         )
-        dimensionality = bp_filter_image.sum()
-        particle_images_dft *= dimensionality**0.5
 
         # Calculate the filters applied to each template (besides CTF)
         projective_filters = self.particle_stack.construct_filter_stack(
             self.preprocessing_filters,
-            output_shape=(template_shape[-2], template_shape[-1] // 2 + 1),
+            output_shape=(template.shape[-2], template.shape[-1] // 2 + 1),
         )
 
-        # Calculate the DFT of the template to take Fourier slices from
-        # NOTE: There is an extra FFTshift step before the RFFT since, for some reason,
-        # omitting this step will cause a 180 degree phase shift on odd (i, j, k)
-        # structure factors in the Fourier domain. This just requires an extra
-        # IFFTshift after converting a slice back to real-space (handled already).
-        # pylint: disable=E1102
-        template_dft = torch.fft.fftshift(template, dim=(-3, -2, -1))
-        # pylint: disable=E1102
-        template_dft = torch.fft.rfftn(template_dft, dim=(-3, -2, -1))
-        # pylint: disable=E1102
-        template_dft = torch.fft.fftshift(template_dft, dim=(-3, -2))  # skip rfft dim
+        template_dft = volume_to_rfft_fourier_slice(template)
 
         # The set of "best" euler angles from match template search
         # Check if refined angles exist, otherwise use the original angles
-        phi = (
-            self.particle_stack["refined_phi"]
-            if "refined_phi" in self.particle_stack.df_columns
-            else self.particle_stack["phi"]
-        )
-        theta = (
-            self.particle_stack["refined_theta"]
-            if "refined_theta" in self.particle_stack.df_columns
-            else self.particle_stack["theta"]
-        )
-        psi = (
-            self.particle_stack["refined_psi"]
-            if "refined_psi" in self.particle_stack.df_columns
-            else self.particle_stack["psi"]
-        )
-
-        euler_angles = torch.stack(
-            (
-                torch.tensor(phi),
-                torch.tensor(theta),
-                torch.tensor(psi),
-            ),
-            dim=-1,
-        )
+        euler_angles = self.particle_stack.get_euler_angles(prefer_refined_angles)
 
         # The relative Euler angle offsets to search over
         euler_angle_offsets = torch.zeros((1, 3))
@@ -158,30 +130,12 @@ class OptimizeTemplateManager(BaseModel2DTM):
         # The relative pixel size values to search over
         pixel_size_offsets = torch.tensor([0.0])
 
-        # Keyword arguments for the CTF filter calculation call
-        # NOTE: We currently enforce the parameters (other than the defocus values) are
-        # all the same. This could be updated in the future...
-        part_stk = self.particle_stack
-        assert part_stk["voltage"].nunique() == 1
-        assert part_stk["spherical_aberration"].nunique() == 1
-        assert part_stk["amplitude_contrast_ratio"].nunique() == 1
-        assert part_stk["phase_shift"].nunique() == 1
-        assert part_stk["ctf_B_factor"].nunique() == 1
-
-        ctf_kwargs = {
-            "voltage": part_stk["voltage"][0].item(),
-            "spherical_aberration": part_stk["spherical_aberration"][0].item(),
-            "amplitude_contrast_ratio": part_stk["amplitude_contrast_ratio"][0].item(),
-            "ctf_B_factor": part_stk["ctf_B_factor"][0].item(),
-            "phase_shift": part_stk["phase_shift"][0].item(),
-            "pixel_size": part_stk["refined_pixel_size"].mean().item(),
-            "template_shape": template_shape,
-            "rfft": True,
-            "fftshift": False,
-        }
+        ctf_kwargs = _setup_ctf_kwargs_from_particle_stack(
+            self.particle_stack, (template.shape[-2], template.shape[-1])
+        )
 
         return {
-            "particle_stack_dft": particle_images_dft,  # Remove device specification
+            "particle_stack_dft": particle_images_dft,
             "template_dft": template_dft,
             "euler_angles": euler_angles,
             "euler_angle_offsets": euler_angle_offsets,

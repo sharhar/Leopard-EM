@@ -1,5 +1,6 @@
 """Particle stack Pydantic model for dealing with extracted particle data."""
 
+import warnings
 from typing import Any, ClassVar, Literal
 
 import numpy as np
@@ -477,6 +478,46 @@ class ParticleStack(BaseModel2DTM):
         return torch.tensor(
             self._df["defocus_v"] + self._df["refined_relative_defocus"]
         )
+
+    def get_euler_angles(self, prefer_refined_angles: bool = True) -> torch.Tensor:
+        """Return the Euler angles (phi, theta, psi) of all particles as a tensor.
+
+        Parameters
+        ----------
+        prefer_refined_angles : bool, optional
+            When true, the refined Euler angles are used (columns prefixed with
+            'refined_'), otherwise the original angles are used, by default True.
+
+        Returns
+        -------
+        torch.Tensor
+            A tensor of shape (N, 3) where N is the number of particles and the columns
+            correspond to (phi, theta, psi) in ZYZ format.
+        """
+        # Ensure all three refined columns are present, warning if not
+        phi_col = "phi"
+        theta_col = "theta"
+        psi_col = "psi"
+        if prefer_refined_angles:
+            if not all(
+                x in self._df.columns
+                for x in ["refined_phi", "refined_theta", "refined_psi"]
+            ):
+                warnings.warn(
+                    "Refined angles not found in DataFrame, using original angles...",
+                    stacklevel=2,
+                )
+            else:
+                phi_col = "refined_phi"
+                theta_col = "refined_theta"
+                psi_col = "refined_psi"
+
+        # Get the angles from the DataFrame
+        phi = torch.tensor(self._df[phi_col].to_numpy())
+        theta = torch.tensor(self._df[theta_col].to_numpy())
+        psi = torch.tensor(self._df[psi_col].to_numpy())
+
+        return torch.stack((phi, theta, psi), dim=-1)
 
     def __getitem__(self, key: str) -> Any:
         """Get an item from the DataFrame."""

@@ -13,8 +13,8 @@ from leopard_em.backend.core_match_template import (
     _do_bached_orientation_cross_correlate_cpu,
 )
 from leopard_em.backend.utils import normalize_template_projection
+from leopard_em.pydantic_models.utils import calculate_ctf_filter_stack_full_args
 from leopard_em.utils.cross_correlation import handle_correlation_mode
-from leopard_em.utils.filter_preprocessing import calculate_ctf_filter_stack
 
 # This is assuming the Euler angles are in the ZYZ intrinsic format
 # AND that the angles are ordered in (phi, theta, psi)
@@ -548,12 +548,12 @@ def _core_refine_template_single_thread(
 
     default_rot_matrix = default_rot_matrix.to(torch.float32)
     # Calculate the CTF filters with the relative offsets
-    ctf_filters = calculate_ctf_filter_stack(
-        defocus_u=defocus_u * 1e-4,  # to µm
-        defocus_v=defocus_v * 1e-4,  # to µm
-        astigmatism_angle=defocus_angle,  # to µm
-        defocus_offsets=defocus_offsets * 1e-4,  # to µm
-        pixel_size_offsets=pixel_size_offsets,  # to µm
+    ctf_filters = calculate_ctf_filter_stack_full_args(
+        defocus_u=defocus_u,  # in Angstrom
+        defocus_v=defocus_v,  # in Angstrom
+        astigmatism_angle=defocus_angle,  # in degrees
+        defocus_offsets=defocus_offsets,  # in Angstrom
+        pixel_size_offsets=pixel_size_offsets,  # in Angstrom
         **ctf_kwargs,
     )
 
