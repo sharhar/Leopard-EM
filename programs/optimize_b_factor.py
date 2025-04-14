@@ -36,11 +36,11 @@ def get_metric(df: pd.DataFrame) -> float:
     subtract_background = df["scaled_mip"]
     if OPTIMIZE_METRIC == "mean":
         return float(subtract_background.mean())
-    elif OPTIMIZE_METRIC == "best":
+    if OPTIMIZE_METRIC == "best":
         return float(subtract_background.nlargest(OPTIMIZE_N).mean())
-    elif OPTIMIZE_METRIC == "worst":
+    if OPTIMIZE_METRIC == "worst":
         return float(subtract_background.nsmallest(OPTIMIZE_N).mean())
-    elif OPTIMIZE_METRIC == "count":
+    if OPTIMIZE_METRIC == "count":
         return float(subtract_background.count())
 
     raise ValueError(f"Invalid optimize metric: {OPTIMIZE_METRIC}")
