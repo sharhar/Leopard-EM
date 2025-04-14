@@ -15,7 +15,7 @@ from leopard_em.pydantic_models.orientation_search import RefineOrientationConfi
 from leopard_em.pydantic_models.particle_stack import ParticleStack
 from leopard_em.pydantic_models.pixel_size_search import PixelSizeSearchConfig
 from leopard_em.pydantic_models.types import BaseModel2DTM, ExcludedTensor
-from leopard_em.utils.data_io import load_mrc_volume, read_mrc_to_numpy
+from leopard_em.utils.data_io import load_mrc_volume
 
 
 class RefineTemplateManager(BaseModel2DTM):
@@ -329,28 +329,29 @@ class RefineTemplateManager(BaseModel2DTM):
         # Cross-correlation statistics
         # Check if correlation statistic files exist and use them if available
         # This allows for shifts during refinement
-        if (
-            "correlation_average_path" in df_refined.columns
-            and "correlation_variance_path" in df_refined.columns
-        ):
-            # Check if files exist for at least the first entry
-            if (
-                df_refined["correlation_average_path"].iloc[0]
-                and df_refined["correlation_variance_path"].iloc[0]
-            ):
-                # Load the correlation statistics from the files
-                correlation_average = read_mrc_to_numpy(
-                    df_refined["correlation_average_path"].iloc[0]
-                )
-                correlation_variance = read_mrc_to_numpy(
-                    df_refined["correlation_variance_path"].iloc[0]
-                )
-                df_refined["correlation_mean"] = correlation_average[
-                    df_refined["refined_pos_y"], df_refined["refined_pos_x"]
-                ]
-                df_refined["correlation_variance"] = correlation_variance[
-                    df_refined["refined_pos_y"], df_refined["refined_pos_x"]
-                ]
+
+        # if (
+        #    "correlation_average_path" in df_refined.columns
+        #    and "correlation_variance_path" in df_refined.columns
+        # ):
+        # Check if files exist for at least the first entry
+        #    if (
+        #        df_refined["correlation_average_path"].iloc[0]
+        #        and df_refined["correlation_variance_path"].iloc[0]
+        #    ):
+        # Load the correlation statistics from the files
+        #        correlation_average = read_mrc_to_numpy(
+        #            df_refined["correlation_average_path"].iloc[0]
+        #        )
+        #        correlation_variance = read_mrc_to_numpy(
+        #            df_refined["correlation_variance_path"].iloc[0]
+        #        )
+        #        df_refined["correlation_mean"] = correlation_average[
+        #            df_refined["refined_pos_y"], df_refined["refined_pos_x"]
+        #           ]
+        #        df_refined["correlation_variance"] = correlation_variance[
+        #            df_refined["refined_pos_y"], df_refined["refined_pos_x"]
+        #        ]
 
         refined_mip = result["refined_cross_correlation"]
         refined_scaled_mip = result["refined_z_score"]

@@ -68,7 +68,7 @@ class PixelSizeSearchConfig(BaseModel2DTM):
             dtype=torch.float32,
         )
 
-        if 0.0 not in vals and not self.skip_enforce_zero:
+        if not torch.any(torch.abs(vals) < 1e-6) and not self.skip_enforce_zero:
             vals = torch.cat([vals, torch.tensor([0.0])])
             # Re-sort pixel sizes
             vals = torch.sort(vals)[0]

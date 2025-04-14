@@ -134,7 +134,7 @@ def _get_cropped_image_regions_torch(
     box_size: tuple[int, int],
     handle_bounds: Literal["pad", "error"],
     padding_mode: Literal["constant", "reflect", "replicate"],
-    padding_value: float,
+    padding_value: float = 0.0,
 ) -> torch.Tensor:
     """Helper function for extracting regions from a torch tensor.
 
@@ -153,8 +153,25 @@ def _get_cropped_image_regions_torch(
         pos_y = pos_y + bs0
         pos_x = pos_x + bs1
 
-    cropped_images = torch.stack(
-        [image[y : y + box_size[0], x : x + box_size[1]] for y, x in zip(pos_y, pos_x)]
-    )
+    # A fix for crops that go out of bounds. Pad with zeros.
+    regions = []
+    for y, x in zip(pos_y, pos_x):
+        # Extract region
+        region = image[y : y + box_size[0], x : x + box_size[1]]
+
+        # Check if region is smaller than expected box_size
+        h, w = region.shape
+        if h != box_size[0] or w != box_size[1]:
+            # Create a padded region with the correct dimensions
+            padded_region = torch.full(
+                box_size, padding_value, dtype=image.dtype, device=image.device
+            )
+            padded_region[:h, :w] = region
+            regions.append(padded_region)
+        else:
+            regions.append(region)
+
+    # Stack all regions
+    cropped_images = torch.stack(regions)
 
     return cropped_images

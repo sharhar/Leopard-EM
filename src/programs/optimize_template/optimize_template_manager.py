@@ -348,9 +348,16 @@ class OptimizeTemplateManager(BaseModel2DTM):
         #    df_refined["correlation_variance"]
         # )
         refined_scaled_mip = result["refined_z_score"]
+        # Filter out any infinite or NaN values
+        print(refined_scaled_mip.shape)
+        print(refined_scaled_mip)
+        refined_scaled_mip = refined_scaled_mip[np.isfinite(refined_scaled_mip)]
         # If more than 10 values, keep only the top 10 highest SNRs
-        if len(refined_scaled_mip) > 10:
-            refined_scaled_mip = np.sort(refined_scaled_mip)[-10:]
+        best_n = 8
+        if len(refined_scaled_mip) > best_n:
+            refined_scaled_mip = np.sort(refined_scaled_mip)[-best_n:]
+        print(refined_scaled_mip.shape)
+        print(refined_scaled_mip)
         mean_snr = float(refined_scaled_mip.mean())
         print(
             f"max snr: {refined_scaled_mip.max()}, min snr: {refined_scaled_mip.min()}"
