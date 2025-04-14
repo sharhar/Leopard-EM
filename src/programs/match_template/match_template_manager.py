@@ -11,12 +11,12 @@ from pydantic import ConfigDict, field_validator
 from leopard_em.backend.core_match_template import core_match_template
 from leopard_em.pydantic_models.computational_config import ComputationalConfig
 from leopard_em.pydantic_models.correlation_filters import PreprocessingFilters
+from leopard_em.pydantic_models.custom_types import BaseModel2DTM, ExcludedTensor
 from leopard_em.pydantic_models.defocus_search import DefocusSearchConfig
 from leopard_em.pydantic_models.formats import MATCH_TEMPLATE_DF_COLUMN_ORDER
 from leopard_em.pydantic_models.match_template_result import MatchTemplateResult
 from leopard_em.pydantic_models.optics_group import OpticsGroup
 from leopard_em.pydantic_models.orientation_search import OrientationSearchConfig
-from leopard_em.pydantic_models.types import BaseModel2DTM, ExcludedTensor
 from leopard_em.utils.data_io import load_mrc_image, load_mrc_volume
 from leopard_em.utils.filter_preprocessing import calculate_ctf_filter_stack
 

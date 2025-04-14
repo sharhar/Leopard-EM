@@ -11,7 +11,7 @@ from leopard_em.pydantic_models.correlation_filters import PreprocessingFilters
 from leopard_em.pydantic_models.formats import MATCH_TEMPLATE_DF_COLUMN_ORDER
 from leopard_em.utils.data_io import load_mrc_image
 
-from .types import BaseModel2DTM, ExcludedTensor
+from .custom_types import BaseModel2DTM, ExcludedTensor
 
 TORCH_TO_NUMPY_PADDING_MODE = {
     "constant": "constant",

@@ -13,7 +13,7 @@ from leopard_em.analysis.pick_match_template_peaks import (
     match_template_peaks_to_dataframe,
     match_template_peaks_to_dict,
 )
-from leopard_em.pydantic_models.types import BaseModel2DTM, ExcludedTensor
+from leopard_em.pydantic_models.custom_types import BaseModel2DTM, ExcludedTensor
 from leopard_em.utils.data_io import load_mrc_image, write_mrc_from_tensor
 
 

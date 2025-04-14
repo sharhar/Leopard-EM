@@ -10,9 +10,9 @@ from ttsim3d.models import Simulator
 from leopard_em.backend.core_refine_template import core_refine_template
 from leopard_em.pydantic_models.computational_config import ComputationalConfig
 from leopard_em.pydantic_models.correlation_filters import PreprocessingFilters
+from leopard_em.pydantic_models.custom_types import BaseModel2DTM, ExcludedTensor
 from leopard_em.pydantic_models.particle_stack import ParticleStack
 from leopard_em.pydantic_models.pixel_size_search import PixelSizeSearchConfig
-from leopard_em.pydantic_models.types import BaseModel2DTM, ExcludedTensor
 
 
 class OptimizeTemplateManager(BaseModel2DTM):
