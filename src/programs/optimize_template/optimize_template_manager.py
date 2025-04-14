@@ -331,7 +331,7 @@ class OptimizeTemplateManager(BaseModel2DTM):
         float
             The mean SNR of the template.
         """
-        df_refined = self.particle_stack._df.copy()
+        df_refined = self.particle_stack._df.copy()  # pylint: disable=protected-access
         refined_mip = result["refined_cross_correlation"]
         refined_scaled_mip = refined_mip - df_refined["correlation_mean"]
         refined_scaled_mip = refined_scaled_mip / np.sqrt(

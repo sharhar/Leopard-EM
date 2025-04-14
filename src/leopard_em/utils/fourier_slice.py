@@ -36,6 +36,7 @@ def _rfft_slices_to_real_projections(
         The real-space projections.
     """
     fourier_slices = ifftshift_2d(fourier_slices, rfft=True)
+    # pylint: disable=not-callable
     projections = torch.fft.irfftn(fourier_slices, dim=(-2, -1))
     projections = ifftshift_2d(projections, rfft=False)
 
@@ -72,6 +73,7 @@ def get_rfft_slices_from_volume(
     """
     shape = volume.shape
     volume_rfft = fftshift_3d(volume, rfft=False)
+    # pylint: disable=not-callable
     volume_rfft = torch.fft.fftn(volume_rfft, dim=(-3, -2, -1))
     volume_rfft = fftshift_3d(volume_rfft, rfft=True)
 
@@ -130,6 +132,3 @@ def get_real_space_projections_from_volume(
     projections = _rfft_slices_to_real_projections(fourier_slices)
 
     return projections
-
-
-# TODO: Helper functions for applying filters to Fourier slices

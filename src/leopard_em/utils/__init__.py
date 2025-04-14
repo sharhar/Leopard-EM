@@ -14,7 +14,6 @@ from .filter_preprocessing import (
     calculate_ctf_filter_stack,
     get_Cs_range,
 )
-from .particle_stack import get_cropped_image_regions
 
 __all__ = [
     "handle_correlation_mode",
@@ -24,7 +23,6 @@ __all__ = [
     "write_mrc_from_tensor",
     "load_mrc_image",
     "load_mrc_volume",
-    "get_cropped_image_regions",
     "calculate_ctf_filter_stack",
     "get_Cs_range",
     "Cs_to_pixel_size",
