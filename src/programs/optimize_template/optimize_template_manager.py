@@ -1,5 +1,6 @@
 """Pydantic model for running the optimize template program."""
 
+import os
 from typing import Any, ClassVar
 
 import numpy as np
@@ -214,14 +215,25 @@ class OptimizeTemplateManager(BaseModel2DTM):
             Path to save the optimized template pixel size.
         """
         if self.pixel_size_coarse_search.enabled:
-            optimal_template_px = self.optimize_pixel_size()
+            # Create a file for logging all iterations
+            all_results_path = self._get_all_results_path(output_text_path)
+            # Create the file and write header
+            with open(all_results_path, "w") as f:
+                f.write("Pixel Size (Å),SNR\n")
+
+            optimal_template_px = self.optimize_pixel_size(all_results_path)
             print(f"Optimal template px: {optimal_template_px:.3f} Å")
             # print this to the text file
             with open(output_text_path, "w") as f:
                 f.write(f"Optimal template px: {optimal_template_px:.3f} Å")
 
-    def optimize_pixel_size(self) -> float:
+    def optimize_pixel_size(self, all_results_path: str) -> float:
         """Optimize the pixel size of the template volume.
+
+        Parameters
+        ----------
+        all_results_path : str
+            Path to the file for logging all iterations
 
         Returns
         -------
@@ -244,6 +256,11 @@ class OptimizeTemplateManager(BaseModel2DTM):
         for px in coarse_px_values:
             snr = self.evaluate_template_px(px=px.item())
             print(f"Pixel size: {px:.3f}, SNR: {snr:.3f}")
+
+            # Log to file
+            with open(all_results_path, "a") as f:
+                f.write(f"{px:.3f},{snr:.3f}\n")
+
             if snr > best_snr:
                 best_snr = snr
                 best_px = px.item()
@@ -268,6 +285,11 @@ class OptimizeTemplateManager(BaseModel2DTM):
             for px in fine_px_values:
                 snr = self.evaluate_template_px(px=px.item())
                 print(f"Pixel size: {px:.3f}, SNR: {snr:.3f}")
+
+                # Log to file
+                with open(all_results_path, "a") as f:
+                    f.write(f"{px:.3f},{snr:.3f}\n")
+
                 if snr > best_snr:
                     best_snr = snr
                     best_px = px.item()
@@ -352,8 +374,8 @@ class OptimizeTemplateManager(BaseModel2DTM):
         print(refined_scaled_mip.shape)
         print(refined_scaled_mip)
         refined_scaled_mip = refined_scaled_mip[np.isfinite(refined_scaled_mip)]
-        # If more than 10 values, keep only the top 10 highest SNRs
-        best_n = 8
+        # If more than n values, keep only the top 10 highest SNRs
+        best_n = 10
         if len(refined_scaled_mip) > best_n:
             refined_scaled_mip = np.sort(refined_scaled_mip)[-best_n:]
         print(refined_scaled_mip.shape)
@@ -363,3 +385,19 @@ class OptimizeTemplateManager(BaseModel2DTM):
             f"max snr: {refined_scaled_mip.max()}, min snr: {refined_scaled_mip.min()}"
         )
         return mean_snr
+
+    def _get_all_results_path(self, output_text_path: str) -> str:
+        """Generate the results file path from the output text path.
+
+        Parameters
+        ----------
+        output_text_path : str
+            Path to the output text file
+
+        Returns
+        -------
+        str
+            Path to the file with _all.txt extension
+        """
+        base, _ = os.path.splitext(output_text_path)
+        return f"{base}_all.csv"
