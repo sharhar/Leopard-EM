@@ -4,8 +4,6 @@ from typing import Literal
 
 import torch
 
-# TODO: Normalized cross correlation
-
 
 def handle_correlation_mode(
     cross_correlation: torch.Tensor,
