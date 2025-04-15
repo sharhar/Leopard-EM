@@ -57,7 +57,7 @@ class BaseModel2DTM(BaseModel):
         BaseModel2DTM
             Instance of the BaseModel2DTM subclass loaded from the JSON file.
         """
-        with open(json_path) as f:
+        with open(json_path, encoding="utf-8") as f:
             data = json.load(f)
 
         return cls(**data)
@@ -76,7 +76,7 @@ class BaseModel2DTM(BaseModel):
         BaseModel2DTM
             Instance of the BaseModel2DTM subclass loaded from the YAML file.
         """
-        with open(yaml_path) as f:
+        with open(yaml_path, encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
         return cls(**data)
@@ -97,7 +97,7 @@ class BaseModel2DTM(BaseModel):
         -------
         None
         """
-        with open(json_path, "w") as f:
+        with open(json_path, "w", encoding="utf-8") as f:
             json.dump(self.model_dump(), f)
 
     def to_yaml(self, yaml_path: str | os.PathLike) -> None:
@@ -112,5 +112,5 @@ class BaseModel2DTM(BaseModel):
         -------
         None
         """
-        with open(yaml_path, "w") as f:
+        with open(yaml_path, "w", encoding="utf-8") as f:
             yaml.dump(self.model_dump(), f)

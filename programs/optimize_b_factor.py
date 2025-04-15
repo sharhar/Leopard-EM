@@ -2,7 +2,7 @@
 
 import pandas as pd
 
-from programs.match_template import MatchTemplateManager
+from leopard_em.pydantic_models import MatchTemplateManager
 
 # The config file for the match template
 MATCH_YAML_PATH = "match_template_manager_example_crop.yaml"
@@ -20,15 +20,13 @@ OPTIMIZE_METRIC = "mean"
 OPTIMIZE_N = -1
 
 
-def get_metric(df: pd.DataFrame, mtm: MatchTemplateManager) -> float:
-    """Get the metric for the given dataframe.
+def get_metric(df: pd.DataFrame) -> float:
+    """Get the optimization metric for the given dataframe.
 
     Parameters
     ----------
     df : pd.DataFrame
         The dataframe to get the metric for.
-    mtm : MatchTemplateManager
-        The match template manager to get the metric for.
 
     Returns
     -------
@@ -38,14 +36,14 @@ def get_metric(df: pd.DataFrame, mtm: MatchTemplateManager) -> float:
     subtract_background = df["scaled_mip"]
     if OPTIMIZE_METRIC == "mean":
         return float(subtract_background.mean())
-    elif OPTIMIZE_METRIC == "best":
+    if OPTIMIZE_METRIC == "best":
         return float(subtract_background.nlargest(OPTIMIZE_N).mean())
-    elif OPTIMIZE_METRIC == "worst":
+    if OPTIMIZE_METRIC == "worst":
         return float(subtract_background.nsmallest(OPTIMIZE_N).mean())
-    elif OPTIMIZE_METRIC == "count":
+    if OPTIMIZE_METRIC == "count":
         return float(subtract_background.count())
-    else:
-        raise ValueError(f"Invalid optimize metric: {OPTIMIZE_METRIC}")
+
+    raise ValueError(f"Invalid optimize metric: {OPTIMIZE_METRIC}")
 
 
 def main() -> None:
@@ -63,7 +61,7 @@ def main() -> None:
             orientation_batch_size=16, do_result_export=False, do_valid_cropping=False
         )
         df = mtm.results_to_dataframe()
-        metric = get_metric(df, mtm)
+        metric = get_metric(df)
         print(f"B-factor: {b}, Metric: {metric}")
         # Write results to CSV
         with open("optimize_B_results.csv", "a") as f:
@@ -86,7 +84,7 @@ def main() -> None:
 
         previous_metric = metric
     print(f"Best B-factor: {best_b} with a {OPTIMIZE_METRIC} of {best_metric}")
-    with open("optimize_B_results.txt", "w") as f:
+    with open("optimize_B_results.txt", "w", encoding="utf-8") as f:
         f.write(f"Best B-factor: {best_b} with a {OPTIMIZE_METRIC} of {best_metric}")
 
 
