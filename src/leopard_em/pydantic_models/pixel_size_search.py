@@ -5,7 +5,8 @@ from typing import Annotated
 import torch
 from pydantic import Field
 
-from leopard_em.pydantic_models.types import BaseModel2DTM
+from leopard_em.pydantic_models.custom_types import BaseModel2DTM
+from leopard_em.pydantic_models.utils import get_search_tensors
 
 
 class PixelSizeSearchConfig(BaseModel2DTM):
@@ -14,13 +15,15 @@ class PixelSizeSearchConfig(BaseModel2DTM):
     Attributes
     ----------
     enabled : bool
-        Whether to enable defocus search. Default is True.
+        Whether to enable pixel size search. Default is False.
     pixel_size_min : float
         Minimum searched pixel size in units of Angstroms.
     pixel_size_max : float
         Maximum searched pixel size in units of Angstroms.
     pixel_size_step : float
         Step size for pixel size search in units of Angstroms.
+    skip_enforce_zero : bool
+        Whether to skip enforcing a zero value, by default False.
 
     Properties
     ----------
@@ -61,16 +64,9 @@ class PixelSizeSearchConfig(BaseModel2DTM):
                 f"  self.pixel_size_step: {self.pixel_size_step}\n"
             )
 
-        vals = torch.arange(
+        return get_search_tensors(
             self.pixel_size_min,
-            self.pixel_size_max + self.pixel_size_step,
+            self.pixel_size_max,
             self.pixel_size_step,
-            dtype=torch.float32,
+            self.skip_enforce_zero,
         )
-
-        if 0.0 not in vals and not self.skip_enforce_zero:
-            vals = torch.cat([vals, torch.tensor([0.0])])
-            # Re-sort pixel sizes
-            vals = torch.sort(vals)[0]
-
-        return vals

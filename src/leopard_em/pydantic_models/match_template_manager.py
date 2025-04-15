@@ -11,16 +11,22 @@ from pydantic import ConfigDict, field_validator
 from leopard_em.backend.core_match_template import core_match_template
 from leopard_em.pydantic_models.computational_config import ComputationalConfig
 from leopard_em.pydantic_models.correlation_filters import PreprocessingFilters
+from leopard_em.pydantic_models.custom_types import BaseModel2DTM, ExcludedTensor
 from leopard_em.pydantic_models.defocus_search import DefocusSearchConfig
 from leopard_em.pydantic_models.formats import MATCH_TEMPLATE_DF_COLUMN_ORDER
 from leopard_em.pydantic_models.match_template_result import MatchTemplateResult
 from leopard_em.pydantic_models.optics_group import OpticsGroup
 from leopard_em.pydantic_models.orientation_search import OrientationSearchConfig
-from leopard_em.pydantic_models.types import BaseModel2DTM, ExcludedTensor
 from leopard_em.utils.data_io import load_mrc_image, load_mrc_volume
-from leopard_em.utils.filter_preprocessing import calculate_ctf_filter_stack
+
+from .utils import (
+    calculate_ctf_filter_stack,
+    preprocess_image,
+    volume_to_rfft_fourier_slice,
+)
 
 
+# pylint: disable=no-self-argument
 class MatchTemplateManager(BaseModel2DTM):
     """Model holding parameters necessary for running full orientation 2DTM.
 
@@ -133,6 +139,7 @@ class MatchTemplateManager(BaseModel2DTM):
         if self.template_volume is None:
             self.template_volume = load_mrc_volume(self.template_volume_path)
 
+        # Ensure the micrograph and template are both Tensors before proceeding
         if not isinstance(self.micrograph, torch.Tensor):
             image = torch.from_numpy(self.micrograph)
         else:
@@ -143,47 +150,31 @@ class MatchTemplateManager(BaseModel2DTM):
         else:
             template = self.template_volume
 
-        template_shape = template.shape[-2:]
-
         # Fourier transform the image (RFFT, unshifted)
-        image_dft = torch.fft.rfftn(image)
+        image_dft = torch.fft.rfftn(image)  # pylint: disable=E1102
         image_dft[0, 0] = 0 + 0j  # zero out the constant term
 
-        # Get the combined filter from the pre-processing filter attribute
-        cumulative_filter = self.preprocessing_filters.get_combined_filter(
+        # Get the bandpass filter individually
+        bp_config = self.preprocessing_filters.bandpass_filter
+        bandpass_filter = bp_config.calculate_bandpass_filter(image_dft.shape)
+
+        # Calculate the cumulative filters for both the image and the template.
+        cumulative_filter_image = self.preprocessing_filters.get_combined_filter(
             ref_img_rfft=image_dft,
             output_shape=image_dft.shape,
         )
-        image_preprocessed_dft = image_dft * cumulative_filter
-
-        # Normalize the image after filtering
-        squared_image_dft = torch.abs(image_preprocessed_dft) ** 2
-        squared_sum = squared_image_dft.sum() + squared_image_dft[:, 1:-1].sum()
-        image_preprocessed_dft /= torch.sqrt(squared_sum)
-
-        # NOTE: For two Gaussian random variables in d-dimensional space --  A and B --
-        # each with mean 0 and variance 1 their correlation will have on average a
-        # variance of d.
-        # NOTE: Since we have the variance of the image and template projections each at
-        # 1, we need to multiply the image by the square root of the number of pixels
-        # so the cross-correlograms have a variance of 1 and not d.
-        # NOTE: When applying the Fourier filters to the image and template, any
-        # elements that get set to zero effectively reduce the dimensionality of our
-        # cross-correlation. Therefore, instead of multiplying by the number of pixels,
-        # we need to multiply tby the effective number of pixels that are non-zero.
-        # Below, we calculate the dimensionality of our cross-correlation and divide
-        # by the square root of that number to normalize the image.
-        bp_config = self.preprocessing_filters.bandpass_filter
-        bp_filter_image = bp_config.calculate_bandpass_filter(image_dft.shape)
-        dimensionality = bp_filter_image.sum() + bp_filter_image[:, 1:-1].sum()
-        image_preprocessed_dft *= dimensionality**0.5
-
-        # Next calculate the filters in terms of the template
         # NOTE: Here, manually accounting for the RFFT in output shape since we have not
         # RFFT'd the template volume yet. Also, this is 2-dimensional, not 3-dimensional
         cumulative_filter_template = self.preprocessing_filters.get_combined_filter(
             ref_img_rfft=image_dft,
-            output_shape=(template_shape[-2], template_shape[-1] // 2 + 1),
+            output_shape=(template.shape[-2], template.shape[-1] // 2 + 1),
+        )
+
+        # Apply the pre-processing and normalization
+        image_preprocessed_dft = preprocess_image(
+            image_rfft=image_dft,
+            cumulative_fourier_filters=cumulative_filter_image,
+            bandpass_filter=bandpass_filter,
         )
 
         # Calculate the CTF filters at each defocus value
@@ -193,18 +184,10 @@ class MatchTemplateManager(BaseModel2DTM):
         pixel_size_offsets = torch.tensor([0.0], dtype=torch.float32)
 
         ctf_filters = calculate_ctf_filter_stack(
-            pixel_size=self.optics_group.pixel_size,
-            template_shape=(template_shape[0], template_shape[0]),
-            defocus_u=self.optics_group.defocus_u * 1e-4,  # A to um
-            defocus_v=self.optics_group.defocus_v * 1e-4,  # A to um
-            defocus_offsets=defocus_values * 1e-4,  # A to um
+            template_shape=(template.shape[0], template.shape[0]),
+            optics_group=self.optics_group,
+            defocus_offsets=defocus_values,
             pixel_size_offsets=pixel_size_offsets,
-            astigmatism_angle=self.optics_group.astigmatism_angle,
-            amplitude_contrast_ratio=self.optics_group.amplitude_contrast_ratio,
-            spherical_aberration=self.optics_group.spherical_aberration,
-            phase_shift=self.optics_group.phase_shift,
-            voltage=self.optics_group.voltage,
-            ctf_B_factor=self.optics_group.ctf_B_factor,
         )
 
         # Grab the Euler angles from the orientation search configuration
@@ -212,16 +195,7 @@ class MatchTemplateManager(BaseModel2DTM):
         euler_angles = self.orientation_search_config.euler_angles
         euler_angles = euler_angles.to(torch.float32)
 
-        device_list = self.computational_config.gpu_devices
-
-        # Calculate the DFT of the template to take Fourier slices from
-        # NOTE: There is an extra FFTshift step before the RFFT since, for some reason,
-        # omitting this step will cause a 180 degree phase shift on odd (i, j, k)
-        # structure factors in the Fourier domain. This just requires an extra
-        # IFFTshift after converting a slice back to real-space (handled already).
-        template_dft = torch.fft.fftshift(template, dim=(-3, -2, -1))
-        template_dft = torch.fft.rfftn(template_dft, dim=(-3, -2, -1))
-        template_dft = torch.fft.fftshift(template_dft, dim=(-3, -2))  # skip rfft dim
+        template_dft = volume_to_rfft_fourier_slice(template)
 
         return {
             "image_dft": image_preprocessed_dft,
@@ -231,7 +205,7 @@ class MatchTemplateManager(BaseModel2DTM):
             "euler_angles": euler_angles,
             "defocus_values": defocus_values,
             "pixel_values": pixel_size_offsets,
-            "device": device_list,
+            "device": self.computational_config.gpu_devices,
         }
 
     def run_match_template(

@@ -2,7 +2,7 @@
 
 import time
 
-from programs.match_template import MatchTemplateManager
+from leopard_em.pydantic_models import MatchTemplateManager
 
 #######################################
 ### Editable parameters for program ###
@@ -40,13 +40,13 @@ def main() -> None:
         do_result_export=True,  # Saves the statistics immediately upon completion
     )
 
-    print("Finished core call.")
+    print("Finished core match_template call.")
 
     # Print the wall time of the search in HH:MM:SS
     end_time = time.time()
     elapsed_time = end_time - start_time
     elapsed_time_str = time.strftime("%H:%M:%S", time.gmtime(elapsed_time))
-    print(f"Wall time: {elapsed_time_str}")
+    print(f"Match Template wall time: {elapsed_time_str}")
 
     # Exporting the picked peaks to a CSV file
     print("Exporting results...")

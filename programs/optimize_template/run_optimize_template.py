@@ -1,6 +1,6 @@
 """Script is used to optimize the template for a given pdb file."""
 
-from programs.optimize_template import OptimizeTemplateManager
+from leopard_em.pydantic_models import OptimizeTemplateManager
 
 OPTIMIZE_YAML_PATH = "optimize_template_example_config.yaml"
 

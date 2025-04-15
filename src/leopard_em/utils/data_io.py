@@ -50,7 +50,7 @@ def write_mrc_from_numpy(
 ) -> None:
     """Writes a numpy array to an MRC file.
 
-    NOTE: Not currently implemented.
+    NOTE: Writing header information is not currently implemented.
 
     Attributes
     ----------
@@ -63,7 +63,6 @@ def write_mrc_from_numpy(
     overwrite : bool
         Overwrite argument passed to mrcfile.new. Default is False.
     """
-    # TODO: Figure out how to set info in the header
     if mrc_header is not None:
         raise NotImplementedError("Setting header info is not yet implemented.")
 
@@ -92,7 +91,6 @@ def write_mrc_from_tensor(
     overwrite : bool
         Overwrite argument passed to mrcfile.new. Default is False.
     """
-    # TODO: Figure out how to set info in the header
     write_mrc_from_numpy(data.numpy(), mrc_path, mrc_header, overwrite)
 
 

@@ -8,12 +8,16 @@ from .correlation_filters import (
     PreprocessingFilters,
     WhiteningFilterConfig,
 )
+from .custom_types import ExcludedTensor
 from .defocus_search import DefocusSearchConfig
+from .match_template_manager import MatchTemplateManager
 from .match_template_result import MatchTemplateResult
 from .optics_group import OpticsGroup
+from .optimize_template_manager import OptimizeTemplateManager
 from .orientation_search import OrientationSearchConfig
 from .particle_stack import ParticleStack
-from .types import ExcludedTensor
+from .pixel_size_search import PixelSizeSearchConfig
+from .refine_template_manager import RefineTemplateManager
 
 __all__ = [
     "ArbitraryCurveFilterConfig",
@@ -29,4 +33,7 @@ __all__ = [
     "PreprocessingFilters",
     "WhiteningFilterConfig",
     "ParticleStack",
+    "MatchTemplateManager",
+    "OptimizeTemplateManager",
+    "RefineTemplateManager",
 ]

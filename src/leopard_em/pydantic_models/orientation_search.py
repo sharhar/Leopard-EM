@@ -6,7 +6,7 @@ import torch
 from pydantic import Field
 from torch_so3 import get_uniform_euler_angles
 
-from leopard_em.pydantic_models.types import BaseModel2DTM
+from leopard_em.pydantic_models.custom_types import BaseModel2DTM
 
 EPS = 1e-6
 
@@ -53,8 +53,6 @@ class OrientationSearchConfig(BaseModel2DTM):
         Angular step size for out-of-plane rotations in degrees. Must be
         greater than 0.
     """
-
-    # TODO: Particle symmetry options
 
     in_plane_step: Annotated[float, Field(ge=0.0)] = 1.5
     out_of_plane_step: Annotated[float, Field(ge=0.0)] = 2.5

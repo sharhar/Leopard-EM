@@ -1,6 +1,8 @@
 """Backend functions related to correlating and refining particle stacks."""
 
-from multiprocessing import Manager, Process
+# Following pylint error ignored because torc.fft.* is not recognized as callable
+# pylint: disable=E1102
+
 from typing import Literal
 
 import roma
@@ -12,9 +14,12 @@ from leopard_em.backend.core_match_template import (
     _do_bached_orientation_cross_correlate,
     _do_bached_orientation_cross_correlate_cpu,
 )
-from leopard_em.backend.utils import normalize_template_projection
+from leopard_em.backend.utils import (
+    normalize_template_projection,
+    run_multiprocess_jobs,
+)
+from leopard_em.pydantic_models.utils import calculate_ctf_filter_stack_full_args
 from leopard_em.utils.cross_correlation import handle_correlation_mode
-from leopard_em.utils.filter_preprocessing import calculate_ctf_filter_stack
 
 # This is assuming the Euler angles are in the ZYZ intrinsic format
 # AND that the angles are ordered in (phi, theta, psi)
@@ -35,6 +40,11 @@ def combine_euler_angles(angle_a: torch.Tensor, angle_b: torch.Tensor) -> torch.
     return euler_angles_c
 
 
+# NOTE: Disabling pylint for too many arguments because we are taking a data-oriented
+# approach where each argument is independent and explicit.
+# pylint: disable=too-many-arguments
+# pylint: disable=too-many-positional-arguments
+# pylint: disable=too-many-locals
 def core_refine_template(
     particle_stack_dft: torch.Tensor,  # (N, H, W)
     template_dft: torch.Tensor,  # (d, h, w)
@@ -49,7 +59,6 @@ def core_refine_template(
     projective_filters: torch.Tensor,  # (N, h, w)
     device: torch.device | list[torch.device] = None,
     batch_size: int = 64,
-    # TODO: additional arguments for cc --> z-score scaling
 ) -> dict[str, torch.Tensor]:
     """Core function to refine orientations and defoci of a set of particles.
 
@@ -117,40 +126,17 @@ def core_refine_template(
         devices=device,
     )
 
-    ##################################################
-    ### Initialize and start multiprocessing queue ###
-    ##################################################
-    manager = Manager()
-    result_dict = manager.dict()
-
-    # lists to track processes
-    processes = []
-
-    # Start processes
-    for i, kwargs in enumerate(kwargs_per_device):
-        p = Process(
-            target=_core_refine_template_single_gpu,
-            args=(result_dict, i),
-            kwargs=kwargs,
-        )
-        processes.append(p)
-        p.start()
-
-    # Wait for all processes to complete
-    for p in processes:
-        p.join()
-
-    # Get the results from all processes
-    results = []
-    for i in range(len(processes)):
-        results.append(result_dict[i])
+    results = run_multiprocess_jobs(
+        target=_core_refine_template_single_gpu,
+        kwargs_list=kwargs_per_device,
+    )
 
     # Shape information for offset calculations
-    _, H, W = particle_stack_dft.shape
-    d, h, w = template_dft.shape
+    _, img_h, img_w = particle_stack_dft.shape
+    _, template_h, template_w = template_dft.shape
     # account for RFFT
-    W = 2 * (W - 1)
-    w = 2 * (w - 1)
+    img_w = 2 * (img_w - 1)
+    template_w = 2 * (template_w - 1)
 
     # Concatenate results from all devices
     refined_cross_correlation = torch.cat(
@@ -183,8 +169,8 @@ def core_refine_template(
     refined_pos_x = refined_pos_x[sort_indices]
 
     # Offset refined_pos_{x,y} by the extracted box size (same as original)
-    refined_pos_y -= (H - h + 1) // 2
-    refined_pos_x -= (W - w + 1) // 2
+    refined_pos_y -= (img_h - template_h + 1) // 2
+    refined_pos_x -= (img_w - template_w + 1) // 2
 
     return {
         "refined_cross_correlation": refined_cross_correlation,
@@ -196,6 +182,7 @@ def core_refine_template(
     }
 
 
+# pylint: disable=too-many-locals
 def construct_multi_gpu_refine_template_kwargs(
     particle_stack_dft: torch.Tensor,
     template_dft: torch.Tensor,
@@ -305,6 +292,7 @@ def construct_multi_gpu_refine_template_kwargs(
     return kwargs_per_device
 
 
+# pylint: disable=too-many-locals
 def _core_refine_template_single_gpu(
     result_dict: dict,
     device_id: int,
@@ -358,11 +346,11 @@ def _core_refine_template_single_gpu(
         Batch size for orientation processing.
     """
     device = particle_stack_dft.device
-    num_particles, H, W = particle_stack_dft.shape
-    d, h, w = template_dft.shape
+    num_particles, _, img_w = particle_stack_dft.shape
+    _, _, template_w = template_dft.shape
     # account for RFFT
-    W = 2 * (W - 1)
-    w = 2 * (w - 1)
+    img_w = 2 * (img_w - 1)
+    template_w = 2 * (template_w - 1)
 
     # tqdm progress bar
     pbar_iter = tqdm.tqdm(
@@ -464,9 +452,8 @@ def _core_refine_template_single_gpu(
 
     result_dict[device_id] = result
 
-    return None
 
-
+# pylint: disable=too-many-locals
 def _core_refine_template_single_thread(
     particle_image_dft: torch.Tensor,
     particle_index: int,
@@ -522,14 +509,14 @@ def _core_refine_template_single_thread(
     dict[str, float | int]
         The refined statistics for the particle.
     """
-    H, W = particle_image_dft.shape
-    _, h, w = template_dft.shape
+    img_h, img_w = particle_image_dft.shape
+    _, template_h, template_w = template_dft.shape
     # account for RFFT
-    W = 2 * (W - 1)
-    w = 2 * (w - 1)
+    img_w = 2 * (img_w - 1)
+    template_w = 2 * (template_w - 1)
     # valid crop shape
-    crop_H = H - h + 1
-    crop_W = W - w + 1
+    crop_h = img_h - template_h + 1
+    crop_w = img_w - template_w + 1
 
     # Output best statistics
     max_cc = -1e9
@@ -548,12 +535,12 @@ def _core_refine_template_single_thread(
 
     default_rot_matrix = default_rot_matrix.to(torch.float32)
     # Calculate the CTF filters with the relative offsets
-    ctf_filters = calculate_ctf_filter_stack(
-        defocus_u=defocus_u * 1e-4,  # to µm
-        defocus_v=defocus_v * 1e-4,  # to µm
-        astigmatism_angle=defocus_angle,  # to µm
-        defocus_offsets=defocus_offsets * 1e-4,  # to µm
-        pixel_size_offsets=pixel_size_offsets,  # to µm
+    ctf_filters = calculate_ctf_filter_stack_full_args(
+        defocus_u=defocus_u,  # in Angstrom
+        defocus_v=defocus_v,  # in Angstrom
+        astigmatism_angle=defocus_angle,  # in degrees
+        defocus_offsets=defocus_offsets,  # in Angstrom
+        pixel_size_offsets=pixel_size_offsets,  # in Angstrom
         **ctf_kwargs,
     )
 
@@ -604,7 +591,7 @@ def _core_refine_template_single_thread(
                 projective_filters=combined_projective_filter,
             )
 
-        cross_correlation = cross_correlation[..., :crop_H, :crop_W]  # valid crop
+        cross_correlation = cross_correlation[..., :crop_h, :crop_w]  # valid crop
         # shape xc is (Npx, Ndefoc, Norientations, y, x)
         # Update the best refined statistics (only if max is greater than previous)
         if cross_correlation.max() > max_cc:
@@ -612,11 +599,11 @@ def _core_refine_template_single_thread(
 
             # Find the maximum value and its indices
             max_values, max_indices = torch.max(
-                cross_correlation.view(-1, crop_H, crop_W), dim=0
+                cross_correlation.view(-1, crop_h, crop_w), dim=0
             )
             # Get the overall maximum value and its position
-            max_value, max_pos = torch.max(max_values.view(-1), dim=0)
-            y_idx, x_idx = max_pos // crop_W, max_pos % crop_W
+            _, max_pos = torch.max(max_values.view(-1), dim=0)
+            y_idx, x_idx = max_pos // crop_w, max_pos % crop_w
 
             # Calculate the indices for each dimension
             flat_idx = max_indices[y_idx, x_idx]
@@ -649,6 +636,7 @@ def _core_refine_template_single_thread(
     return refined_stats
 
 
+# pylint: disable=too-many-locals
 def cross_correlate_particle_stack(
     particle_stack_dft: torch.Tensor,  # (N, H, W)
     template_dft: torch.Tensor,  # (d, h, w)
@@ -691,22 +679,33 @@ def cross_correlate_particle_stack(
         The cross-correlation of the particle stack with the template. Shape will depend
         on the mode used. If "valid", the output will be (N, H-h+1, W-w+1). If "same",
         the output will be (N, H, W).
+
+    Raises
+    ------
+    ValueError
+        If the mode is not "valid" or "same".
     """
     # Helpful constants for later use
     device = particle_stack_dft.device
-    num_particles, H, W = particle_stack_dft.shape
-    d, h, w = template_dft.shape
+    num_particles, image_h, image_w = particle_stack_dft.shape
+    _, template_h, template_w = template_dft.shape
     # account for RFFT
-    W = 2 * (W - 1)
-    w = 2 * (w - 1)
+    image_w = 2 * (image_w - 1)
+    template_w = 2 * (template_w - 1)
 
     if batch_size == -1:
         batch_size = num_particles
 
     if mode == "valid":
-        output_shape = (num_particles, H - h + 1, W - w + 1)
+        output_shape = (
+            num_particles,
+            image_h - template_h + 1,
+            image_w - template_w + 1,
+        )
     elif mode == "same":
-        output_shape = (num_particles, H, W)
+        output_shape = (num_particles, image_h, image_w)
+    else:
+        raise ValueError(f"Invalid mode: {mode}. Must be 'valid' or 'same'.")
 
     out_correlation = torch.zeros(output_shape, device=device)
 
@@ -719,7 +718,7 @@ def cross_correlate_particle_stack(
         # Extract the Fourier slice and apply the projective filters
         fourier_slice = extract_central_slices_rfft_3d(
             volume_rfft=template_dft,
-            image_shape=(h,) * 3,
+            image_shape=(template_h,) * 3,
             rotation_matrices=batch_rotation_matrices,
         )
         fourier_slice = torch.fft.ifftshift(fourier_slice, dim=(-2,))
@@ -730,10 +729,14 @@ def cross_correlate_particle_stack(
         # Inverse Fourier transform and normalize the projection
         projections = torch.fft.irfftn(fourier_slice, dim=(-2, -1))
         projections = torch.fft.ifftshift(projections, dim=(-2, -1))
-        projections = normalize_template_projection(projections, (h, w), (H, W))
+        projections = normalize_template_projection(
+            projections, (template_h, template_w), (image_h, image_w)
+        )
 
         # Padded forward FFT and cross-correlate
-        projections_dft = torch.fft.rfftn(projections, dim=(-2, -1), s=(H, W))
+        projections_dft = torch.fft.rfftn(
+            projections, dim=(-2, -1), s=(image_h, image_w)
+        )
         projections_dft = batch_particles_dft * projections_dft.conj()
         cross_correlation = torch.fft.irfftn(projections_dft, dim=(-2, -1))
 

@@ -10,9 +10,10 @@ from ttsim3d.models import Simulator
 from leopard_em.backend.core_refine_template import core_refine_template
 from leopard_em.pydantic_models.computational_config import ComputationalConfig
 from leopard_em.pydantic_models.correlation_filters import PreprocessingFilters
+from leopard_em.pydantic_models.custom_types import BaseModel2DTM, ExcludedTensor
 from leopard_em.pydantic_models.particle_stack import ParticleStack
 from leopard_em.pydantic_models.pixel_size_search import PixelSizeSearchConfig
-from leopard_em.pydantic_models.types import BaseModel2DTM, ExcludedTensor
+from leopard_em.pydantic_models.utils import setup_particle_backend_kwargs
 
 
 class OptimizeTemplateManager(BaseModel2DTM):
@@ -56,143 +57,44 @@ class OptimizeTemplateManager(BaseModel2DTM):
     # Excluded tensors
     template_volume: ExcludedTensor
 
-    def __init__(self, **data: Any):
-        super().__init__(**data)
+    def make_backend_core_function_kwargs(
+        self, prefer_refined_angles: bool = True
+    ) -> dict[str, Any]:
+        """Create the kwargs for the backend refine_template core function.
 
-    def make_backend_core_function_kwargs(self) -> dict[str, Any]:
-        """Create the kwargs for the backend refine_template core function."""
-        device_list = self.computational_config.gpu_devices
-        # Remove the single device limitation
-        # if len(device) > 1:
-        #     raise ValueError("Only single-device execution is currently supported.")
-        # device = device[0]
-
+        Parameters
+        ----------
+        prefer_refined_angles : bool
+            Whether to use refined angles or not. Defaults to True.
+        """
         # simulate template volume
         template = self.simulator.run(gpu_ids=self.computational_config.gpu_ids)
 
-        template_shape = template.shape[-2:]
-
-        particle_images = self.particle_stack.construct_image_stack(
-            pos_reference="center",
-            padding_value=0.0,
-            handle_bounds="pad",
-            padding_mode="constant",
-        )
-        particle_images_dft = torch.fft.rfftn(particle_images, dim=(-2, -1))
-        particle_images_dft[..., 0, 0] = 0.0 + 0.0j  # Zero out DC component
-
-        # Calculate and apply the filters for the particle image stack
-        filter_stack = self.particle_stack.construct_filter_stack(
-            self.preprocessing_filters, output_shape=particle_images_dft.shape[-2:]
-        )
-        particle_images_dft *= filter_stack
-
-        # Normalize each particle image to mean zero variance 1
-        squared_image_dft = torch.abs(particle_images_dft) ** 2
-        squared_sum = torch.sum(squared_image_dft, dim=(-2, -1), keepdim=True)
-        particle_images_dft /= torch.sqrt(squared_sum)
-
-        # Normalize by the effective number of pixels in the particle images
-        # (sum of the bandpass filter). See comments in 'match_template_manager.py'.
-        bp_config = self.preprocessing_filters.bandpass_filter
-        bp_filter_image = bp_config.calculate_bandpass_filter(
-            particle_images_dft.shape[-2:]
-        )
-        dimensionality = bp_filter_image.sum()
-        particle_images_dft *= dimensionality**0.5
-
-        # Calculate the filters applied to each template (besides CTF)
-        projective_filters = self.particle_stack.construct_filter_stack(
-            self.preprocessing_filters,
-            output_shape=(template_shape[-2], template_shape[-1] // 2 + 1),
-        )
-
-        # Calculate the DFT of the template to take Fourier slices from
-        # NOTE: There is an extra FFTshift step before the RFFT since, for some reason,
-        # omitting this step will cause a 180 degree phase shift on odd (i, j, k)
-        # structure factors in the Fourier domain. This just requires an extra
-        # IFFTshift after converting a slice back to real-space (handled already).
-        template_dft = torch.fft.fftshift(template, dim=(-3, -2, -1))
-        template_dft = torch.fft.rfftn(template_dft, dim=(-3, -2, -1))
-        template_dft = torch.fft.fftshift(template_dft, dim=(-3, -2))  # skip rfft dim
-
         # The set of "best" euler angles from match template search
         # Check if refined angles exist, otherwise use the original angles
-        phi = (
-            self.particle_stack["refined_phi"]
-            if "refined_phi" in self.particle_stack._df.columns
-            else self.particle_stack["phi"]
-        )
-        theta = (
-            self.particle_stack["refined_theta"]
-            if "refined_theta" in self.particle_stack._df.columns
-            else self.particle_stack["theta"]
-        )
-        psi = (
-            self.particle_stack["refined_psi"]
-            if "refined_psi" in self.particle_stack._df.columns
-            else self.particle_stack["psi"]
-        )
+        euler_angles = self.particle_stack.get_euler_angles(prefer_refined_angles)
 
-        euler_angles = torch.stack(
-            (
-                torch.tensor(phi),
-                torch.tensor(theta),
-                torch.tensor(psi),
-            ),
-            dim=-1,
-        )
-
-        # The relative Euler angle offsets to search over
+        # The relative Euler angle offsets to search over (none for optimization)
         euler_angle_offsets = torch.zeros((1, 3))
 
-        # The best defocus values for each particle (+ astigmatism)
-        defocus_u = self.particle_stack.absolute_defocus_u
-        defocus_v = self.particle_stack.absolute_defocus_v
-        defocus_angle = torch.tensor(self.particle_stack["astigmatism_angle"])
-
-        # The relative defocus values to search over
+        # The relative defocus values to search over (none for optimization)
         defocus_offsets = torch.tensor([0.0])
 
-        # The relative pixel size values to search over
+        # The relative pixel size values to search over (none for optimization)
         pixel_size_offsets = torch.tensor([0.0])
 
-        # Keyword arguments for the CTF filter calculation call
-        # NOTE: We currently enforce the parameters (other than the defocus values) are
-        # all the same. This could be updated in the future...
-        part_stk = self.particle_stack
-        assert part_stk["voltage"].nunique() == 1
-        assert part_stk["spherical_aberration"].nunique() == 1
-        assert part_stk["amplitude_contrast_ratio"].nunique() == 1
-        assert part_stk["phase_shift"].nunique() == 1
-        assert part_stk["ctf_B_factor"].nunique() == 1
-
-        ctf_kwargs = {
-            "voltage": part_stk["voltage"][0].item(),
-            "spherical_aberration": part_stk["spherical_aberration"][0].item(),
-            "amplitude_contrast_ratio": part_stk["amplitude_contrast_ratio"][0].item(),
-            "ctf_B_factor": part_stk["ctf_B_factor"][0].item(),
-            "phase_shift": part_stk["phase_shift"][0].item(),
-            "pixel_size": part_stk["refined_pixel_size"].mean().item(),
-            "template_shape": template_shape,
-            "rfft": True,
-            "fftshift": False,
-        }
-
-        return {
-            "particle_stack_dft": particle_images_dft,  # Remove device specification
-            "template_dft": template_dft,
-            "euler_angles": euler_angles,
-            "euler_angle_offsets": euler_angle_offsets,
-            "defocus_u": defocus_u,
-            "defocus_v": defocus_v,
-            "defocus_angle": defocus_angle,
-            "defocus_offsets": defocus_offsets,
-            "pixel_size_offsets": pixel_size_offsets,
-            "ctf_kwargs": ctf_kwargs,
-            "projective_filters": projective_filters,
-            "device": device_list,  # Pass all devices to core_refine_template
-        }
+        # Use the common utility function to set up the backend kwargs
+        # pylint: disable=duplicate-code
+        return setup_particle_backend_kwargs(
+            particle_stack=self.particle_stack,
+            template=template,
+            preprocessing_filters=self.preprocessing_filters,
+            euler_angles=euler_angles,
+            euler_angle_offsets=euler_angle_offsets,
+            defocus_offsets=defocus_offsets,
+            pixel_size_offsets=pixel_size_offsets,
+            device_list=self.computational_config.gpu_devices,
+        )
 
     def run_optimize_template(self, output_text_path: str) -> None:
         """Run the refine template program and saves the resultant DataFrame to csv.
@@ -206,7 +108,7 @@ class OptimizeTemplateManager(BaseModel2DTM):
             optimal_template_px = self.optimize_pixel_size()
             print(f"Optimal template px: {optimal_template_px:.3f} Å")
             # print this to the text file
-            with open(output_text_path, "w") as f:
+            with open(output_text_path, "w", encoding="utf-8") as f:
                 f.write(f"Optimal template px: {optimal_template_px:.3f} Å")
 
     def optimize_pixel_size(self) -> float:
@@ -310,11 +212,13 @@ class OptimizeTemplateManager(BaseModel2DTM):
         dict[str, np.ndarray]
             The result of the refine template program.
         """
+        # pylint: disable=duplicate-code
         result: dict[str, np.ndarray] = {}
         result = core_refine_template(
             batch_size=orientation_batch_size, **backend_kwargs
         )
         result = {k: v.cpu().numpy() for k, v in result.items()}
+
         return result
 
     def results_to_snr(self, result: dict[str, np.ndarray]) -> float:
@@ -330,14 +234,21 @@ class OptimizeTemplateManager(BaseModel2DTM):
         float
             The mean SNR of the template.
         """
-        df_refined = self.particle_stack._df.copy()
+        # pylint: disable=duplicate-code
+        df_refined = self.particle_stack._df.copy()  # pylint: disable=protected-access
+
+        # Scale the optimized cross-correlation to a z-score
         refined_mip = result["refined_cross_correlation"]
         refined_scaled_mip = refined_mip - df_refined["correlation_mean"]
         refined_scaled_mip = refined_scaled_mip / np.sqrt(
             df_refined["correlation_variance"]
         )
-        mean_snr = float(refined_scaled_mip.mean())
+
+        # Printing out the results to console
         print(
             f"max snr: {refined_scaled_mip.max()}, min snr: {refined_scaled_mip.min()}"
         )
+
+        mean_snr = float(refined_scaled_mip.mean())
+
         return mean_snr

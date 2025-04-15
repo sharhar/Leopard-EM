@@ -2,7 +2,7 @@
 
 import time
 
-from programs.refine_template import RefineTemplateManager
+from leopard_em.pydantic_models import RefineTemplateManager
 
 #######################################
 ### Editable parameters for program ###
@@ -36,13 +36,13 @@ def main() -> None:
 
     rt_manager.run_refine_template(DATAFRAME_OUTPUT_PATH, PARTICLE_BATCH_SIZE)
 
-    print("Finished core call.")
+    print("Finished core refine_template call.")
 
     # Print the wall time of the search in HH:MM:SS
     end_time = time.time()
     elapsed_time = end_time - start_time
     elapsed_time_str = time.strftime("%H:%M:%S", time.gmtime(elapsed_time))
-    print(f"Wall time: {elapsed_time_str}")
+    print(f"Refine template wall time: {elapsed_time_str}")
 
     print("Done!")
 
