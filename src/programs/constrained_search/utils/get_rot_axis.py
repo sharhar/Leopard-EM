@@ -179,7 +179,7 @@ def main() -> None:
     print(f"  Theta: {theta:.2f} degrees (range 0-180)")
 
     # Write results to output file
-    with open(output_file, "w") as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         f.write("# PDB Rotation Analysis Results\n\n")
         f.write(f"Source PDB: {pdb_file1}\n")
         f.write(f"Target PDB: {pdb_file2}\n")

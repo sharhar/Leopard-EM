@@ -11,11 +11,11 @@ from leopard_em.analysis.pick_match_template_peaks import gaussian_noise_zscore_
 from leopard_em.backend.core_refine_template import core_refine_template
 from leopard_em.pydantic_models.computational_config import ComputationalConfig
 from leopard_em.pydantic_models.correlation_filters import PreprocessingFilters
+from leopard_em.pydantic_models.custom_types import BaseModel2DTM, ExcludedTensor
 from leopard_em.pydantic_models.defocus_search import DefocusSearchConfig
 from leopard_em.pydantic_models.formats import CONSTRAINED_DF_COLUMN_ORDER
 from leopard_em.pydantic_models.orientation_search import ConstrainedOrientationConfig
 from leopard_em.pydantic_models.particle_stack import ParticleStack
-from leopard_em.pydantic_models.types import BaseModel2DTM, ExcludedTensor
 from leopard_em.utils.data_io import load_mrc_volume
 
 

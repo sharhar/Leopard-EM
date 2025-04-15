@@ -109,7 +109,7 @@ class OptimizeTemplateManager(BaseModel2DTM):
             # Create a file for logging all iterations
             all_results_path = self._get_all_results_path(output_text_path)
             # Create the file and write header
-            with open(all_results_path, "w") as f:
+            with open(all_results_path, "w", encoding="utf-8") as f:
                 f.write("Pixel Size (Å),SNR\n")
 
             optimal_template_px = self.optimize_pixel_size(all_results_path)
@@ -149,7 +149,7 @@ class OptimizeTemplateManager(BaseModel2DTM):
             print(f"Pixel size: {px:.3f}, SNR: {snr:.3f}")
 
             # Log to file
-            with open(all_results_path, "a") as f:
+            with open(all_results_path, "a", encoding="utf-8") as f:
                 f.write(f"{px:.3f},{snr:.3f}\n")
 
             if snr > best_snr:
@@ -178,7 +178,7 @@ class OptimizeTemplateManager(BaseModel2DTM):
                 print(f"Pixel size: {px:.3f}, SNR: {snr:.3f}")
 
                 # Log to file
-                with open(all_results_path, "a") as f:
+                with open(all_results_path, "a", encoding="utf-8") as f:
                     f.write(f"{px:.3f},{snr:.3f}\n")
 
                 if snr > best_snr:
