@@ -332,6 +332,7 @@ def get_search_tensors(
     return vals
 
 
+# pylint: disable=too-many-locals
 def setup_particle_backend_kwargs(
     particle_stack: ParticleStack,
     template: torch.Tensor,

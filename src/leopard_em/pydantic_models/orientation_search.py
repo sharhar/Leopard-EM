@@ -54,8 +54,6 @@ class OrientationSearchConfig(BaseModel2DTM):
         greater than 0.
     """
 
-    # TODO: Particle symmetry options
-
     in_plane_step: Annotated[float, Field(ge=0.0)] = 1.5
     out_of_plane_step: Annotated[float, Field(ge=0.0)] = 2.5
     psi_min: float = 0.0

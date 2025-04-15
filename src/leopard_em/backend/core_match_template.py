@@ -43,6 +43,7 @@ do_iteration_statistics_updates_compiled = torch.compile(
 ###########################################################
 
 
+# pylint: disable=too-many-locals
 def core_match_template(
     image_dft: torch.Tensor,
     template_dft: torch.Tensor,  # already fftshifted
@@ -236,6 +237,7 @@ def construct_multi_gpu_match_template_kwargs(
     return kwargs_per_device
 
 
+# pylint: disable=too-many-locals
 def _core_match_template_single_gpu(
     result_dict: dict,
     device_id: int,

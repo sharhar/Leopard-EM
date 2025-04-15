@@ -1,5 +1,9 @@
 """Reading, storing, and exporting results from the match_template program."""
 
+# NOTE: Disabling pylint for too-many-instance-attributes since this class holds a
+# number of result attributes that are independent and should not be grouped further.
+# pylint: disable=too-many-instance-attributes
+
 import os
 from typing import ClassVar
 
@@ -127,14 +131,10 @@ class MatchTemplateResult(BaseModel2DTM):
 
     model_config: ClassVar = ConfigDict(arbitrary_types_allowed=True)
 
-    # TODO: Implement compression options.
-
     # Serialized attributes
     # NOTE: This overwrite attribute is a bit overbearing currently. I predict
     # it will lead to headaches when attempting to load a result, this is set
     # to True, and the result files already exist.
-    # TODO: Figure how to handle data overwrite prevention (and file write
-    # perms) before running expensive GPU computations.
     allow_file_overwrite: bool = False
     mip_path: str
     scaled_mip_path: str
@@ -307,8 +307,6 @@ class MatchTemplateResult(BaseModel2DTM):
 
     def export_results(self) -> None:
         """Export the torch.Tensor results to the specified mrc files."""
-        # TODO: Handle pixel_size and other mrc metadata when exporting
-
         paths = [
             self.mip_path,
             self.scaled_mip_path,

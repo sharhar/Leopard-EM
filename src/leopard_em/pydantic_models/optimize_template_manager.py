@@ -84,6 +84,7 @@ class OptimizeTemplateManager(BaseModel2DTM):
         pixel_size_offsets = torch.tensor([0.0])
 
         # Use the common utility function to set up the backend kwargs
+        # pylint: disable=duplicate-code
         return setup_particle_backend_kwargs(
             particle_stack=self.particle_stack,
             template=template,
@@ -211,11 +212,13 @@ class OptimizeTemplateManager(BaseModel2DTM):
         dict[str, np.ndarray]
             The result of the refine template program.
         """
+        # pylint: disable=duplicate-code
         result: dict[str, np.ndarray] = {}
         result = core_refine_template(
             batch_size=orientation_batch_size, **backend_kwargs
         )
         result = {k: v.cpu().numpy() for k, v in result.items()}
+
         return result
 
     def results_to_snr(self, result: dict[str, np.ndarray]) -> float:
@@ -231,14 +234,21 @@ class OptimizeTemplateManager(BaseModel2DTM):
         float
             The mean SNR of the template.
         """
+        # pylint: disable=duplicate-code
         df_refined = self.particle_stack._df.copy()  # pylint: disable=protected-access
+
+        # Scale the optimized cross-correlation to a z-score
         refined_mip = result["refined_cross_correlation"]
         refined_scaled_mip = refined_mip - df_refined["correlation_mean"]
         refined_scaled_mip = refined_scaled_mip / np.sqrt(
             df_refined["correlation_variance"]
         )
-        mean_snr = float(refined_scaled_mip.mean())
+
+        # Printing out the results to console
         print(
             f"max snr: {refined_scaled_mip.max()}, min snr: {refined_scaled_mip.min()}"
         )
+
+        mean_snr = float(refined_scaled_mip.mean())
+
         return mean_snr

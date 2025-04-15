@@ -44,6 +44,7 @@ def combine_euler_angles(angle_a: torch.Tensor, angle_b: torch.Tensor) -> torch.
 # approach where each argument is independent and explicit.
 # pylint: disable=too-many-arguments
 # pylint: disable=too-many-positional-arguments
+# pylint: disable=too-many-locals
 def core_refine_template(
     particle_stack_dft: torch.Tensor,  # (N, H, W)
     template_dft: torch.Tensor,  # (d, h, w)
@@ -181,6 +182,7 @@ def core_refine_template(
     }
 
 
+# pylint: disable=too-many-locals
 def construct_multi_gpu_refine_template_kwargs(
     particle_stack_dft: torch.Tensor,
     template_dft: torch.Tensor,
@@ -290,6 +292,7 @@ def construct_multi_gpu_refine_template_kwargs(
     return kwargs_per_device
 
 
+# pylint: disable=too-many-locals
 def _core_refine_template_single_gpu(
     result_dict: dict,
     device_id: int,
@@ -450,6 +453,7 @@ def _core_refine_template_single_gpu(
     result_dict[device_id] = result
 
 
+# pylint: disable=too-many-locals
 def _core_refine_template_single_thread(
     particle_image_dft: torch.Tensor,
     particle_index: int,
@@ -632,6 +636,7 @@ def _core_refine_template_single_thread(
     return refined_stats
 
 
+# pylint: disable=too-many-locals
 def cross_correlate_particle_stack(
     particle_stack_dft: torch.Tensor,  # (N, H, W)
     template_dft: torch.Tensor,  # (d, h, w)
