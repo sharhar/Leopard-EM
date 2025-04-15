@@ -13,11 +13,7 @@ from leopard_em.pydantic_models.correlation_filters import PreprocessingFilters
 from leopard_em.pydantic_models.custom_types import BaseModel2DTM, ExcludedTensor
 from leopard_em.pydantic_models.particle_stack import ParticleStack
 from leopard_em.pydantic_models.pixel_size_search import PixelSizeSearchConfig
-from leopard_em.pydantic_models.utils import (
-    _setup_ctf_kwargs_from_particle_stack,
-    preprocess_image,
-    volume_to_rfft_fourier_slice,
-)
+from leopard_em.pydantic_models.utils import setup_particle_backend_kwargs
 
 
 class OptimizeTemplateManager(BaseModel2DTM):
@@ -71,83 +67,33 @@ class OptimizeTemplateManager(BaseModel2DTM):
         prefer_refined_angles : bool
             Whether to use refined angles or not. Defaults to True.
         """
-        device_list = self.computational_config.gpu_devices
-
         # simulate template volume
         template = self.simulator.run(gpu_ids=self.computational_config.gpu_ids)
-
-        # Extract out the regions of interest (particles) based on the particle stack
-        particle_images = self.particle_stack.construct_image_stack(
-            pos_reference="center",
-            padding_value=0.0,
-            handle_bounds="pad",
-            padding_mode="constant",
-        )
-        # pylint: disable=E1102
-        particle_images_dft = torch.fft.rfftn(particle_images, dim=(-2, -1))
-        particle_images_dft[..., 0, 0] = 0.0 + 0.0j  # Zero out DC component
-
-        bandpass_filter = (
-            self.preprocessing_filters.bandpass_filter.calculate_bandpass_filter(
-                particle_images_dft.shape[-2:]
-            )
-        )
-
-        # Calculate and apply the filters for the particle image stack
-        filter_stack = self.particle_stack.construct_filter_stack(
-            self.preprocessing_filters, output_shape=particle_images_dft.shape[-2:]
-        )
-
-        particle_images_dft = preprocess_image(
-            image_rfft=particle_images_dft,
-            cumulative_fourier_filters=filter_stack,
-            bandpass_filter=bandpass_filter,
-        )
-
-        # Calculate the filters applied to each template (besides CTF)
-        projective_filters = self.particle_stack.construct_filter_stack(
-            self.preprocessing_filters,
-            output_shape=(template.shape[-2], template.shape[-1] // 2 + 1),
-        )
-
-        template_dft = volume_to_rfft_fourier_slice(template)
 
         # The set of "best" euler angles from match template search
         # Check if refined angles exist, otherwise use the original angles
         euler_angles = self.particle_stack.get_euler_angles(prefer_refined_angles)
 
-        # The relative Euler angle offsets to search over
+        # The relative Euler angle offsets to search over (none for optimization)
         euler_angle_offsets = torch.zeros((1, 3))
 
-        # The best defocus values for each particle (+ astigmatism)
-        defocus_u = self.particle_stack.absolute_defocus_u
-        defocus_v = self.particle_stack.absolute_defocus_v
-        defocus_angle = torch.tensor(self.particle_stack["astigmatism_angle"])
-
-        # The relative defocus values to search over
+        # The relative defocus values to search over (none for optimization)
         defocus_offsets = torch.tensor([0.0])
 
-        # The relative pixel size values to search over
+        # The relative pixel size values to search over (none for optimization)
         pixel_size_offsets = torch.tensor([0.0])
 
-        ctf_kwargs = _setup_ctf_kwargs_from_particle_stack(
-            self.particle_stack, (template.shape[-2], template.shape[-1])
+        # Use the common utility function to set up the backend kwargs
+        return setup_particle_backend_kwargs(
+            particle_stack=self.particle_stack,
+            template=template,
+            preprocessing_filters=self.preprocessing_filters,
+            euler_angles=euler_angles,
+            euler_angle_offsets=euler_angle_offsets,
+            defocus_offsets=defocus_offsets,
+            pixel_size_offsets=pixel_size_offsets,
+            device_list=self.computational_config.gpu_devices,
         )
-
-        return {
-            "particle_stack_dft": particle_images_dft,
-            "template_dft": template_dft,
-            "euler_angles": euler_angles,
-            "euler_angle_offsets": euler_angle_offsets,
-            "defocus_u": defocus_u,
-            "defocus_v": defocus_v,
-            "defocus_angle": defocus_angle,
-            "defocus_offsets": defocus_offsets,
-            "pixel_size_offsets": pixel_size_offsets,
-            "ctf_kwargs": ctf_kwargs,
-            "projective_filters": projective_filters,
-            "device": device_list,  # Pass all devices to core_refine_template
-        }
 
     def run_optimize_template(self, output_text_path: str) -> None:
         """Run the refine template program and saves the resultant DataFrame to csv.

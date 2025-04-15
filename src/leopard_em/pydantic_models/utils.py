@@ -5,6 +5,7 @@ from typing import Any
 import torch
 from torch_fourier_filter.ctf import calculate_ctf_2d
 
+from .correlation_filters import PreprocessingFilters
 from .optics_group import OpticsGroup
 from .particle_stack import ParticleStack
 
@@ -289,4 +290,143 @@ def _setup_ctf_kwargs_from_particle_stack(
         "phase_shift": particle_stack["phase_shift"][0].item(),
         "pixel_size": particle_stack["refined_pixel_size"].mean().item(),
         "template_shape": template_shape,
+    }
+
+
+def get_search_tensors(
+    min_val: float,
+    max_val: float,
+    step_size: float,
+    skip_enforce_zero: bool = False,
+) -> torch.tensor:
+    """Get the search tensors (pixel or defocus) for a given range and step size.
+
+    Parameters
+    ----------
+    min_val : float
+        The minimum value.
+    max_val : float
+        The maximum value.
+    step_size : float
+        The step size.
+    skip_enforce_zero : bool, optional
+        Whether to skip enforcing a zero value, by default False.
+
+    Returns
+    -------
+    torch.tensor
+        The search tensors.
+    """
+    vals = torch.arange(
+        min_val,
+        max_val + step_size,
+        step_size,
+        dtype=torch.float32,
+    )
+
+    if 0.0 not in vals and not skip_enforce_zero:
+        vals = torch.cat([vals, torch.tensor([0.0])])
+        # Re-sort pixel sizes
+        vals = torch.sort(vals)[0]
+
+    return vals
+
+
+def setup_particle_backend_kwargs(
+    particle_stack: ParticleStack,
+    template: torch.Tensor,
+    preprocessing_filters: PreprocessingFilters,
+    euler_angles: torch.Tensor,
+    euler_angle_offsets: torch.Tensor,
+    defocus_offsets: torch.Tensor,
+    pixel_size_offsets: torch.Tensor,
+    device_list: list,
+) -> dict[str, Any]:
+    """Create common kwargs dictionary for template backend functions.
+
+    This function extracts the common code between RefineTemplateManager and
+    OptimizeTemplateManager's make_backend_core_function_kwargs methods.
+
+    Parameters
+    ----------
+    particle_stack : ParticleStack
+        The particle stack containing images to process.
+    template : torch.Tensor
+        The 3D template volume.
+    preprocessing_filters : PreprocessingFilters
+        Filters to apply to the particle images.
+    euler_angles : torch.Tensor
+        The set of Euler angles to use.
+    euler_angle_offsets : torch.Tensor
+        The relative Euler angle offsets to search over.
+    defocus_offsets : torch.Tensor
+        The relative defocus values to search over.
+    pixel_size_offsets : torch.Tensor
+        The relative pixel size values to search over.
+    device_list : list
+        List of computational devices to use.
+
+    Returns
+    -------
+    dict[str, Any]
+        Dictionary of keyword arguments for backend functions.
+    """
+    # Extract out the regions of interest (particles) based on the particle stack
+    particle_images = particle_stack.construct_image_stack(
+        pos_reference="center",
+        padding_value=0.0,
+        handle_bounds="pad",
+        padding_mode="constant",
+    )
+
+    # FFT the particle images
+    # pylint: disable=E1102
+    particle_images_dft = torch.fft.rfftn(particle_images, dim=(-2, -1))
+    particle_images_dft[..., 0, 0] = 0.0 + 0.0j  # Zero out DC component
+
+    bandpass_filter = preprocessing_filters.bandpass_filter.calculate_bandpass_filter(
+        particle_images_dft.shape[-2:]
+    )
+
+    # Calculate and apply the filters for the particle image stack
+    filter_stack = particle_stack.construct_filter_stack(
+        preprocessing_filters, output_shape=particle_images_dft.shape[-2:]
+    )
+
+    particle_images_dft = preprocess_image(
+        image_rfft=particle_images_dft,
+        cumulative_fourier_filters=filter_stack,
+        bandpass_filter=bandpass_filter,
+    )
+
+    # Calculate the filters applied to each template (besides CTF)
+    projective_filters = particle_stack.construct_filter_stack(
+        preprocessing_filters,
+        output_shape=(template.shape[-2], template.shape[-1] // 2 + 1),
+    )
+
+    template_dft = volume_to_rfft_fourier_slice(template)
+
+    # The best defocus values for each particle (+ astigmatism)
+    defocus_u = particle_stack.absolute_defocus_u
+    defocus_v = particle_stack.absolute_defocus_v
+    defocus_angle = torch.tensor(particle_stack["astigmatism_angle"])
+
+    ctf_kwargs = _setup_ctf_kwargs_from_particle_stack(
+        particle_stack, (template.shape[-2], template.shape[-1])
+    )
+
+    return {
+        "particle_stack_dft": particle_images_dft,
+        "template_dft": template_dft,
+        "euler_angles": euler_angles,
+        "euler_angle_offsets": euler_angle_offsets,
+        "defocus_u": defocus_u,
+        "defocus_v": defocus_v,
+        "defocus_angle": defocus_angle,
+        "defocus_offsets": defocus_offsets,
+        "pixel_size_offsets": pixel_size_offsets,
+        "ctf_kwargs": ctf_kwargs,
+        "projective_filters": projective_filters,
+        "device": device_list,
     }

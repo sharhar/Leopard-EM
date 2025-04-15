@@ -15,11 +15,7 @@ from leopard_em.pydantic_models.formats import REFINED_DF_COLUMN_ORDER
 from leopard_em.pydantic_models.orientation_search import RefineOrientationConfig
 from leopard_em.pydantic_models.particle_stack import ParticleStack
 from leopard_em.pydantic_models.pixel_size_search import PixelSizeSearchConfig
-from leopard_em.pydantic_models.utils import (
-    _setup_ctf_kwargs_from_particle_stack,
-    preprocess_image,
-    volume_to_rfft_fourier_slice,
-)
+from leopard_em.pydantic_models.utils import setup_particle_backend_kwargs
 from leopard_em.utils.data_io import load_mrc_volume
 
 
@@ -87,8 +83,6 @@ class RefineTemplateManager(BaseModel2DTM):
             Whether to use the refined angles from the particle stack. Defaults to
             False.
         """
-        device_list = self.computational_config.gpu_devices
-
         # Ensure the template is loaded in as a Tensor object
         if self.template_volume is None:
             self.template_volume = load_mrc_volume(self.template_volume_path)
@@ -97,42 +91,6 @@ class RefineTemplateManager(BaseModel2DTM):
         else:
             template = self.template_volume
 
-        # Extract out the regions of interest (particles) based on the particle stack
-        particle_images = self.particle_stack.construct_image_stack(
-            pos_reference="center",
-            padding_value=0.0,
-            handle_bounds="pad",
-            padding_mode="constant",
-        )
-        # pylint: disable=E1102
-        particle_images_dft = torch.fft.rfftn(particle_images, dim=(-2, -1))
-        particle_images_dft[..., 0, 0] = 0.0 + 0.0j  # Zero out DC component
-
-        bandpass_filter = (
-            self.preprocessing_filters.bandpass_filter.calculate_bandpass_filter(
-                particle_images_dft.shape[-2:]
-            )
-        )
-
-        # Calculate and apply the filters for the particle image stack
-        filter_stack = self.particle_stack.construct_filter_stack(
-            self.preprocessing_filters, output_shape=particle_images_dft.shape[-2:]
-        )
-
-        particle_images_dft = preprocess_image(
-            image_rfft=particle_images_dft,
-            cumulative_fourier_filters=filter_stack,
-            bandpass_filter=bandpass_filter,
-        )
-
-        # Calculate the filters applied to each template (besides CTF)
-        projective_filters = self.particle_stack.construct_filter_stack(
-            self.preprocessing_filters,
-            output_shape=(template.shape[-2], template.shape[-1] // 2 + 1),
-        )
-
-        template_dft = volume_to_rfft_fourier_slice(template)
-
         # The set of "best" euler angles from match template search
         # Check if refined angles exist, otherwise use the original angles
         euler_angles = self.particle_stack.get_euler_angles(prefer_refined_angles)
@@ -140,35 +98,23 @@ class RefineTemplateManager(BaseModel2DTM):
         # The relative Euler angle offsets to search over
         euler_angle_offsets = self.orientation_refinement_config.euler_angles_offsets
 
-        # The best defocus values for each particle (+ astigmatism)
-        defocus_u = self.particle_stack.absolute_defocus_u
-        defocus_v = self.particle_stack.absolute_defocus_v
-        defocus_angle = torch.tensor(self.particle_stack["astigmatism_angle"])
-
         # The relative defocus values to search over
         defocus_offsets = self.defocus_refinement_config.defocus_values
 
         # The relative pixel size values to search over
         pixel_size_offsets = self.pixel_size_refinement_config.pixel_size_values
 
-        ctf_kwargs = _setup_ctf_kwargs_from_particle_stack(
-            self.particle_stack, (template.shape[-2], template.shape[-1])
+        # Use the common utility function to set up the backend kwargs
+        return setup_particle_backend_kwargs(
+            particle_stack=self.particle_stack,
+            template=template,
+            preprocessing_filters=self.preprocessing_filters,
+            euler_angles=euler_angles,
+            euler_angle_offsets=euler_angle_offsets,
+            defocus_offsets=defocus_offsets,
+            pixel_size_offsets=pixel_size_offsets,
+            device_list=self.computational_config.gpu_devices,
         )
-
-        return {
-            "particle_stack_dft": particle_images_dft,
-            "template_dft": template_dft,
-            "euler_angles": euler_angles,
-            "euler_angle_offsets": euler_angle_offsets,
-            "defocus_u": defocus_u,
-            "defocus_v": defocus_v,
-            "defocus_angle": defocus_angle,
-            "defocus_offsets": defocus_offsets,
-            "pixel_size_offsets": pixel_size_offsets,
-            "ctf_kwargs": ctf_kwargs,
-            "projective_filters": projective_filters,
-            "device": device_list,  # Pass all devices to core_refine_template
-        }
 
     def run_refine_template(
         self, output_dataframe_path: str, orientation_batch_size: int = 64
