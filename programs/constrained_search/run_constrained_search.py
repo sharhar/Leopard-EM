@@ -2,7 +2,7 @@
 
 import time
 
-from programs.constrained_search import ConstrainedSearchManager
+from leopard_em.pydantic_models.managers import ConstrainedSearchManager
 
 #######################################
 ### Editable parameters for program ###
