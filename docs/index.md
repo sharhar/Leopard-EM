@@ -6,7 +6,7 @@ This package reflects most of the functionality described in Lucas, *et al.* (20
 ## Installation
 
 Pre-packaged versions of Leopard-EM are released on the Python Package Index (PyPI).
-We target Linux operating systems on Python 3.9 and above for these releases, and the PyTorch GPU acceleration backend is only tested against NVIDIA GPUs.
+We target Linux operating systems on Python 3.10 and above for these releases, and the PyTorch GPU acceleration backend is only tested against NVIDIA GPUs.
 With these caveats in mind, the package can be installed using pip:
 
 ```bash
