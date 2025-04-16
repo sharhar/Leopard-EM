@@ -172,6 +172,12 @@ def core_refine_template(
     refined_pos_x = torch.cat(
         [torch.from_numpy(r["refined_pos_x"]) for r in results.values()]
     )
+    refined_pos_y = torch.cat(
+        [torch.from_numpy(r["refined_pos_y"]) for r in results.values()]
+    )
+    refined_pos_x = torch.cat(
+        [torch.from_numpy(r["refined_pos_x"]) for r in results.values()]
+    )
 
     # Ensure the results are sorted back to the original particle order
     # (If particles were split across devices, we need to reorder the results)

@@ -4,7 +4,7 @@ import pytest
 import torch
 from pydantic import ValidationError
 
-from leopard_em.pydantic_models.computational_config import ComputationalConfig
+from leopard_em.pydantic_models.config import ComputationalConfig
 
 
 def test_default_values():

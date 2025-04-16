@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from leopard_em.pydantic_models.optics_group import OpticsGroup
+from leopard_em.pydantic_models.data_structures import OpticsGroup
 
 
 def test_default_values():

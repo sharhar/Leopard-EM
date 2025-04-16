@@ -2,7 +2,7 @@
 
 import time
 
-from leopard_em.pydantic_models import RefineTemplateManager
+from leopard_em.pydantic_models.managers import RefineTemplateManager
 
 #######################################
 ### Editable parameters for program ###

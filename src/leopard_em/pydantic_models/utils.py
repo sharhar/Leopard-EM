@@ -1,13 +1,15 @@
 """Utility functions shared between pydantic models."""
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import torch
 from torch_fourier_filter.ctf import calculate_ctf_2d
 
-from .correlation_filters import PreprocessingFilters
-from .optics_group import OpticsGroup
-from .particle_stack import ParticleStack
+# Using the TYPE_CHECKING statement to avoid circular imports
+if TYPE_CHECKING:
+    from .config.correlation_filters import PreprocessingFilters
+    from .data_structures.optics_group import OpticsGroup
+    from .data_structures.particle_stack import ParticleStack
 
 
 def preprocess_image(
@@ -62,7 +64,7 @@ def preprocess_image(
 
 def calculate_ctf_filter_stack(
     template_shape: tuple[int, int],
-    optics_group: OpticsGroup,
+    optics_group: "OpticsGroup",
     defocus_offsets: torch.Tensor,  # in Angstrom, relative
     pixel_size_offsets: torch.Tensor,  # in Angstrom, relative
 ) -> torch.Tensor:
@@ -255,7 +257,7 @@ def volume_to_rfft_fourier_slice(volume: torch.Tensor) -> torch.Tensor:
 
 
 def _setup_ctf_kwargs_from_particle_stack(
-    particle_stack: ParticleStack, template_shape: tuple[int, int]
+    particle_stack: "ParticleStack", template_shape: tuple[int, int]
 ) -> dict[str, Any]:
     """Helper function for per-particle CTF kwargs.
 
@@ -334,9 +336,9 @@ def get_search_tensors(
 
 # pylint: disable=too-many-locals
 def setup_particle_backend_kwargs(
-    particle_stack: ParticleStack,
+    particle_stack: "ParticleStack",
     template: torch.Tensor,
-    preprocessing_filters: PreprocessingFilters,
+    preprocessing_filters: "PreprocessingFilters",
     euler_angles: torch.Tensor,
     euler_angle_offsets: torch.Tensor,
     defocus_offsets: torch.Tensor,
