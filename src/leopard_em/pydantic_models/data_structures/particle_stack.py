@@ -467,16 +467,30 @@ class ParticleStack(BaseModel2DTM):
     @property
     def absolute_defocus_u(self) -> torch.Tensor:
         """Get the absolute defocus along the major axis."""
-        return torch.tensor(
-            self._df["defocus_u"] + self._df["refined_relative_defocus"]
-        )
+        defocus_col = "refined_relative_defocus"
+        if (
+            "refined_relative_defocus" not in self._df.columns
+            or self._df["refined_relative_defocus"].isna().any()
+            or self._df["refined_relative_defocus"]
+            .isin([float("inf"), float("-inf")])
+            .any()
+        ):
+            defocus_col = "relative_defocus"
+        return torch.tensor(self._df["defocus_u"] + self._df[defocus_col])
 
     @property
     def absolute_defocus_v(self) -> torch.Tensor:
         """Get the absolute defocus along the minor axis."""
-        return torch.tensor(
-            self._df["defocus_v"] + self._df["refined_relative_defocus"]
-        )
+        defocus_col = "refined_relative_defocus"
+        if (
+            "refined_relative_defocus" not in self._df.columns
+            or self._df["refined_relative_defocus"].isna().any()
+            or self._df["refined_relative_defocus"]
+            .isin([float("inf"), float("-inf")])
+            .any()
+        ):
+            defocus_col = "relative_defocus"
+        return torch.tensor(self._df["defocus_v"] + self._df[defocus_col])
 
     def get_euler_angles(self, prefer_refined_angles: bool = True) -> torch.Tensor:
         """Return the Euler angles (phi, theta, psi) of all particles as a tensor.
