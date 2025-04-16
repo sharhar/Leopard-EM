@@ -42,11 +42,11 @@ A minimally working example of running the `match_template` program in a python 
 Please see the examples page for more extensive explanations and demonstrations on how to configure, use, and extend the package.
 
 ```python
-from leopard_em.pydantic_models import MatchTemplateManager
-from leopard_em.pydantic_models import MatchTemplateResult
-from leopard_em.pydantic_models import OpticsGroup
-from leopard_em.pydantic_models import DefocusSearchConfig
-from leopard_em.pydantic_models import OrientationSearchConfig
+from leopard_em.pydantic_models.managers import MatchTemplateManager
+from leopard_em.pydantic_models.config import MatchTemplateResult
+from leopard_em.pydantic_models.config import OpticsGroup
+from leopard_em.pydantic_models.config import DefocusSearchConfig
+from leopard_em.pydantic_models.config import OrientationSearchConfig
 
 # Microscope imaging parameters
 my_optics_group = OpticsGroup(
@@ -66,7 +66,7 @@ df_search_config = DefocusSearchConfig(
     step_size=200.0,    # In Angstroms
 )
 
-# Orientation sampling of SO(3) space
+# Orientation sampling of SO(3) space, using default
 orientation_search_config = OrientationSearchConfig()
 
 # Where to save the output results

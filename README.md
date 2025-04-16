@@ -32,7 +32,7 @@ We also provide a default [`match_template.py`](programs/match_template/run_matc
 Once configured with the proper paths, parameters, etc., the program can run as follows:
 
 ```python
-from leopard_em.pydantic_models import MatchTemplateManager
+from leopard_em.pydantic_models.managers import MatchTemplateManager
 
 YAML_CONFIG_PATH = "/path/to/match-template-configuration.yaml"
 DATAFRAME_OUTPUT_PATH = "/path/to/match-template-results.csv"
@@ -59,7 +59,7 @@ We also provide a default [`refine_template.py`](programs/refine_template/run_re
 Once configured with the proper paths, parameters, etc., the program can run as follows:
 
 ```python
-from leopard_em.pydantic_models import RefineTemplateManager
+from leopard_em.pydantic_models.managers import RefineTemplateManager
 
 YAML_CONFIG_PATH = "/path/to/refine-template-configuration.yaml"
 DATAFRAME_OUTPUT_PATH = "/path/to/refine-template-results.csv"

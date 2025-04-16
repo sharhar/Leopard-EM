@@ -120,6 +120,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*.py" = ["D", "S"]
+"tests/pydantic_models/test_basic_imports.py" = ["F401"]
 
 # https://docs.astral.sh/ruff/formatter/
 [tool.ruff.format]
