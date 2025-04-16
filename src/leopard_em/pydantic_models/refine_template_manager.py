@@ -190,11 +190,6 @@ class RefineTemplateManager(BaseModel2DTM):
         """
         # pylint: disable=duplicate-code
         df_refined = self.particle_stack._df.copy()  # pylint: disable=protected-access
-        refined_mip = result["refined_cross_correlation"]
-        refined_scaled_mip = refined_mip - df_refined["correlation_mean"]
-        refined_scaled_mip = refined_scaled_mip / np.sqrt(
-            df_refined["correlation_variance"]
-        )
 
         # x and y positions
         pos_offset_y = result["refined_pos_y"]
@@ -254,7 +249,6 @@ class RefineTemplateManager(BaseModel2DTM):
         #        df_refined["correlation_variance"] = correlation_variance[
         #            df_refined["refined_pos_y"], df_refined["refined_pos_x"]
         #        ]
-
         refined_mip = result["refined_cross_correlation"]
         refined_scaled_mip = result["refined_z_score"]
         df_refined["refined_mip"] = refined_mip
