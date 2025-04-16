@@ -9,15 +9,16 @@ from pydantic import ValidationError
 # Skip tests for only this file because Windows tests will generate warnings
 # about healpy not being compatible with Windows. This is easier than having some more
 # complex logic specific to only Windows platforms within the torch-so3 package.
-pytestmark = pytest.mark.skipif(
-    sys.platform.startswith("win"),
-    reason="Skip tests for Windows platform due to healpy warnings",
-)
-
-from leopard_em.pydantic_models.config import (  # noqa: E402
-    OrientationSearchConfig,
-    RefineOrientationConfig,
-)
+if sys.platform.startswith("win"):
+    pytestmark = pytest.mark.skipif(
+        True,
+        reason="Skip tests for Windows platform due to healpy warnings",
+    )
+else:
+    from leopard_em.pydantic_models.config import (
+        OrientationSearchConfig,
+        RefineOrientationConfig,
+    )
 
 
 def test_orientation_search_default_values():
