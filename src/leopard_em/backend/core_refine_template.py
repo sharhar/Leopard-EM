@@ -140,24 +140,28 @@ def core_refine_template(
 
     # Concatenate results from all devices
     refined_cross_correlation = torch.cat(
-        [torch.from_numpy(r["refined_cross_correlation"]) for r in results]
+        [torch.from_numpy(r["refined_cross_correlation"]) for r in results.values()]
     )
     refined_euler_angles = torch.cat(
-        [torch.from_numpy(r["refined_euler_angles"]) for r in results]
+        [torch.from_numpy(r["refined_euler_angles"]) for r in results.values()]
     )
     refined_defocus_offset = torch.cat(
-        [torch.from_numpy(r["refined_defocus_offset"]) for r in results]
+        [torch.from_numpy(r["refined_defocus_offset"]) for r in results.values()]
     )
     refined_pixel_size_offset = torch.cat(
-        [torch.from_numpy(r["refined_pixel_size_offset"]) for r in results]
+        [torch.from_numpy(r["refined_pixel_size_offset"]) for r in results.values()]
     )
-    refined_pos_y = torch.cat([torch.from_numpy(r["refined_pos_y"]) for r in results])
-    refined_pos_x = torch.cat([torch.from_numpy(r["refined_pos_x"]) for r in results])
+    refined_pos_y = torch.cat(
+        [torch.from_numpy(r["refined_pos_y"]) for r in results.values()]
+    )
+    refined_pos_x = torch.cat(
+        [torch.from_numpy(r["refined_pos_x"]) for r in results.values()]
+    )
 
     # Ensure the results are sorted back to the original particle order
     # (If particles were split across devices, we need to reorder the results)
     particle_indices = torch.cat(
-        [torch.from_numpy(r["particle_indices"]) for r in results]
+        [torch.from_numpy(r["particle_indices"]) for r in results.values()]
     )
     sort_indices = torch.argsort(particle_indices)
 

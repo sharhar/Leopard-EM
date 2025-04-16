@@ -6,7 +6,7 @@ This package reflects most of the functionality described in Lucas, *et al.* (20
 ## Installation
 
 Pre-packaged versions of Leopard-EM are released on the Python Package Index (PyPI).
-We target Linux operating systems on Python 3.9 and above for these releases, and the PyTorch GPU acceleration backend is only tested against NVIDIA GPUs.
+We target Linux operating systems on Python 3.10 and above for these releases, and the PyTorch GPU acceleration backend is only tested against NVIDIA GPUs.
 With these caveats in mind, the package can be installed using pip:
 
 ```bash
@@ -42,11 +42,11 @@ A minimally working example of running the `match_template` program in a python 
 Please see the examples page for more extensive explanations and demonstrations on how to configure, use, and extend the package.
 
 ```python
-from leopard_em.pydantic_models import MatchTemplateManager
-from leopard_em.pydantic_models import MatchTemplateResult
-from leopard_em.pydantic_models import OpticsGroup
-from leopard_em.pydantic_models import DefocusSearchConfig
-from leopard_em.pydantic_models import OrientationSearchConfig
+from leopard_em.pydantic_models.managers import MatchTemplateManager
+from leopard_em.pydantic_models.config import MatchTemplateResult
+from leopard_em.pydantic_models.config import OpticsGroup
+from leopard_em.pydantic_models.config import DefocusSearchConfig
+from leopard_em.pydantic_models.config import OrientationSearchConfig
 
 # Microscope imaging parameters
 my_optics_group = OpticsGroup(
@@ -66,7 +66,7 @@ df_search_config = DefocusSearchConfig(
     step_size=200.0,    # In Angstroms
 )
 
-# Orientation sampling of SO(3) space
+# Orientation sampling of SO(3) space, using default
 orientation_search_config = OrientationSearchConfig()
 
 # Where to save the output results

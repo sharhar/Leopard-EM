@@ -2,7 +2,7 @@
 
 import torch
 
-from leopard_em.pydantic_models.correlation_filters import (
+from leopard_em.pydantic_models.config import (
     ArbitraryCurveFilterConfig,
     BandpassFilterConfig,
     PhaseRandomizationFilterConfig,

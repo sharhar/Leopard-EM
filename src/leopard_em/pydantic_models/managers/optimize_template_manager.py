@@ -8,11 +8,13 @@ from pydantic import ConfigDict
 from ttsim3d.models import Simulator
 
 from leopard_em.backend.core_refine_template import core_refine_template
-from leopard_em.pydantic_models.computational_config import ComputationalConfig
-from leopard_em.pydantic_models.correlation_filters import PreprocessingFilters
+from leopard_em.pydantic_models.config import (
+    ComputationalConfig,
+    PixelSizeSearchConfig,
+    PreprocessingFilters,
+)
 from leopard_em.pydantic_models.custom_types import BaseModel2DTM, ExcludedTensor
-from leopard_em.pydantic_models.particle_stack import ParticleStack
-from leopard_em.pydantic_models.pixel_size_search import PixelSizeSearchConfig
+from leopard_em.pydantic_models.data_structures import ParticleStack
 from leopard_em.pydantic_models.utils import setup_particle_backend_kwargs
 
 
