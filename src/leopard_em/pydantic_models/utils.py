@@ -382,6 +382,13 @@ def setup_particle_backend_kwargs(
         padding_mode="constant",
     )
 
+    corr_mean_stack = particle_stack.construct_cropped_statistic_stack(
+        "correlation_average"
+    )
+    corr_std_stack = (
+        particle_stack.construct_cropped_statistic_stack("correlation_variance") ** 0.5
+    )  # var to std
+
     # FFT the particle images
     # pylint: disable=E1102
     particle_images_dft = torch.fft.rfftn(particle_images, dim=(-2, -1))
@@ -429,6 +436,8 @@ def setup_particle_backend_kwargs(
         "defocus_angle": defocus_angle,
         "defocus_offsets": defocus_offsets,
         "pixel_size_offsets": pixel_size_offsets,
+        "corr_mean": corr_mean_stack,
+        "corr_std": corr_std_stack,
         "ctf_kwargs": ctf_kwargs,
         "projective_filters": projective_filters,
         "device": device_list,
