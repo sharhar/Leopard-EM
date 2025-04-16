@@ -4,6 +4,7 @@
 # An example YAML configuration to modify.
 # Call `RefineTemplateManager.from_yaml(path)` to load this configuration.
 template_volume_path: /some/path/to/template.mrc # Volume of small particle
+false_positives: 0.0025
 particle_stack_large: # This is from the large particles
   df_path: /some/path/to/particles.csv  # Needs to be readable by pandas
   extracted_box_size: [528, 528]
