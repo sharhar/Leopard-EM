@@ -3,7 +3,7 @@
 import pytest
 import torch
 
-from leopard_em.pydantic_models.defocus_search import DefocusSearchConfig
+from leopard_em.pydantic_models.config import DefocusSearchConfig
 
 
 def test_default_values():

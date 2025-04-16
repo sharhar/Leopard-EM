@@ -4,7 +4,7 @@ import pytest
 import torch
 from pydantic import ValidationError
 
-from leopard_em.pydantic_models.orientation_search import (
+from leopard_em.pydantic_models.config import (
     OrientationSearchConfig,
     RefineOrientationConfig,
 )

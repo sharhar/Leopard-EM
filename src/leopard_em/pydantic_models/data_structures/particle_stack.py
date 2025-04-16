@@ -8,11 +8,10 @@ import pandas as pd
 import torch
 from pydantic import ConfigDict
 
-from leopard_em.pydantic_models.correlation_filters import PreprocessingFilters
+from leopard_em.pydantic_models.config import PreprocessingFilters
+from leopard_em.pydantic_models.custom_types import BaseModel2DTM, ExcludedTensor
 from leopard_em.pydantic_models.formats import MATCH_TEMPLATE_DF_COLUMN_ORDER
 from leopard_em.utils.data_io import load_mrc_image
-
-from .custom_types import BaseModel2DTM, ExcludedTensor
 
 TORCH_TO_NUMPY_PADDING_MODE = {
     "constant": "constant",
