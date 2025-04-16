@@ -143,6 +143,7 @@ class OptimizeTemplateManager(BaseModel2DTM):
         coarse_px_values = pixel_size_offsets_coarse + initial_template_px
 
         consecutive_decreases = 0
+        consecutive_threshold = 2
         previous_snr = float("-inf")
         for px in coarse_px_values:
             snr = self.evaluate_template_px(px=px.item())
@@ -159,10 +160,10 @@ class OptimizeTemplateManager(BaseModel2DTM):
                 consecutive_decreases = 0
             else:
                 consecutive_decreases += 1
-                if consecutive_decreases >= 2:
+                if consecutive_decreases >= consecutive_threshold:
                     print(
-                        "SNR decreased for two consecutive iterations. "
-                        "Stopping coarse px search."
+                        f"SNR decreased for {consecutive_threshold} iterations. "
+                        f"Stopping coarse px search."
                     )
                     break
             previous_snr = snr
@@ -188,9 +189,9 @@ class OptimizeTemplateManager(BaseModel2DTM):
                     consecutive_decreases = 0
                 else:
                     consecutive_decreases += 1
-                    if consecutive_decreases >= 2:
+                    if consecutive_decreases >= consecutive_threshold:
                         print(
-                            "SNR decreased for two consecutive iterations. "
+                            f"SNR decreased for {consecutive_threshold} iterations. "
                             "Stopping fine px search."
                         )
                         break
@@ -261,8 +262,8 @@ class OptimizeTemplateManager(BaseModel2DTM):
         refined_scaled_mip = result["refined_z_score"]
         refined_scaled_mip = refined_scaled_mip[np.isfinite(refined_scaled_mip)]
 
-        # If more than n values, keep only the top 10 highest SNRs
-        best_n = 10
+        # If more than n values, keep only the top n highest SNRs
+        best_n = 6
         if len(refined_scaled_mip) > best_n:
             refined_scaled_mip = np.sort(refined_scaled_mip)[-best_n:]
 

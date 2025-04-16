@@ -19,6 +19,7 @@ class MatchTemplatePeaks(NamedTuple):
     theta: torch.Tensor
     phi: torch.Tensor
     relative_defocus: torch.Tensor
+    refined_relative_defocus: torch.Tensor
     correlation_mean: torch.Tensor
     correlation_variance: torch.Tensor
     total_correlations: int
@@ -194,6 +195,7 @@ def extract_peaks_and_statistics(
         theta=best_theta[pos_y, pos_x],
         phi=best_phi[pos_y, pos_x],
         relative_defocus=best_defocus[pos_y, pos_x],
+        refined_relative_defocus=best_defocus[pos_y, pos_x],
         correlation_mean=correlation_average[pos_y, pos_x],
         correlation_variance=correlation_variance[pos_y, pos_x],
         total_correlations=total_correlation_positions,
