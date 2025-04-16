@@ -1,10 +1,15 @@
-"""Tests for the OrientationSearchConfig model"""
+"""Tests for the OrientationSearchConfig and RefineOrientationConfig models"""
 
 import pytest
 import torch
 from pydantic import ValidationError
 
-from leopard_em.pydantic_models.config import (
+# Filter warnings for this file only because Windows tests will generate warnings
+# about healpy not being compatible with Windows. This is easier than having some more
+# complex logic specific to only Windows platforms within the torch-so3 package.
+pytestmark = pytest.mark.filterwarnings("ignore::UserWarning:torch_so3.*")
+
+from leopard_em.pydantic_models.config import (  # noqa: E402
     OrientationSearchConfig,
     RefineOrientationConfig,
 )
