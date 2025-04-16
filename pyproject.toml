@@ -142,13 +142,10 @@ pretty = true
 # ignore_errors = true
 
 # https://docs.pytest.org/
-# NOTE: Filtering out UserWarnings from torch_so3.base_s2_grid since 
-# 'healpy' package cannot be installed on Windows. Package raises this
-# warning during import steps.
 [tool.pytest.ini_options]
 minversion = "7.0"
 testpaths = ["tests"]
-filterwarnings = ["error", "ignore::UserWarning:torch_so3.base_s2_grid"]
+filterwarnings = ["error"]
 
 # https://coverage.readthedocs.io/
 [tool.coverage.report]
