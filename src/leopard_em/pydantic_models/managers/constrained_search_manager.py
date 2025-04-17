@@ -331,7 +331,9 @@ class ConstrainedSearchManager(BaseModel2DTM):
             + 1
         )
         num_correlations = num_projections * num_px
-        threshold = gaussian_noise_zscore_cutoff(num_correlations, false_positives)
+        threshold = gaussian_noise_zscore_cutoff(
+            num_correlations, float(false_positives)
+        )
         print(
             f"Threshold: {threshold} which gives {false_positives} "
             "false positives per particle"
@@ -347,6 +349,10 @@ class ConstrainedSearchManager(BaseModel2DTM):
             df_refined_above_threshold["refined_scaled_mip"] != np.nan
         ]
         # Save the above threshold dataframe
+        print(
+            f"Saving above threshold dataframe to "
+            f"{output_dataframe_path.replace('.csv', '_above_threshold.csv')}"
+        )
         df_refined_above_threshold.to_csv(
             output_dataframe_path.replace(".csv", "_above_threshold.csv")
         )
