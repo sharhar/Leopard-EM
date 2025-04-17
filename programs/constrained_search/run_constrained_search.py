@@ -19,6 +19,7 @@ DATAFRAME_OUTPUT_PATH = "/path/to/constrained-search-results.csv"
 # Number of particles to refine simultaneously. Will need to tune this parameter
 # based on the memory & computational resources available.
 PARTICLE_BATCH_SIZE = 80
+FALSE_POSITIVES = 0.005  # False positives per particle
 
 ###############################################################
 ### Main function called to run the refine template program ###
@@ -34,7 +35,11 @@ def main() -> None:
 
     start_time = time.time()
 
-    cs_manager.run_constrained_search(DATAFRAME_OUTPUT_PATH, PARTICLE_BATCH_SIZE)
+    cs_manager.run_constrained_search(
+        output_dataframe_path=DATAFRAME_OUTPUT_PATH,
+        false_positives=FALSE_POSITIVES,
+        orientation_batch_size=PARTICLE_BATCH_SIZE,
+    )
 
     print("Finished core call.")
 

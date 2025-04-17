@@ -70,8 +70,6 @@ class ConstrainedSearchManager(BaseModel2DTM):
     preprocessing_filters: PreprocessingFilters
     computational_config: ComputationalConfig
 
-    false_positives: float = 0.001  # Default to 1 per 1000 particles
-
     # Excluded tensors
     template_volume: ExcludedTensor
     zdiffs: ExcludedTensor = torch.tensor([0.0])
@@ -254,7 +252,10 @@ class ConstrainedSearchManager(BaseModel2DTM):
         }
 
     def run_constrained_search(
-        self, output_dataframe_path: str, orientation_batch_size: int = 64
+        self,
+        output_dataframe_path: str,
+        false_positives: float = 0.005,
+        orientation_batch_size: int = 64,
     ) -> None:
         """Run the constrained search program and saves the resultant DataFrame to csv.
 
@@ -262,6 +263,8 @@ class ConstrainedSearchManager(BaseModel2DTM):
         ----------
         output_dataframe_path : str
             Path to save the constrained search results.
+        false_positives : float
+            The number of false positives to allow per particle.
         orientation_batch_size : int
             Number of orientations to process at once. Defaults to 64.
         """
@@ -270,7 +273,9 @@ class ConstrainedSearchManager(BaseModel2DTM):
         result = self.get_refine_result(backend_kwargs, orientation_batch_size)
 
         self.refine_result_to_dataframe(
-            output_dataframe_path=output_dataframe_path, result=result
+            output_dataframe_path=output_dataframe_path,
+            result=result,
+            false_positives=false_positives,
         )
 
     def get_refine_result(
@@ -309,7 +314,10 @@ class ConstrainedSearchManager(BaseModel2DTM):
         return result
 
     def refine_result_to_dataframe(
-        self, output_dataframe_path: str, result: dict[str, np.ndarray]
+        self,
+        output_dataframe_path: str,
+        result: dict[str, np.ndarray],
+        false_positives: float = 0.005,
     ) -> None:
         """Convert refine template result to dataframe.
 
@@ -319,6 +327,8 @@ class ConstrainedSearchManager(BaseModel2DTM):
             Path to save the refined particle data.
         result : dict[str, np.ndarray]
             The result of the refine template program.
+        false_positives : float
+            The number of false positives to allow per particle.
         """
         df_refined = self.particle_stack_large._df.copy()
 
@@ -393,9 +403,9 @@ class ConstrainedSearchManager(BaseModel2DTM):
             + 1
         )
         num_correlations = num_projections * num_px
-        threshold = gaussian_noise_zscore_cutoff(num_correlations, self.false_positives)
+        threshold = gaussian_noise_zscore_cutoff(num_correlations, false_positives)
         print(
-            f"Threshold: {threshold} which gives {self.false_positives} "
+            f"Threshold: {threshold} which gives {false_positives} "
             "false positives per particle"
         )
         df_refined_above_threshold = df_refined[
