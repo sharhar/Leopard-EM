@@ -12,7 +12,6 @@ particle_stack_small: # This is from the small particles
   df_path: /some/path/to/particles.csv  # Needs to be readable by pandas
   extracted_box_size: [528, 528]
   original_template_size: [512, 512]
-match_tm_variance_path: /some/path/to/output_correlation_variance.mrc # This is from the small particle search
 centre_vector: [53.658134, 82.582367, 47.170788] # Vector from large particle to small particle in Angstroms
 orientation_refinement_config:
   enabled: true
