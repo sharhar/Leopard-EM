@@ -17,7 +17,6 @@ MATCH_TEMPLATE_DF_COLUMN_ORDER = [
     "theta",
     "psi",
     "relative_defocus",
-    "refined_relative_defocus",
     "defocus_u",
     "defocus_v",
     "astigmatism_angle",

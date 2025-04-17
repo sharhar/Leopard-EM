@@ -418,8 +418,7 @@ def setup_particle_backend_kwargs(
     template_dft = volume_to_rfft_fourier_slice(template)
 
     # The best defocus values for each particle (+ astigmatism)
-    defocus_u = particle_stack.absolute_defocus_u
-    defocus_v = particle_stack.absolute_defocus_v
+    defocus_u, defocus_v = particle_stack.get_absolute_defocus()
     defocus_angle = torch.tensor(particle_stack["astigmatism_angle"])
 
     ctf_kwargs = _setup_ctf_kwargs_from_particle_stack(

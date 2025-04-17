@@ -20,6 +20,22 @@ TORCH_TO_NUMPY_PADDING_MODE = {
 }
 
 
+def _any_nan_or_inf(s: pd.Series) -> bool:
+    """Helper function to check if any value in the Series is NaN or infinite.
+
+    Parameters
+    ----------
+    s : pd.Series
+        The Series to check.
+
+    Returns
+    -------
+    bool
+        True if any value in the Series is NaN or infinite, False otherwise.
+    """
+    return bool(s.isna().any() or s.isin([float("inf"), float("-inf")]).any())
+
+
 def get_cropped_image_regions(
     image: torch.Tensor | np.ndarray,
     pos_y: torch.Tensor | np.ndarray,
@@ -504,19 +520,58 @@ class ParticleStack(BaseModel2DTM):
         """Get the number of particles in the stack."""
         return len(self._df)
 
-    @property
-    def absolute_defocus_u(self) -> torch.Tensor:
-        """Get the absolute defocus along the major axis."""
-        return torch.tensor(
-            self._df["defocus_u"] + self._df["refined_relative_defocus"]
-        )
+    def get_absolute_defocus(
+        self, prefer_refined_defocus: bool = True
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """Get the absolute defocus values for each particle.
 
-    @property
-    def absolute_defocus_v(self) -> torch.Tensor:
-        """Get the absolute defocus along the minor axis."""
-        return torch.tensor(
-            self._df["defocus_v"] + self._df["refined_relative_defocus"]
-        )
+        NOTE: If the refined defocus values are requested but not present in the
+        DataFrame (either no column or any NaN values), a user warning is raised and the
+        original defocus values are returned instead.
+
+        Parameters
+        ----------
+        prefer_refined_defocus : bool, optional
+            Whether to use the refined defocus values (columns prefixed with 'refined_')
+            or not, by default True.
+
+        Returns
+        -------
+        tuple[torch.Tensor, torch.Tensor]
+            A tuple of two tensors containing the absolute defocus values along the
+            major (defocus_u) and minor axes (defocus_v), respectively in units of
+            Angstroms.
+
+        Warnings
+        --------
+            Warns if NaN values or no column present for either 'refined_defocus_u' or
+            'refined_defocus_v'. Falls back to the unrefined values.
+        """
+        rel_defocus_col = "relative_defocus"
+
+        # Both refined columns must be present AND no values can be NaN or inf
+        if prefer_refined_defocus:
+            if "refined_relative_defocus" not in self._df.columns:
+                warnings.warn(
+                    "Refined defocus values not found in DataFrame, using original "
+                    "defocus values...",
+                    stacklevel=2,
+                )
+            elif _any_nan_or_inf(self._df["refined_relative_defocus"]):
+                warnings.warn(
+                    "Refined defocus values contain NaN or inf values, using original "
+                    "defocus values...",
+                    stacklevel=2,
+                )
+            else:
+                rel_defocus_col = "refined_relative_defocus"
+
+        # Get the defocus values from the DataFrame
+        particle_defocus = torch.tensor(self._df[rel_defocus_col].to_numpy())
+        defocus_u = torch.tensor(self._df["defocus_u"].to_numpy()) + particle_defocus
+        defocus_v = torch.tensor(self._df["defocus_v"].to_numpy()) + particle_defocus
+
+        return defocus_u, defocus_v
 
     def get_euler_angles(self, prefer_refined_angles: bool = True) -> torch.Tensor:
         """Return the Euler angles (phi, theta, psi) of all particles as a tensor.
