@@ -480,20 +480,6 @@ class ParticleStack(BaseModel2DTM):
         """Get the number of particles in the stack."""
         return len(self._df)
 
-    @property
-    def absolute_defocus_u(self) -> torch.Tensor:
-        """Get the absolute defocus along the major axis."""
-        defocus_col = "refined_relative_defocus"
-        if (
-            "refined_relative_defocus" not in self._df.columns
-            or self._df["refined_relative_defocus"].isna().any()
-            or self._df["refined_relative_defocus"]
-            .isin([float("inf"), float("-inf")])
-            .any()
-        ):
-            defocus_col = "relative_defocus"
-        return torch.tensor(self._df["defocus_u"] + self._df[defocus_col])
-
     def get_absolute_defocus(
         self, prefer_refined_defocus: bool = True
     ) -> tuple[torch.Tensor, torch.Tensor]:
