@@ -619,3 +619,25 @@ class ParticleStack(BaseModel2DTM):
             return self._df[key]
         except KeyError as err:
             raise KeyError(f"Key '{key}' not found in underlying DataFrame.") from err
+
+    def set_column(self, column_name: str, value: Any) -> None:
+        """Set a column in the underlying DataFrame.
+
+        Parameters
+        ----------
+        column_name : str
+            The name of the column to set
+        value : Any
+            The value to set the column to
+        """
+        self._df.loc[:, column_name] = value
+
+    def get_dataframe_copy(self) -> pd.DataFrame:
+        """Return a copy of the underlying DataFrame.
+
+        Returns
+        -------
+        pd.DataFrame
+        A copy of the underlying DataFrame
+        """
+        return self._df.copy()

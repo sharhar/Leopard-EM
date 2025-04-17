@@ -18,7 +18,11 @@ from leopard_em.pydantic_models.config import (
 from leopard_em.pydantic_models.custom_types import BaseModel2DTM, ExcludedTensor
 from leopard_em.pydantic_models.data_structures import ParticleStack
 from leopard_em.pydantic_models.formats import CONSTRAINED_DF_COLUMN_ORDER
-from leopard_em.utils.data_io import load_mrc_volume
+from leopard_em.pydantic_models.utils import (
+    _setup_ctf_kwargs_from_particle_stack,
+    setup_images_filters_particle_stack,
+)
+from leopard_em.utils.data_io import load_mrc_volume, load_template_tensor
 
 
 class ConstrainedSearchManager(BaseModel2DTM):
@@ -81,88 +85,35 @@ class ConstrainedSearchManager(BaseModel2DTM):
         if not skip_mrc_preloads:
             self.template_volume = load_mrc_volume(self.template_volume_path)
 
-    def make_backend_core_function_kwargs(self) -> dict[str, Any]:
-        """Create the kwargs for the backend refine_template core function."""
+    # pylint: disable=too-many-locals
+    def make_backend_core_function_kwargs(
+        self, prefer_refined_angles: bool = False
+    ) -> dict[str, Any]:
+        """Create the kwargs for the backend constrained_template core function."""
         device_list = self.computational_config.gpu_devices
 
-        if self.template_volume is None:
-            self.template_volume = load_mrc_volume(self.template_volume_path)
-        if not isinstance(self.template_volume, torch.Tensor):
-            template = torch.from_numpy(self.template_volume)
-        else:
-            template = self.template_volume
-
-        template_shape = template.shape[-2:]
-
-        particle_images = self.particle_stack_large.construct_image_stack(
-            pos_reference="center",
-            padding_value=0.0,
-            handle_bounds="pad",
-            padding_mode="constant",
-        )
-        particle_images_dft = torch.fft.rfftn(particle_images, dim=(-2, -1))
-        particle_images_dft[..., 0, 0] = 0.0 + 0.0j  # Zero out DC component
-
-        # Calculate and apply the filters for the particle image stack
-        filter_stack = self.particle_stack_large.construct_filter_stack(
-            self.preprocessing_filters, output_shape=particle_images_dft.shape[-2:]
-        )
-        particle_images_dft *= filter_stack
-
-        # Normalize each particle image to mean zero variance 1
-        squared_image_dft = torch.abs(particle_images_dft) ** 2
-        squared_sum = torch.sum(squared_image_dft, dim=(-2, -1), keepdim=True)
-        particle_images_dft /= torch.sqrt(squared_sum)
-
-        # Normalize by the effective number of pixels in the particle images
-        # (sum of the bandpass filter). See comments in 'match_template_manager.py'.
-        bp_config = self.preprocessing_filters.bandpass_filter
-        bp_filter_image = bp_config.calculate_bandpass_filter(
-            particle_images_dft.shape[-2:]
-        )
-        dimensionality = bp_filter_image.sum()
-        particle_images_dft *= dimensionality**0.5
-
-        # Calculate the filters applied to each template (besides CTF)
-        projective_filters = self.particle_stack_large.construct_filter_stack(
-            self.preprocessing_filters,
-            output_shape=(template_shape[-2], template_shape[-1] // 2 + 1),
+        template = load_template_tensor(
+            template_volume=self.template_volume,
+            template_volume_path=self.template_volume_path,
         )
 
-        # Calculate the DFT of the template to take Fourier slices from
-        # NOTE: There is an extra FFTshift step before the RFFT since, for some reason,
-        # omitting this step will cause a 180 degree phase shift on odd (i, j, k)
-        # structure factors in the Fourier domain. This just requires an extra
-        # IFFTshift after converting a slice back to real-space (handled already).
-        template_dft = torch.fft.fftshift(template, dim=(-3, -2, -1))
-        template_dft = torch.fft.rfftn(template_dft, dim=(-3, -2, -1))
-        template_dft = torch.fft.fftshift(template_dft, dim=(-3, -2))  # skip rfft dim
+        part_stk = self.particle_stack_large
 
-        # The set of "best" euler angles from match template search
-        # Check if refined angles exist, otherwise use the original angles
-        phi = (
-            self.particle_stack_large["refined_phi"]
-            if "refined_phi" in self.particle_stack_large._df.columns
-            else self.particle_stack_large["phi"]
-        )
-        theta = (
-            self.particle_stack_large["refined_theta"]
-            if "refined_theta" in self.particle_stack_large._df.columns
-            else self.particle_stack_large["theta"]
-        )
-        psi = (
-            self.particle_stack_large["refined_psi"]
-            if "refined_psi" in self.particle_stack_large._df.columns
-            else self.particle_stack_large["psi"]
-        )
+        euler_angles = part_stk.get_euler_angles(prefer_refined_angles)
 
-        euler_angles = torch.stack(
-            (
-                torch.tensor(phi),
-                torch.tensor(theta),
-                torch.tensor(psi),
-            ),
-            dim=-1,
+        # The relative Euler angle offsets to search over
+        euler_angle_offsets, _ = self.orientation_refinement_config.euler_angles_offsets
+
+        # No pixel size refinement
+        pixel_size_offsets = torch.tensor([0.0])
+
+        # Extract and preprocess images and filters
+        (
+            particle_images_dft,
+            template_dft,
+            projective_filters,
+        ) = setup_images_filters_particle_stack(
+            part_stk, self.preprocessing_filters, template
         )
 
         # get z diff for each particle
@@ -178,55 +129,31 @@ class ConstrainedSearchManager(BaseModel2DTM):
             :, 2
         ]  # This is now a tensor with shape [batch_size]
 
-        # The relative Euler angle offsets to search over
-        euler_angle_offsets, _ = self.orientation_refinement_config.euler_angles_offsets
-        # euler_angle_offsets = torch.zeros((1, 3))
-
         # The best defocus values for each particle (+ astigmatism)
-        defocus_u = self.particle_stack_large.absolute_defocus_u
+        defocus_u, defocus_v = part_stk.get_absolute_defocus()
         defocus_u = defocus_u - new_z_diffs
-        defocus_v = self.particle_stack_large.absolute_defocus_v
         defocus_v = defocus_v - new_z_diffs
         # Store defocus values as instance attributes for later access
         self.zdiffs = new_z_diffs
-        defocus_angle = torch.tensor(self.particle_stack_large["astigmatism_angle"])
+        defocus_angle = torch.tensor(part_stk["astigmatism_angle"])
 
         # The relative defocus values to search over
         defocus_offsets = self.defocus_refinement_config.defocus_values
 
-        # No pixel size refinement
-        pixel_size_offsets = torch.tensor([0.0])
-
-        # Keyword arguments for the CTF filter calculation call
-        # NOTE: We currently enforce the parameters (other than the defocus values) are
-        # all the same. This could be updated in the future...
-        part_stk = self.particle_stack_large
-        assert part_stk["voltage"].nunique() == 1
-        assert part_stk["spherical_aberration"].nunique() == 1
-        assert part_stk["amplitude_contrast_ratio"].nunique() == 1
-        assert part_stk["phase_shift"].nunique() == 1
-        assert part_stk["ctf_B_factor"].nunique() == 1
-
-        ctf_kwargs = {
-            "voltage": part_stk["voltage"][0].item(),
-            "spherical_aberration": part_stk["spherical_aberration"][0].item(),
-            "amplitude_contrast_ratio": part_stk["amplitude_contrast_ratio"][0].item(),
-            "ctf_B_factor": part_stk["ctf_B_factor"][0].item(),
-            "phase_shift": part_stk["phase_shift"][0].item(),
-            "pixel_size": part_stk["refined_pixel_size"].mean().item(),
-            "template_shape": template_shape,
-            "rfft": True,
-            "fftshift": False,
-        }
+        ctf_kwargs = _setup_ctf_kwargs_from_particle_stack(
+            part_stk, (template.shape[-2], template.shape[-1])
+        )
 
         # Ger corr mean and variance
         # I want positions of large but vals from small
-        part_stk._df.loc[:, "correlation_average_path"] = self.particle_stack_small[
-            "correlation_average_path"
-        ][0]
-        part_stk._df.loc[:, "correlation_variance_path"] = self.particle_stack_small[
-            "correlation_variance_path"
-        ][0]
+        part_stk.set_column(
+            "correlation_average_path",
+            self.particle_stack_small["correlation_average_path"][0],
+        )
+        part_stk.set_column(
+            "correlation_variance_path",
+            self.particle_stack_small["correlation_variance_path"][0],
+        )
         corr_mean_stack = part_stk.construct_cropped_statistic_stack(
             "correlation_average"
         )
@@ -313,6 +240,7 @@ class ConstrainedSearchManager(BaseModel2DTM):
         result = {k: v.cpu().numpy() for k, v in result.items()}
         return result
 
+    # pylint: disable=too-many-locals
     def refine_result_to_dataframe(
         self,
         output_dataframe_path: str,
@@ -330,7 +258,7 @@ class ConstrainedSearchManager(BaseModel2DTM):
         false_positives : float
             The number of false positives to allow per particle.
         """
-        df_refined = self.particle_stack_large._df.copy()
+        df_refined = self.particle_stack_large.get_dataframe_copy()
 
         # x and y positions
         pos_offset_y = result["refined_pos_y"]

@@ -3,7 +3,6 @@
 from typing import Any, ClassVar
 
 import numpy as np
-import torch
 from pydantic import ConfigDict
 
 from leopard_em.backend.core_refine_template import core_refine_template
@@ -18,7 +17,7 @@ from leopard_em.pydantic_models.custom_types import BaseModel2DTM, ExcludedTenso
 from leopard_em.pydantic_models.data_structures import ParticleStack
 from leopard_em.pydantic_models.formats import REFINED_DF_COLUMN_ORDER
 from leopard_em.pydantic_models.utils import setup_particle_backend_kwargs
-from leopard_em.utils.data_io import load_mrc_volume
+from leopard_em.utils.data_io import load_mrc_volume, load_template_tensor
 
 
 class RefineTemplateManager(BaseModel2DTM):
@@ -88,12 +87,10 @@ class RefineTemplateManager(BaseModel2DTM):
             False.
         """
         # Ensure the template is loaded in as a Tensor object
-        if self.template_volume is None:
-            self.template_volume = load_mrc_volume(self.template_volume_path)
-        if not isinstance(self.template_volume, torch.Tensor):
-            template = torch.from_numpy(self.template_volume)
-        else:
-            template = self.template_volume
+        template = load_template_tensor(
+            template_volume=self.template_volume,
+            template_volume_path=self.template_volume_path,
+        )
 
         # The set of "best" euler angles from match template search
         # Check if refined angles exist, otherwise use the original angles
