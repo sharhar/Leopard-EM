@@ -11,9 +11,9 @@ import pandas as pd
 from pydantic import ConfigDict, Field, model_validator
 from typing_extensions import Self
 
-from leopard_em.analysis.pick_match_template_peaks import (
+from leopard_em.analysis import (
     MatchTemplatePeaks,
-    extract_peaks_and_statistics,
+    extract_peaks_and_statistics_zscore,
     match_template_peaks_to_dataframe,
     match_template_peaks_to_dict,
 )
@@ -272,7 +272,7 @@ class MatchTemplateResult(BaseModel2DTM):
             Named tuple object containing the peak locations, heights, and pose
             statistics.
         """
-        self.match_template_peaks = extract_peaks_and_statistics(
+        self.match_template_peaks = extract_peaks_and_statistics_zscore(
             mip=self.mip,
             scaled_mip=self.scaled_mip,
             best_psi=self.orientation_psi,

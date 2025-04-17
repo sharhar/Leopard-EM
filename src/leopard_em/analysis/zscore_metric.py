@@ -1,37 +1,14 @@
 """Locates peaks in the scaled mip from a match template result."""
 
-from typing import NamedTuple, Optional
+import warnings
+from typing import Optional
 
 import numpy as np
-import pandas as pd
 import torch
 from scipy.special import erfcinv  # pylint: disable=no-name-in-module
 
-
-class MatchTemplatePeaks(NamedTuple):
-    """Helper class for return value of extract_peaks_and_statistics."""
-
-    pos_y: torch.Tensor
-    pos_x: torch.Tensor
-    mip: torch.Tensor
-    scaled_mip: torch.Tensor
-    psi: torch.Tensor
-    theta: torch.Tensor
-    phi: torch.Tensor
-    relative_defocus: torch.Tensor
-    correlation_mean: torch.Tensor
-    correlation_variance: torch.Tensor
-    total_correlations: int
-
-
-def match_template_peaks_to_dict(peaks: MatchTemplatePeaks) -> dict:
-    """Convert MatchTemplatePeaks object to a dictionary."""
-    return peaks._asdict()
-
-
-def match_template_peaks_to_dataframe(peaks: MatchTemplatePeaks) -> pd.DataFrame:
-    """Convert MatchTemplatePeaks object to a pandas DataFrame."""
-    return pd.DataFrame(peaks._asdict())
+from .match_template_peaks import MatchTemplatePeaks
+from .utils import filter_peaks_by_distance
 
 
 def gaussian_noise_zscore_cutoff(num_ccg: int, false_positives: float = 1.0) -> float:
@@ -62,7 +39,7 @@ def gaussian_noise_zscore_cutoff(num_ccg: int, false_positives: float = 1.0) -> 
     return float(tmp)
 
 
-def find_peaks_in_zscore(
+def find_peaks_from_zscore(
     zscore_map: torch.Tensor,
     zscore_cutoff: float,
     mask_radius: float = 5.0,
@@ -96,31 +73,20 @@ def find_peaks_in_zscore(
 
     # Retrieve the zscore values for these indices and sort descending
     peak_values = zscore_map[tuple(peaks.t())]
-    _, sort_indices = torch.sort(peak_values, descending=True)
-    peaks = peaks[sort_indices]
 
-    # Create a boolean mask to record which peaks are taken
-    taken_mask = torch.zeros(peaks.size(0), dtype=torch.bool, device=peaks.device)
-    picked_peaks = torch.tensor([], dtype=torch.long, device=peaks.device)
-
-    for i in range(peaks.size(0)):
-        if taken_mask[i]:
-            continue
-
-        picked_peaks = torch.cat((picked_peaks, peaks[i].unsqueeze(0)), dim=0)
-
-        # Compute distances between current peak and all peaks
-        distances = torch.norm(peaks - peaks[i].float(), dim=1)
-
-        # Mark all peaks closer than mask_radius as taken
-        taken_mask |= distances < mask_radius
+    picked_peaks = filter_peaks_by_distance(
+        peak_values=peak_values,
+        peak_locations=peaks,
+        distance_threshold=mask_radius,
+    )
 
     return picked_peaks[:, 0], picked_peaks[:, 1]
 
 
 # pylint: disable=too-many-arguments
 # pylint: disable=too-many-positional-arguments
-def extract_peaks_and_statistics(
+# pylint: disable=duplicate-code
+def extract_peaks_and_statistics_zscore(
     mip: torch.Tensor,
     scaled_mip: torch.Tensor,
     best_psi: torch.Tensor,
@@ -173,11 +139,11 @@ def extract_peaks_and_statistics(
         )
 
     # Find the peak locations only in the scaled MIP
-    pos_y, pos_x = find_peaks_in_zscore(scaled_mip, z_score_cutoff, mask_radius)
+    pos_y, pos_x = find_peaks_from_zscore(scaled_mip, z_score_cutoff, mask_radius)
 
-    # rase error if no peaks are found
+    # Raise warning if no peaks are found
     if len(pos_y) == 0:
-        raise ValueError("No peaks found in scaled MIP.")
+        warnings.warn("No peaks found using z-score metric.", stacklevel=2)
 
     # Extract peak heights, orientations, etc. from other maps
     return MatchTemplatePeaks(
