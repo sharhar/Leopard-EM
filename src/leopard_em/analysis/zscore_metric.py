@@ -74,6 +74,9 @@ def find_peaks_from_zscore(
     # Retrieve the zscore values for these indices and sort descending
     peak_values = zscore_map[tuple(peaks.t())]
 
+    print("peak_values.shape", peak_values.shape)
+    print("peaks.shape", peaks.shape)
+
     picked_peaks = filter_peaks_by_distance(
         peak_values=peak_values,
         peak_locations=peaks,
