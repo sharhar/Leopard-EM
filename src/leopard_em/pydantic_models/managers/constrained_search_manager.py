@@ -7,7 +7,7 @@ import roma
 import torch
 from pydantic import ConfigDict, Field
 
-from leopard_em.analysis.pick_match_template_peaks import gaussian_noise_zscore_cutoff
+from leopard_em.analysis.zscore_metric import gaussian_noise_zscore_cutoff
 from leopard_em.backend.core_refine_template import core_refine_template
 from leopard_em.pydantic_models.config import (
     ComputationalConfig,
