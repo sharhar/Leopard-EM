@@ -164,46 +164,9 @@ def find_peaks_from_pvalue(
     scaled_mip = scaled_mip.cpu().numpy()
     mip = mip.cpu().numpy()
 
-    # ### DEBUG ###
-    # import matplotlib.pyplot as plt
-
-    # # plt.figure(figsize=(15, 15))
-    # # plt.imshow(scaled_mip, cmap="hot")
-    # # plt.colorbar()
-    # # plt.title("Scaled MIP")
-    # # plt.show()
-
-    # # plt.figure(figsize=(15, 15))
-    # # plt.imshow(mip, cmap="hot")
-    # # plt.colorbar()
-    # # plt.title("MIP")
-    # # plt.show()
-
-    # # plt.hist(scaled_mip.flatten(), bins=100, alpha=0.5)
-    # # plt.hist(mip.flatten(), bins=100, alpha=0.5)
-    # # plt.yscale("log")
-    # # plt.title("Histogram of Scaled MIP and MIP")
-    # # plt.show()
-
-    # plt.scatter(scaled_mip.flatten(), mip.flatten(), alpha=0.5)
-    # plt.xlabel("Scaled MIP")
-    # plt.ylabel("MIP")
-    # plt.show()
-    # ### END DEBUG ###)
-
     # Apply the probit transformation to the quantiles of each of the data
     probit_zscore = probit_transform(scaled_mip.flatten())
     probit_mip = probit_transform(mip.flatten())
-
-    # ### DEBUG ###
-    # import matplotlib.pyplot as plt
-
-    # plt.scatter(probit_zscore, probit_mip, alpha=0.01)
-    # plt.xlabel("Probit Z-Score")
-    # plt.ylabel("Probit MIP")
-    # plt.title("Probit Z-Score vs Probit MIP")
-    # plt.show()
-    # ### END DEBUG ###
 
     # Dimensions for the data inferred from min/max values
     # NOTE: fixing the number of points used for the histogram here, could expose
@@ -219,44 +182,13 @@ def find_peaks_from_pvalue(
         num=100,
     )
 
-    # ### DEBUG ###
-    # print("x_dim.min", x_dim.min())
-    # print("x_dim.max", x_dim.max())
-    # print("y_dim.min", y_dim.min())
-    # print("y_dim.max", y_dim.max())
-    # print("probit_zscore.shape", probit_zscore.shape)
-    # print("probit_mip.shape", probit_mip.shape)
-    # ### END DEBUG ###
-
-    hist, xedges, yedges = np.histogram2d(
+    hist, _, _ = np.histogram2d(
         probit_zscore,
         probit_mip,
         # bins=(x_dim, y_dim),
         bins=(100, 100),
     )
     hist = np.ma.masked_array(hist, mask=hist == 0)
-    # hist = np.log(hist)
-
-    # # ### DEBUG ###
-    # import matplotlib.pyplot as plt
-    # import matplotlib as mpl
-
-    # # plt.hist(probit_mip, bins=100, alpha=0.5)
-    # # plt.hist(probit_zscore, bins=100, alpha=0.5)
-    # # plt.yscale("log")
-    # # plt.show()
-
-    # plt.imshow(
-    #     hist,
-    #     extent=[xedges.min(), xedges.max(), yedges.min(), yedges.max()],
-    #     cmap="viridis",
-    #     origin="lower",
-    #     norm=mpl.colors.LogNorm(),
-    # )
-    # plt.colorbar()
-    # plt.title("Histogram")
-    # plt.show()
-    # ### END DEBUG ###
 
     # Fit the full covariance 2D Gaussian to the log transformed histogram
     # hist = np.masked_array(hist, mask=hist == 0)
@@ -273,86 +205,22 @@ def find_peaks_from_pvalue(
         rho=result.params["rho"].value,
     )
 
-    ### DEBUG ###
-    import matplotlib.pyplot as plt
-    import matplotlib as mpl
-
-    # overlay plot of the histogram and fitted Gaussian
-    x = x_dim
-    y = y_dim
-    xx, yy = np.meshgrid(x, y)
-    coords = np.column_stack((xx.ravel(), yy.ravel()))
-    z = rv.pdf(coords).reshape(xx.shape)
-    plt.imshow(
-        hist,
-        extent=[xedges.min(), xedges.max(), yedges.min(), yedges.max()],
-        cmap="viridis",
-        origin="lower",
-    )
-    plt.colorbar()
-    plt.contour(
-        xx,
-        yy,
-        z,
-        levels=10,
-        cmap="hot",
-    )
-    plt.title("Fitted Gaussian")
-    plt.show()
-    ### END DEBUG ###
-
     # Use numpy's masked array to only operate on points in the first quadrant
     points = np.column_stack((probit_zscore, probit_mip))
     # mask = (points[:, 0] < 0) | (points[:, 1] < 0)
     # points = np.ma.masked_array(points, mask=np.array([mask, mask]))
 
-    # NOTE: This is a relatively slow step (~20s) since the cdf needs calculated for
+    # NOTE: This is a relatively slow step (~20-80s) since the cdf needs calculated for
     # large numbers of points. There are potential speedups like pre-filtering points
     # based on a less expensive bounds estimate, but that is left for future work.
-    p_values = 1.0 - rv.cdf(points.reshape(2, -1).T).reshape(mip.shape)
+    p_values = 1.0 - rv.cdf(points)
 
-    print("points.shape", points.shape)
-    print("p_values.shape", p_values.shape)
-
-    ### DEBUG ###
-    import matplotlib.pyplot as plt
-
-    plt.imshow(p_values, cmap="hot")
-    plt.colorbar()
-    plt.title("P-values")
-    # plt.show()
-
-    # scatter the points where p < 0.01
-    locs = np.nonzero(p_values < 0.01)
-
-    print("locs", locs)
-    print("locs[0].shape", locs[0].shape)
-    print("locs[1].shape", locs[1].shape)
-
-    plt.scatter(
-        locs[0],
-        locs[1],
-        alpha=0.5,
-    )
-
-    # scatter where z-scores are above 7.81
-    locs = np.nonzero(scaled_mip > 7.81)
-    plt.scatter(
-        locs[0],
-        locs[1],
-        alpha=0.5,
-    )
-    plt.show()
-
-    ### END DEBUG ###
+    p_values = p_values.reshape(mip.shape)
 
     # Convert back to Torch tensor and use the peak filtering utility function
     p_values = torch.from_numpy(p_values).to(device)
     peaks = torch.nonzero(p_values < p_value_cutoff, as_tuple=False)
     p_values = p_values[tuple(peaks.t())]
-
-    print("p_values.shape", p_values.shape)
-    print("peaks.shape", peaks.shape)
 
     if peaks.shape[0] == 0:
         return torch.tensor([], dtype=torch.long), torch.tensor([], dtype=torch.long)
