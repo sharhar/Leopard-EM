@@ -51,6 +51,7 @@ dependencies = [
     "torch-fourier-filter>=v0.2.3",
     "torch-so3>=v0.1.3",
     "ttsim3d>=v0.3.0",
+    "lmfit",
 ]
 
 [tool.hatch.metadata]
@@ -69,6 +70,7 @@ dev = [
     "pre-commit",
     "rich",       # https://github.com/Textualize/rich
     "ruff",
+    "pylint",
 ]
 # Documentation dependencies
 docs = [
