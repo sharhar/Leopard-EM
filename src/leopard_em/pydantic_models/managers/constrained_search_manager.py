@@ -87,7 +87,7 @@ class ConstrainedSearchManager(BaseModel2DTM):
 
     # pylint: disable=too-many-locals
     def make_backend_core_function_kwargs(
-        self, prefer_refined_angles: bool = False
+        self, prefer_refined_angles: bool = True
     ) -> dict[str, Any]:
         """Create the kwargs for the backend constrained_template core function."""
         device_list = self.computational_config.gpu_devices

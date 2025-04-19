@@ -19,7 +19,7 @@ def _params_to_multivariate_normal(
     sigma_x: float,
     sigma_y: float,
     rho: float,
-) -> multivariate_normal: # type: ignore
+) -> multivariate_normal:
     """Helper function to convert parameters to a multivariate normal distribution."""
     mean = np.array([mu_x, mu_y])
     cov = np.array(

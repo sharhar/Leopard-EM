@@ -76,7 +76,7 @@ class RefineTemplateManager(BaseModel2DTM):
             self.template_volume = load_mrc_volume(self.template_volume_path)
 
     def make_backend_core_function_kwargs(
-        self, prefer_refined_angles: bool = False
+        self, prefer_refined_angles: bool = True
     ) -> dict[str, Any]:
         """Create the kwargs for the backend refine_template core function.
 
