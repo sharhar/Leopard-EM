@@ -270,6 +270,7 @@ class ConstrainedOrientationConfig(BaseModel2DTM):
     psi_max: float = 360.0
     base_grid_method: Literal["uniform", "healpix", "basic", "roll"] = "uniform"
 
+    search_roll_axis: bool = True
     roll_axis: tuple[float, float] | None = Field(default=[0, 1])
     roll_step: float = 2.0
 
@@ -292,8 +293,13 @@ class ConstrainedOrientationConfig(BaseModel2DTM):
         if not self.enabled:
             return torch.zeros((1, 3)), torch.zeros((1, 3))
 
+        if self.search_roll_axis:
+            self.roll_axis = None
+        roll_axis = None
+        if self.roll_axis is not None:
+            roll_axis = torch.tensor(self.roll_axis)
+
         if self.base_grid_method == "roll":
-            print("placeholder")
             euler_angles_offsets = get_roll_angles(
                 psi_step=self.psi_step,
                 psi_min=self.psi_min,
@@ -301,7 +307,7 @@ class ConstrainedOrientationConfig(BaseModel2DTM):
                 theta_step=self.theta_step,
                 theta_min=self.theta_min,
                 theta_max=self.theta_max,
-                roll_axis=self.roll_axis,
+                roll_axis=roll_axis,
                 roll_axis_step=self.roll_step,
             )
         else:
