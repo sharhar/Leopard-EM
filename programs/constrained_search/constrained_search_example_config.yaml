@@ -15,15 +15,18 @@ particle_stack_small: # This is from the small particles
 centre_vector: [53.658134, 82.582367, 47.170788] # Vector from large particle to small particle in Angstroms
 orientation_refinement_config:
   enabled: true
+  base_grid_method: roll
   psi_step: 1.0   # psi in degrees
   theta_step: 1.0   # theta and phi in degrees
   rotation_axis_euler_angles: [0.0, 0.0, 0.0] # This is the rotation axis
-  phi_min: -12.0
-  phi_max: 12.0
-  theta_min: 0.0
-  theta_max: 0.0
-  psi_min: 0.0
-  psi_max: 0.0
+  phi_min: -0.0
+  phi_max: 0.0
+  theta_min: -8.0
+  theta_max: 2.0
+  psi_min: -13.0
+  psi_max: 2.0
+  roll_axis: None # [x,y] This defines the roll axis (orthogonal to the rotation axis). None means search
+  roll_step: 2.0 
 defocus_search_config:
   enabled: true
 preprocessing_filters:
