@@ -8,6 +8,7 @@ import torch
 from pydantic import Field
 from torch_so3 import (
     get_local_high_resolution_angles,
+    get_roll_angles,
     get_symmetry_ranges,
     get_uniform_euler_angles,
 )
@@ -267,7 +268,11 @@ class ConstrainedOrientationConfig(BaseModel2DTM):
     theta_max: float = 180.0
     psi_min: float = 0.0
     psi_max: float = 360.0
-    base_grid_method: Literal["uniform", "healpix", "basic"] = "uniform"
+    base_grid_method: Literal["uniform", "healpix", "basic", "roll"] = "uniform"
+
+    search_roll_axis: bool = True
+    roll_axis: tuple[float, float] | None = Field(default=[0, 1])
+    roll_step: float = 2.0
 
     @property
     def euler_angles_offsets(self) -> tuple[torch.Tensor, torch.Tensor]:
@@ -288,18 +293,36 @@ class ConstrainedOrientationConfig(BaseModel2DTM):
         if not self.enabled:
             return torch.zeros((1, 3)), torch.zeros((1, 3))
 
-        euler_angles_offsets = get_uniform_euler_angles(
-            phi_step=self.phi_step,
-            theta_step=self.theta_step,
-            psi_step=self.psi_step,
-            phi_min=self.phi_min,
-            phi_max=self.phi_max,
-            theta_min=self.theta_min,
-            theta_max=self.theta_max,
-            psi_min=self.psi_min,
-            psi_max=self.psi_max,
-            base_grid_method=self.base_grid_method,
-        )
+        if self.search_roll_axis:
+            self.roll_axis = None
+        roll_axis = None
+        if self.roll_axis is not None:
+            roll_axis = torch.tensor(self.roll_axis)
+
+        if self.base_grid_method == "roll":
+            euler_angles_offsets = get_roll_angles(
+                psi_step=self.psi_step,
+                psi_min=self.psi_min,
+                psi_max=self.psi_max,
+                theta_step=self.theta_step,
+                theta_min=self.theta_min,
+                theta_max=self.theta_max,
+                roll_axis=roll_axis,
+                roll_axis_step=self.roll_step,
+            )
+        else:
+            euler_angles_offsets = get_uniform_euler_angles(
+                phi_step=self.phi_step,
+                theta_step=self.theta_step,
+                psi_step=self.psi_step,
+                phi_min=self.phi_min,
+                phi_max=self.phi_max,
+                theta_min=self.theta_min,
+                theta_max=self.theta_max,
+                psi_min=self.psi_min,
+                psi_max=self.psi_max,
+                base_grid_method=self.base_grid_method,
+            )
         # Convert to rotation matrix
         rot_z_matrix = roma.euler_to_rotmat(
             "ZYZ",
