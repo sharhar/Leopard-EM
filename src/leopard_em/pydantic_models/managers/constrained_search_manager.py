@@ -3,6 +3,7 @@
 from typing import Any, ClassVar
 
 import numpy as np
+import pandas as pd
 import roma
 import torch
 from pydantic import ConfigDict, Field
@@ -334,6 +335,19 @@ class ConstrainedSearchManager(BaseModel2DTM):
         threshold = gaussian_noise_zscore_cutoff(
             num_correlations, float(false_positives)
         )
+
+        # Save all parameters to CSV including false-positives
+        params_df = pd.DataFrame(
+            {
+                "num_projections": [num_projections],
+                "num_px": [num_px],
+                "num_correlations": [num_correlations],
+                "false_positives": [false_positives],
+                "threshold": [threshold],
+            }
+        )
+        params_df.to_csv(output_dataframe_path.replace(".csv", "_parameters.csv"))
+
         print(
             f"Threshold: {threshold} which gives {false_positives} "
             "false positives per particle"
