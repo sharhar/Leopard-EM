@@ -1,7 +1,7 @@
 """Serialization and validation of orientation search parameters for 2DTM."""
 
 import re
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Optional
 
 import roma
 import torch
@@ -63,12 +63,12 @@ class OrientationSearchConfig(BaseModel2DTM):
 
     psi_step: Annotated[float, Field(ge=0.0)] = 1.5
     theta_step: Annotated[float, Field(ge=0.0)] = 2.5
-    phi_min: float | None = None
-    phi_max: float | None = None
-    theta_min: float | None = None
-    theta_max: float | None = None
-    psi_min: float | None = None
-    psi_max: float | None = None
+    phi_min: Optional[float] = None
+    phi_max: Optional[float] = None
+    theta_min: Optional[float] = None
+    theta_max: Optional[float] = None
+    psi_min: Optional[float] = None
+    psi_max: Optional[float] = None
     base_grid_method: Literal["uniform", "healpix", "cartesian"] = "uniform"
     symmetry: str = "C1"
 
@@ -256,7 +256,7 @@ class ConstrainedOrientationConfig(BaseModel2DTM):
     """
 
     enabled: bool = True
-    phi_step: float | None = None
+    phi_step: Optional[float] = None
     theta_step: float = 2.5
     psi_step: float = 1.5
     rotation_axis_euler_angles: tuple[float, float, float] = Field(
@@ -271,7 +271,7 @@ class ConstrainedOrientationConfig(BaseModel2DTM):
     base_grid_method: Literal["uniform", "healpix", "basic", "roll"] = "uniform"
 
     search_roll_axis: bool = True
-    roll_axis: tuple[float, float] | None = Field(default=[0, 1])
+    roll_axis: Optional[tuple[float, float]] = Field(default=[0, 1])
     roll_step: float = 2.0
 
     @property

@@ -35,10 +35,10 @@ class ConstrainedSearchManager(BaseModel2DTM):
         Path to the template volume MRC file.
     centre_vector : list[float]
         The centre vector of the template volume.
-    particle_stack_large : ParticleStack
-        Particle stack object containing particle data large particles.
-    particle_stack_small : ParticleStack
-        Particle stack object containing particle data small particles.
+    particle_stack_reference : ParticleStack
+        Particle stack object containing particle data reference particles.
+    particle_stack_constrained : ParticleStack
+        Particle stack object containing particle data constrained particles.
     defocus_refinement_config : DefocusSearchConfig
         Configuration for defocus refinement.
     orientation_refinement_config : RefineOrientationConfig
@@ -68,8 +68,8 @@ class ConstrainedSearchManager(BaseModel2DTM):
     template_volume_path: str  # In df per-particle, but ensure only one reference
     centre_vector: list[float] = Field(default=[0.0, 0.0, 0.0])
 
-    particle_stack_large: ParticleStack
-    particle_stack_small: ParticleStack
+    particle_stack_reference: ParticleStack
+    particle_stack_constrained: ParticleStack
     defocus_refinement_config: DefocusSearchConfig
     orientation_refinement_config: ConstrainedOrientationConfig
     preprocessing_filters: PreprocessingFilters
@@ -98,7 +98,7 @@ class ConstrainedSearchManager(BaseModel2DTM):
             template_volume_path=self.template_volume_path,
         )
 
-        part_stk = self.particle_stack_large
+        part_stk = self.particle_stack_reference
 
         euler_angles = part_stk.get_euler_angles(prefer_refined_angles)
 
@@ -125,10 +125,8 @@ class ConstrainedSearchManager(BaseModel2DTM):
         ).to(torch.float32)
         rotated_vectors = rotation_matrices @ self.centre_vector
 
-        # Get z-component for each particle individually
-        new_z_diffs = rotated_vectors[
-            :, 2
-        ]  # This is now a tensor with shape [batch_size]
+        # Get z for each particle -> tensor shape [batch_size]
+        new_z_diffs = rotated_vectors[:, 2]
 
         # The best defocus values for each particle (+ astigmatism)
         defocus_u, defocus_v = part_stk.get_absolute_defocus()
@@ -146,14 +144,14 @@ class ConstrainedSearchManager(BaseModel2DTM):
         )
 
         # Ger corr mean and variance
-        # I want positions of large but vals from small
+        # I want positions of reference but vals from constrained
         part_stk.set_column(
             "correlation_average_path",
-            self.particle_stack_small["correlation_average_path"][0],
+            self.particle_stack_constrained["correlation_average_path"][0],
         )
         part_stk.set_column(
             "correlation_variance_path",
-            self.particle_stack_small["correlation_variance_path"][0],
+            self.particle_stack_constrained["correlation_variance_path"][0],
         )
         corr_mean_stack = part_stk.construct_cropped_statistic_stack(
             "correlation_average"
@@ -259,7 +257,7 @@ class ConstrainedSearchManager(BaseModel2DTM):
         false_positives : float
             The number of false positives to allow per particle.
         """
-        df_refined = self.particle_stack_large.get_dataframe_copy()
+        df_refined = self.particle_stack_reference.get_dataframe_copy()
 
         # x and y positions
         pos_offset_y = result["refined_pos_y"]
@@ -323,12 +321,12 @@ class ConstrainedSearchManager(BaseModel2DTM):
             * self.orientation_refinement_config.euler_angles_offsets[0].shape[0]
         )
         num_px = (
-            self.particle_stack_large.extracted_box_size[0]
-            - self.particle_stack_large.original_template_size[0]
+            self.particle_stack_reference.extracted_box_size[0]
+            - self.particle_stack_reference.original_template_size[0]
             + 1
         ) * (
-            self.particle_stack_large.extracted_box_size[1]
-            - self.particle_stack_large.original_template_size[1]
+            self.particle_stack_reference.extracted_box_size[1]
+            - self.particle_stack_reference.original_template_size[1]
             + 1
         )
         num_correlations = num_projections * num_px
@@ -370,48 +368,3 @@ class ConstrainedSearchManager(BaseModel2DTM):
         df_refined_above_threshold.to_csv(
             output_dataframe_path.replace(".csv", "_above_threshold.csv")
         )
-
-    # @classmethod
-    # def from_dataframe(cls, dataframe: pd.DataFrame) -> "RefineTemplateManager":
-    #     """Tabular data (from DataFrame) and create a RefineTemplateManager object."""
-    #     raise NotImplementedError("Method not implemented yet.")
-
-    # @classmethod
-    # def from_match_template_manager(
-    #     cls, mt_manager: MatchTemplateManager
-    # ) -> "RefineTemplateManager":
-    #     """Creates a RefineTemplateManager object from MatchTemplateManager object."""
-    #     raise NotImplementedError("Method not implemented yet.")
-
-    # def particles_to_dataframe(self) -> pd.DataFrame:
-    #     """Export refined particles as dataframe."""
-    #     raise NotImplementedError("Method not implemented yet.")
-
-    # def results_to_dataframe(self) -> pd.DataFrame:
-    #     """Export full results as dataframe."""
-    #     raise NotImplementedError("Method not implemented yet.")
-
-    # def particle_stack_to_dataframe(self) -> pd.DataFrame:
-    #     """Export particle stack information as dataframe."""
-    #     raise NotImplementedError("Method not implemented yet.")
-
-    # def save_particle_stack(self, save_dir: str) -> None:
-    #     """Save the particle stack to disk."""
-    #     raise NotImplementedError("Method not implemented yet.")
-
-    # @classmethod
-    # def from_results_csv(cls, results_csv_path: str) -> "RefineTemplateManager":
-    #     """Take tabular data (from csv) and create a RefineTemplateManager object.
-
-    #     Parameters
-    #     ----------
-    #     results_csv_path : str
-    #         Path to the CSV file containing the per-particle data.
-
-    #     Returns
-    #     -------
-    #     RefineTemplateManager
-    #     """
-    #     df = pd.read_csv(results_csv_path)
-
-    #     return cls.from_dataframe(df)

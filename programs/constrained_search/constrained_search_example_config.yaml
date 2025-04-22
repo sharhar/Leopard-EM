@@ -2,17 +2,17 @@
 #### Constrained Search configuration example #####
 ###################################################
 # An example YAML configuration to modify.
-# Call `RefineTemplateManager.from_yaml(path)` to load this configuration.
+# Call `ConstrainedSearchManager.from_yaml(path)` to load this configuration.
 template_volume_path: /some/path/to/template.mrc # Volume of small particle
-particle_stack_large: # This is from the large particles
+particle_stack_reference: # This is from the reference particles
   df_path: /some/path/to/particles.csv  # Needs to be readable by pandas
   extracted_box_size: [528, 528]
   original_template_size: [512, 512]
-particle_stack_small: # This is from the small particles
+particle_stack_constrained: # This is from the constrained particles
   df_path: /some/path/to/particles.csv  # Needs to be readable by pandas
   extracted_box_size: [528, 528]
   original_template_size: [512, 512]
-centre_vector: [53.658134, 82.582367, 47.170788] # Vector from large particle to small particle in Angstroms
+centre_vector: [53.658134, 82.582367, 47.170788] # Vector from reference particle to constrained particle in Angstroms
 orientation_refinement_config:
   enabled: true
   base_grid_method: roll
