@@ -1,4 +1,4 @@
-"""Pydantic model for running the refine template program."""
+"""Pydantic model for running the constrained search program."""
 
 from typing import Any, ClassVar
 

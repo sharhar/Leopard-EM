@@ -63,8 +63,6 @@ class RefineTemplateManager(BaseModel2DTM):
     preprocessing_filters: PreprocessingFilters
     computational_config: ComputationalConfig
 
-    snr_threshold: float = 1.0
-
     # Excluded tensors
     template_volume: ExcludedTensor
 
