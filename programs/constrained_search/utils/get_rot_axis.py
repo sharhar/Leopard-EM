@@ -4,57 +4,16 @@ import math
 import sys
 
 import mmdf
+import roma
 import torch
 
-sys.argv = [
-    "rotate_pdbs.py",
-    "3j77_aligned_SSU.pdb",
-    "3j78_aligned_SSU.pdb",
-    "rotation_axis.txt",
-]
 
-
-def calculate_rotation_matrix(
-    coords1: torch.Tensor, coords2: torch.Tensor
-) -> torch.Tensor:
-    """Calculate rotation matrix from coords1 to coords2.
-
-    Attributes
-    ----------
-    coords1: torch.Tensor
-        The coordinates of the first PDB structure.
-    coords2: torch.Tensor
-        The coordinates of the second PDB structure.
-
-    Returns
-    -------
-    torch.Tensor
-        The rotation matrix.
-    """
-    # Calculate the covariance matrix
-    H = coords1.T @ coords2
-
-    # Perform SVD
-    U, S, Vt = torch.linalg.svd(H)
-
-    # Calculate rotation matrix
-    R = Vt.T @ U.T
-
-    # Handle reflection case
-    det = torch.det(R)
-    if det < 0:
-        Vt[-1, :] *= -1
-        R = Vt.T @ U.T
-
-    return R
-
-
-def extract_rotation_axis_angle(R: torch.Tensor) -> tuple[torch.Tensor, float]:
+def extract_rotation_axis_angle(rotmat: torch.Tensor) -> tuple[torch.Tensor, float]:
     """Extract rotation axis and angle from rotation matrix.
 
     Attributes
     ----------
-    R: torch.Tensor
+    rotmat: torch.Tensor
         The rotation matrix.
 
     Returns
@@ -63,7 +22,7 @@ def extract_rotation_axis_angle(R: torch.Tensor) -> tuple[torch.Tensor, float]:
         The rotation axis and angle.
     """
     # Calculate angle from trace
-    trace = torch.trace(R)
+    trace = torch.trace(rotmat)
     cos_theta = (trace - 1) / 2
     cos_theta = torch.clamp(cos_theta, -1.0, 1.0)
     angle = torch.acos(cos_theta)
@@ -72,9 +31,9 @@ def extract_rotation_axis_angle(R: torch.Tensor) -> tuple[torch.Tensor, float]:
     if torch.abs(angle) < 1e-6:
         return torch.tensor([0.0, 0.0, 1.0]), angle
     elif torch.abs(angle - math.pi) < 1e-6:
-        diag = torch.diag(R) + 1
+        diag = torch.diag(rotmat) + 1
         axis_idx = torch.argmax(diag)
-        axis = R[:, axis_idx].clone()
+        axis = rotmat[:, axis_idx].clone()
         axis = axis / torch.norm(axis)
         # Ensure the axis points in the positive z direction
         if axis[2] < 0:
@@ -82,7 +41,13 @@ def extract_rotation_axis_angle(R: torch.Tensor) -> tuple[torch.Tensor, float]:
         return axis, angle
 
     # Normal case - extract axis
-    axis = torch.tensor([R[2, 1] - R[1, 2], R[0, 2] - R[2, 0], R[1, 0] - R[0, 1]])
+    axis = torch.tensor(
+        [
+            rotmat[2, 1] - rotmat[1, 2],
+            rotmat[0, 2] - rotmat[2, 0],
+            rotmat[1, 0] - rotmat[0, 1],
+        ]
+    )
 
     # Normalize the axis
     axis = axis / torch.norm(axis)
@@ -156,8 +121,10 @@ def main() -> None:
     coords2_centered = coords2 - centroid2
 
     # Calculate rotation matrix
-    rotation_matrix = calculate_rotation_matrix(coords1_centered, coords2_centered)
-
+    # rotation_matrix = calculate_rotation_matrix(coords1_centered, coords2_centered)
+    rotation_matrix, _ = roma.rigid_points_registration(
+        coords1_centered, coords2_centered
+    )
     # Extract rotation axis and angle
     rotation_axis, rotation_angle = extract_rotation_axis_angle(rotation_matrix)
 
