@@ -325,7 +325,7 @@ def construct_multi_gpu_refine_template_kwargs(
     return kwargs_per_device
 
 
-# pylint: disable=too-many-locals
+# pylint: disable=too-many-locals, too-many-statements
 def _core_refine_template_single_gpu(
     result_dict: dict,
     device_id: int,
@@ -502,7 +502,7 @@ def _core_refine_template_single_gpu(
     result_dict[device_id] = result
 
 
-# pylint: disable=too-many-locals
+# pylint: disable=too-many-locals, too-many-statements
 def _core_refine_template_single_thread(
     particle_image_dft: torch.Tensor,
     particle_index: int,

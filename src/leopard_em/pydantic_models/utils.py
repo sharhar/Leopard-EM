@@ -1,3 +1,4 @@
+# pylint: disable=duplicate-code
 """Utility functions shared between pydantic models."""
 
 from typing import TYPE_CHECKING, Any

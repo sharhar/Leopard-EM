@@ -1,3 +1,4 @@
+# pylint: disable=duplicate-code
 """Pydantic model for running the constrained search program."""
 
 from typing import Any, ClassVar

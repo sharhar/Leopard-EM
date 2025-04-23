@@ -151,6 +151,7 @@ def _get_cropped_image_regions_numpy(
     return cropped_images
 
 
+# pylint: disable=too-many-locals
 def _get_cropped_image_regions_torch(
     image: torch.Tensor,
     pos_y: torch.Tensor,
