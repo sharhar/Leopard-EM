@@ -1,6 +1,8 @@
 """Backend functions related to correlating and refining particle stacks."""
 
-from multiprocessing import Manager, Process
+# Following pylint error ignored because torc.fft.* is not recognized as callable
+# pylint: disable=E1102
+
 from typing import Literal
 
 import roma
@@ -12,9 +14,12 @@ from leopard_em.backend.core_match_template import (
     _do_bached_orientation_cross_correlate,
     _do_bached_orientation_cross_correlate_cpu,
 )
-from leopard_em.backend.utils import normalize_template_projection
+from leopard_em.backend.utils import (
+    normalize_template_projection,
+    run_multiprocess_jobs,
+)
+from leopard_em.pydantic_models.utils import calculate_ctf_filter_stack_full_args
 from leopard_em.utils.cross_correlation import handle_correlation_mode
-from leopard_em.utils.filter_preprocessing import calculate_ctf_filter_stack
 
 # This is assuming the Euler angles are in the ZYZ intrinsic format
 # AND that the angles are ordered in (phi, theta, psi)
@@ -35,6 +40,11 @@ def combine_euler_angles(angle_a: torch.Tensor, angle_b: torch.Tensor) -> torch.
     return euler_angles_c
 
 
+# NOTE: Disabling pylint for too many arguments because we are taking a data-oriented
+# approach where each argument is independent and explicit.
+# pylint: disable=too-many-arguments
+# pylint: disable=too-many-positional-arguments
+# pylint: disable=too-many-locals
 def core_refine_template(
     particle_stack_dft: torch.Tensor,  # (N, H, W)
     template_dft: torch.Tensor,  # (d, h, w)
@@ -45,11 +55,12 @@ def core_refine_template(
     defocus_v: torch.Tensor,  # (N,)
     defocus_angle: torch.Tensor,  # (N,)
     pixel_size_offsets: torch.Tensor,  # (m,)
+    corr_mean: torch.Tensor,  # (N, H - h + 1, W - w + 1)
+    corr_std: torch.Tensor,  # (N, H - h + 1, W - w + 1)
     ctf_kwargs: dict,
     projective_filters: torch.Tensor,  # (N, h, w)
     device: torch.device | list[torch.device] = None,
     batch_size: int = 64,
-    # TODO: additional arguments for cc --> z-score scaling
 ) -> dict[str, torch.Tensor]:
     """Core function to refine orientations and defoci of a set of particles.
 
@@ -76,6 +87,14 @@ def core_refine_template(
         The defocus offsets to search over for each particle. Shape of (l,).
     pixel_size_offsets : torch.Tensor
         The pixel size offsets to search over for each particle. Shape of (m,).
+    corr_mean : torch.Tensor
+        The mean of the cross-correlation values from the full orientation search
+        for the pixels around the center of the particle.
+        Shape of (H - h + 1, W - w + 1).
+    corr_std : torch.Tensor
+        The standard deviation of the cross-correlation values from the full
+        orientation search for the pixels around the center of the particle.
+        Shape of (H - h + 1, W - w + 1).
     ctf_kwargs : dict
         Keyword arguments to pass to the CTF calculation function.
     projective_filters : torch.Tensor
@@ -111,91 +130,82 @@ def core_refine_template(
         defocus_angle=defocus_angle,
         defocus_offsets=defocus_offsets,
         pixel_size_offsets=pixel_size_offsets,
+        corr_mean=corr_mean,
+        corr_std=corr_std,
         ctf_kwargs=ctf_kwargs,
         projective_filters=projective_filters,
         batch_size=batch_size,
         devices=device,
     )
 
-    ##################################################
-    ### Initialize and start multiprocessing queue ###
-    ##################################################
-    manager = Manager()
-    result_dict = manager.dict()
-
-    # lists to track processes
-    processes = []
-
-    # Start processes
-    for i, kwargs in enumerate(kwargs_per_device):
-        p = Process(
-            target=_core_refine_template_single_gpu,
-            args=(result_dict, i),
-            kwargs=kwargs,
-        )
-        processes.append(p)
-        p.start()
-
-    # Wait for all processes to complete
-    for p in processes:
-        p.join()
-
-    # Get the results from all processes
-    results = []
-    for i in range(len(processes)):
-        results.append(result_dict[i])
+    results = run_multiprocess_jobs(
+        target=_core_refine_template_single_gpu,
+        kwargs_list=kwargs_per_device,
+    )
 
     # Shape information for offset calculations
-    _, H, W = particle_stack_dft.shape
-    d, h, w = template_dft.shape
+    _, img_h, img_w = particle_stack_dft.shape
+    _, template_h, template_w = template_dft.shape
     # account for RFFT
-    W = 2 * (W - 1)
-    w = 2 * (w - 1)
+    img_w = 2 * (img_w - 1)
+    template_w = 2 * (template_w - 1)
 
     # Concatenate results from all devices
     refined_cross_correlation = torch.cat(
-        [torch.from_numpy(r["refined_cross_correlation"]) for r in results]
+        [torch.from_numpy(r["refined_cross_correlation"]) for r in results.values()]
+    )
+    refined_z_score = torch.cat(
+        [torch.from_numpy(r["refined_z_score"]) for r in results.values()]
     )
     refined_euler_angles = torch.cat(
-        [torch.from_numpy(r["refined_euler_angles"]) for r in results]
+        [torch.from_numpy(r["refined_euler_angles"]) for r in results.values()]
     )
     refined_defocus_offset = torch.cat(
-        [torch.from_numpy(r["refined_defocus_offset"]) for r in results]
+        [torch.from_numpy(r["refined_defocus_offset"]) for r in results.values()]
     )
     refined_pixel_size_offset = torch.cat(
-        [torch.from_numpy(r["refined_pixel_size_offset"]) for r in results]
+        [torch.from_numpy(r["refined_pixel_size_offset"]) for r in results.values()]
     )
-    refined_pos_y = torch.cat([torch.from_numpy(r["refined_pos_y"]) for r in results])
-    refined_pos_x = torch.cat([torch.from_numpy(r["refined_pos_x"]) for r in results])
+    refined_pos_y = torch.cat(
+        [torch.from_numpy(r["refined_pos_y"]) for r in results.values()]
+    )
+    refined_pos_x = torch.cat(
+        [torch.from_numpy(r["refined_pos_x"]) for r in results.values()]
+    )
 
     # Ensure the results are sorted back to the original particle order
     # (If particles were split across devices, we need to reorder the results)
     particle_indices = torch.cat(
-        [torch.from_numpy(r["particle_indices"]) for r in results]
+        [torch.from_numpy(r["particle_indices"]) for r in results.values()]
     )
+    angle_idx = torch.cat([torch.from_numpy(r["angle_idx"]) for r in results.values()])
     sort_indices = torch.argsort(particle_indices)
 
     refined_cross_correlation = refined_cross_correlation[sort_indices]
+    refined_z_score = refined_z_score[sort_indices]
     refined_euler_angles = refined_euler_angles[sort_indices]
     refined_defocus_offset = refined_defocus_offset[sort_indices]
     refined_pixel_size_offset = refined_pixel_size_offset[sort_indices]
     refined_pos_y = refined_pos_y[sort_indices]
     refined_pos_x = refined_pos_x[sort_indices]
-
+    angle_idx = angle_idx[sort_indices]
     # Offset refined_pos_{x,y} by the extracted box size (same as original)
-    refined_pos_y -= (H - h + 1) // 2
-    refined_pos_x -= (W - w + 1) // 2
+    refined_pos_y -= (img_h - template_h + 1) // 2
+    refined_pos_x -= (img_w - template_w + 1) // 2
 
     return {
         "refined_cross_correlation": refined_cross_correlation,
+        "refined_z_score": refined_z_score,
         "refined_euler_angles": refined_euler_angles,
         "refined_defocus_offset": refined_defocus_offset,
         "refined_pixel_size_offset": refined_pixel_size_offset,
         "refined_pos_y": refined_pos_y,
         "refined_pos_x": refined_pos_x,
+        "angle_idx": angle_idx,
     }
 
 
+# pylint: disable=too-many-locals
 def construct_multi_gpu_refine_template_kwargs(
     particle_stack_dft: torch.Tensor,
     template_dft: torch.Tensor,
@@ -206,6 +216,8 @@ def construct_multi_gpu_refine_template_kwargs(
     defocus_angle: torch.Tensor,
     defocus_offsets: torch.Tensor,
     pixel_size_offsets: torch.Tensor,
+    corr_mean: torch.Tensor,
+    corr_std: torch.Tensor,
     ctf_kwargs: dict,
     projective_filters: torch.Tensor,
     batch_size: int,
@@ -233,6 +245,10 @@ def construct_multi_gpu_refine_template_kwargs(
         Defocus offsets to search over.
     pixel_size_offsets : torch.Tensor
         Pixel size offsets to search over.
+    corr_mean : torch.Tensor
+        Mean of the cross-correlation
+    corr_std : torch.Tensor
+        Standard deviation of the cross-correlation
     ctf_kwargs : dict
         CTF calculation parameters.
     projective_filters : torch.Tensor
@@ -282,6 +298,8 @@ def construct_multi_gpu_refine_template_kwargs(
         device_euler_angle_offsets = euler_angle_offsets.to(device)
         device_defocus_offsets = defocus_offsets.to(device)
         device_pixel_size_offsets = pixel_size_offsets.to(device)
+        device_corr_mean = corr_mean.to(device)
+        device_corr_std = corr_std.to(device)
 
         kwargs = {
             "particle_stack_dft": device_particle_stack_dft,
@@ -294,6 +312,8 @@ def construct_multi_gpu_refine_template_kwargs(
             "defocus_angle": device_defocus_angle,
             "defocus_offsets": device_defocus_offsets,
             "pixel_size_offsets": device_pixel_size_offsets,
+            "corr_mean": device_corr_mean,
+            "corr_std": device_corr_std,
             "ctf_kwargs": ctf_kwargs,
             "projective_filters": device_projective_filters,
             "batch_size": batch_size,
@@ -305,6 +325,7 @@ def construct_multi_gpu_refine_template_kwargs(
     return kwargs_per_device
 
 
+# pylint: disable=too-many-locals, too-many-statements
 def _core_refine_template_single_gpu(
     result_dict: dict,
     device_id: int,
@@ -318,6 +339,8 @@ def _core_refine_template_single_gpu(
     defocus_angle: torch.Tensor,
     defocus_offsets: torch.Tensor,
     pixel_size_offsets: torch.Tensor,
+    corr_mean: torch.Tensor,
+    corr_std: torch.Tensor,
     ctf_kwargs: dict,
     projective_filters: torch.Tensor,
     batch_size: int,
@@ -350,6 +373,10 @@ def _core_refine_template_single_gpu(
         Defocus offsets to search over.
     pixel_size_offsets : torch.Tensor
         Pixel size offsets to search over.
+    corr_mean : torch.Tensor
+        Mean of the cross-correlation
+    corr_std : torch.Tensor
+        Standard deviation of the cross-correlation
     ctf_kwargs : dict
         CTF calculation parameters.
     projective_filters : torch.Tensor
@@ -358,11 +385,11 @@ def _core_refine_template_single_gpu(
         Batch size for orientation processing.
     """
     device = particle_stack_dft.device
-    num_particles, H, W = particle_stack_dft.shape
-    d, h, w = template_dft.shape
+    num_particles, _, img_w = particle_stack_dft.shape
+    _, _, template_w = template_dft.shape
     # account for RFFT
-    W = 2 * (W - 1)
-    w = 2 * (w - 1)
+    img_w = 2 * (img_w - 1)
+    template_w = 2 * (template_w - 1)
 
     # tqdm progress bar
     pbar_iter = tqdm.tqdm(
@@ -392,6 +419,8 @@ def _core_refine_template_single_gpu(
             defocus_offsets=defocus_offsets,
             pixel_size_offsets=pixel_size_offsets,
             ctf_kwargs=ctf_kwargs,
+            corr_mean=corr_mean[i],
+            corr_std=corr_std[i],
             projective_filter=projective_filters[i],
             orientation_batch_size=batch_size,
             device_id=device_id,
@@ -401,6 +430,9 @@ def _core_refine_template_single_gpu(
     # For each particle, calculate the new best orientation, defocus, and position
     refined_cross_correlation = torch.tensor(
         [stats["max_cc"] for stats in refined_statistics], device=device
+    )
+    refined_z_score = torch.tensor(
+        [stats["max_z_score"] for stats in refined_statistics], device=device
     )
     refined_defocus_offset = torch.tensor(
         [stats["refined_defocus_offset"] for stats in refined_statistics],
@@ -415,6 +447,9 @@ def _core_refine_template_single_gpu(
     )
     refined_pos_x = torch.tensor(
         [stats["refined_pos_x"] for stats in refined_statistics], device=device
+    )
+    angle_idx = torch.tensor(
+        [stats["angle_idx"] for stats in refined_statistics], device=device
     )
 
     # Compose the previous Euler angles with the refined offsets
@@ -454,19 +489,20 @@ def _core_refine_template_single_gpu(
     # Store the results in the shared dict
     result = {
         "refined_cross_correlation": refined_cross_correlation.cpu().numpy(),
+        "refined_z_score": refined_z_score.cpu().numpy(),
         "refined_euler_angles": refined_euler_angles.cpu().numpy(),
         "refined_defocus_offset": refined_defocus_offset.cpu().numpy(),
         "refined_pixel_size_offset": refined_pixel_size_offset.cpu().numpy(),
         "refined_pos_y": refined_pos_y.cpu().numpy(),
         "refined_pos_x": refined_pos_x.cpu().numpy(),
         "particle_indices": particle_indices,  # Include original indices for sorting
+        "angle_idx": angle_idx.cpu().numpy(),
     }
 
     result_dict[device_id] = result
 
-    return None
 
-
+# pylint: disable=too-many-locals, too-many-statements
 def _core_refine_template_single_thread(
     particle_image_dft: torch.Tensor,
     particle_index: int,
@@ -478,6 +514,8 @@ def _core_refine_template_single_thread(
     defocus_angle: float,
     defocus_offsets: torch.Tensor,
     pixel_size_offsets: torch.Tensor,
+    corr_mean: torch.Tensor,
+    corr_std: torch.Tensor,
     ctf_kwargs: dict,
     projective_filter: torch.Tensor,
     orientation_batch_size: int = 32,
@@ -508,6 +546,12 @@ def _core_refine_template_single_thread(
         The defocus offsets to search over for each particle. Shape of (l,).
     pixel_size_offsets : torch.Tensor
         The pixel size offsets to search over for each particle. Shape of (m,).
+    corr_mean : torch.Tensor
+        The mean of the cross-correlation values from the full orientation search
+        for the pixels around the center of the particle.
+    corr_std : torch.Tensor
+        The standard deviation of the cross-correlation values from the full
+        orientation search for the pixels around the center of the particle.
     ctf_kwargs : dict
         Keyword arguments to pass to the CTF calculation function.
     projective_filter : torch.Tensor
@@ -522,20 +566,22 @@ def _core_refine_template_single_thread(
     dict[str, float | int]
         The refined statistics for the particle.
     """
-    H, W = particle_image_dft.shape
-    _, h, w = template_dft.shape
+    img_h, img_w = particle_image_dft.shape
+    _, template_h, template_w = template_dft.shape
     # account for RFFT
-    W = 2 * (W - 1)
-    w = 2 * (w - 1)
+    img_w = 2 * (img_w - 1)
+    template_w = 2 * (template_w - 1)
     # valid crop shape
-    crop_H = H - h + 1
-    crop_W = W - w + 1
+    crop_h = img_h - template_h + 1
+    crop_w = img_w - template_w + 1
 
     # Output best statistics
     max_cc = -1e9
+    max_z_score = -1e9
     refined_phi_offset = 0.0
     refined_theta_offset = 0.0
     refined_psi_offset = 0.0
+    full_angle_idx = 0
     refined_defocus_offset = 0.0
     refined_pixel_size_offset = 0.0
     refined_pos_y = 0
@@ -548,12 +594,12 @@ def _core_refine_template_single_thread(
 
     default_rot_matrix = default_rot_matrix.to(torch.float32)
     # Calculate the CTF filters with the relative offsets
-    ctf_filters = calculate_ctf_filter_stack(
-        defocus_u=defocus_u * 1e-4,  # to µm
-        defocus_v=defocus_v * 1e-4,  # to µm
-        astigmatism_angle=defocus_angle,  # to µm
-        defocus_offsets=defocus_offsets * 1e-4,  # to µm
-        pixel_size_offsets=pixel_size_offsets,  # to µm
+    ctf_filters = calculate_ctf_filter_stack_full_args(
+        defocus_u=defocus_u,  # in Angstrom
+        defocus_v=defocus_v,  # in Angstrom
+        astigmatism_angle=defocus_angle,  # in degrees
+        defocus_offsets=defocus_offsets,  # in Angstrom
+        pixel_size_offsets=pixel_size_offsets,  # in Angstrom
         **ctf_kwargs,
     )
 
@@ -604,19 +650,23 @@ def _core_refine_template_single_thread(
                 projective_filters=combined_projective_filter,
             )
 
-        cross_correlation = cross_correlation[..., :crop_H, :crop_W]  # valid crop
+        cross_correlation = cross_correlation[..., :crop_h, :crop_w]  # valid crop
+
+        # Scale cross_correlation to be "z-score"-like
+        z_score = (cross_correlation - corr_mean) / corr_std
+
         # shape xc is (Npx, Ndefoc, Norientations, y, x)
         # Update the best refined statistics (only if max is greater than previous)
-        if cross_correlation.max() > max_cc:
+        if z_score.max() > max_z_score:
             max_cc = cross_correlation.max()
+            max_z_score = z_score.max()
 
             # Find the maximum value and its indices
-            max_values, max_indices = torch.max(
-                cross_correlation.view(-1, crop_H, crop_W), dim=0
-            )
+            max_values, max_indices = torch.max(z_score.view(-1, crop_h, crop_w), dim=0)
+
             # Get the overall maximum value and its position
-            max_value, max_pos = torch.max(max_values.view(-1), dim=0)
-            y_idx, x_idx = max_pos // crop_W, max_pos % crop_W
+            _, max_pos = torch.max(max_values.view(-1), dim=0)
+            y_idx, x_idx = max_pos // crop_w, max_pos % crop_w
 
             # Calculate the indices for each dimension
             flat_idx = max_indices[y_idx, x_idx]
@@ -633,10 +683,11 @@ def _core_refine_template_single_thread(
             refined_pixel_size_offset = pixel_size_offsets[px_idx]
             refined_pos_y = y_idx
             refined_pos_x = x_idx
-
+            full_angle_idx = angle_idx + start_idx
     # Return the refined statistics
     refined_stats = {
         "max_cc": max_cc,
+        "max_z_score": max_z_score,
         "refined_phi_offset": refined_phi_offset,
         "refined_theta_offset": refined_theta_offset,
         "refined_psi_offset": refined_psi_offset,
@@ -644,11 +695,13 @@ def _core_refine_template_single_thread(
         "refined_pixel_size_offset": refined_pixel_size_offset,
         "refined_pos_y": refined_pos_y,
         "refined_pos_x": refined_pos_x,
+        "angle_idx": full_angle_idx,
     }
 
     return refined_stats
 
 
+# pylint: disable=too-many-locals
 def cross_correlate_particle_stack(
     particle_stack_dft: torch.Tensor,  # (N, H, W)
     template_dft: torch.Tensor,  # (d, h, w)
@@ -691,22 +744,33 @@ def cross_correlate_particle_stack(
         The cross-correlation of the particle stack with the template. Shape will depend
         on the mode used. If "valid", the output will be (N, H-h+1, W-w+1). If "same",
         the output will be (N, H, W).
+
+    Raises
+    ------
+    ValueError
+        If the mode is not "valid" or "same".
     """
     # Helpful constants for later use
     device = particle_stack_dft.device
-    num_particles, H, W = particle_stack_dft.shape
-    d, h, w = template_dft.shape
+    num_particles, image_h, image_w = particle_stack_dft.shape
+    _, template_h, template_w = template_dft.shape
     # account for RFFT
-    W = 2 * (W - 1)
-    w = 2 * (w - 1)
+    image_w = 2 * (image_w - 1)
+    template_w = 2 * (template_w - 1)
 
     if batch_size == -1:
         batch_size = num_particles
 
     if mode == "valid":
-        output_shape = (num_particles, H - h + 1, W - w + 1)
+        output_shape = (
+            num_particles,
+            image_h - template_h + 1,
+            image_w - template_w + 1,
+        )
     elif mode == "same":
-        output_shape = (num_particles, H, W)
+        output_shape = (num_particles, image_h, image_w)
+    else:
+        raise ValueError(f"Invalid mode: {mode}. Must be 'valid' or 'same'.")
 
     out_correlation = torch.zeros(output_shape, device=device)
 
@@ -719,7 +783,7 @@ def cross_correlate_particle_stack(
         # Extract the Fourier slice and apply the projective filters
         fourier_slice = extract_central_slices_rfft_3d(
             volume_rfft=template_dft,
-            image_shape=(h,) * 3,
+            image_shape=(template_h,) * 3,
             rotation_matrices=batch_rotation_matrices,
         )
         fourier_slice = torch.fft.ifftshift(fourier_slice, dim=(-2,))
@@ -730,10 +794,14 @@ def cross_correlate_particle_stack(
         # Inverse Fourier transform and normalize the projection
         projections = torch.fft.irfftn(fourier_slice, dim=(-2, -1))
         projections = torch.fft.ifftshift(projections, dim=(-2, -1))
-        projections = normalize_template_projection(projections, (h, w), (H, W))
+        projections = normalize_template_projection(
+            projections, (template_h, template_w), (image_h, image_w)
+        )
 
         # Padded forward FFT and cross-correlate
-        projections_dft = torch.fft.rfftn(projections, dim=(-2, -1), s=(H, W))
+        projections_dft = torch.fft.rfftn(
+            projections, dim=(-2, -1), s=(image_h, image_w)
+        )
         projections_dft = batch_particles_dft * projections_dft.conj()
         cross_correlation = torch.fft.irfftn(projections_dft, dim=(-2, -1))
 

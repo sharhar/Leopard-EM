@@ -7,6 +7,7 @@
 [![codecov](https://codecov.io/gh/Lucaslab-Berkeley/Leopard-EM/branch/main/graph/badge.svg)](https://github.com/Lucaslab-Berkeley/Leopard-EM)
 
 Leopard-EM (**L**ocation & ori**E**ntati**O**n of **PAR**ticles found using two-**D**imensional t**E**mplate **M**atching) is a python package for running two-dimensional template matching (2DTM) on cryo-EM images.
+Check out the [online documentation](https://lucaslab-berkeley.github.io/Leopard-EM/) for more details about using, configuring, and analyzing data from the Leopard-EM Python package.
 
 <!-- ## Documentation and Examples
 
@@ -25,16 +26,17 @@ pip install leopard-em
 
 ### Template Matching
 
-Inputs to the template matching programs can be configured with Pydantic models (see online documentation for examples and use cases).
-Alternatively, configurations can be set in YAML files and loaded into the `MatchTemplateManager` object.
-The [example YAML configuration file](match_template_example_config.yaml) acts as a template for configuring your own runs.
+Inputs to the template matching programs can be configured through a YAML file or a set of Python objects.
+The [example YAML configuration file](programs/match_template/match_template_example_config.yaml) acts as a template for configuring your own runs with more details on configuring and running 2DTM on the [programs section of the documentation](https://lucaslab-berkeley.github.io/Leopard-EM/programs/match_template/).
+We also provide a default [`match_template.py`](programs/match_template/run_match_template.py) script with some additional detail, but a compacted version of this script is shown below.
 Once configured with the proper paths, parameters, etc., the program can run as follows:
 
 ```python
-from leopard_em.pydantic_models import MatchTemplateManager
+from leopard_em.pydantic_models.managers import MatchTemplateManager
 
-YAML_CONFIG_PATH = "path/to/mt_config.yaml"
-ORIENTATION_BATCH_SIZE = 8
+YAML_CONFIG_PATH = "/path/to/match-template-configuration.yaml"
+DATAFRAME_OUTPUT_PATH = "/path/to/match-template-results.csv"
+ORIENTATION_BATCH_SIZE = 32
 
 def main():
     mt_manager = MatchTemplateManager.from_yaml(YAML_CONFIG_PATH)
@@ -52,26 +54,23 @@ if __name__ == "__main__":
 
 Particle orientations and locations can be refined using the `RefineTemplateManager` objects after a template matching run.
 The `RefineTemplateManager` is similarly a set of Pydantic models capable of configuration via YAML files.
-The [example YAML configuration file](refine_template_example_config.yaml) acts as a template for configuring your own runs.
+The [example YAML configuration file](programs/refine_template/refine_template_example_config.yaml) acts as a template for configuring your own runs.
+We also provide a default [`refine_template.py`](programs/refine_template/run_refine_template.py) script with some additional detail, but a compacted version of this script is shown below.
 Once configured with the proper paths, parameters, etc., the program can run as follows:
 
 ```python
-from leopard_em.pydantic_models import RefineTemplateManager
+from leopard_em.pydantic_models.managers import RefineTemplateManager
 
-YAML_PATH = "/path/to/rt_config.yaml"
-ORIENTATION_BATCH_SIZE = 80
+YAML_CONFIG_PATH = "/path/to/refine-template-configuration.yaml"
+DATAFRAME_OUTPUT_PATH = "/path/to/refine-template-results.csv"
+PARTICLE_BATCH_SIZE = 80
 
 def main():
-    rt_manager = RefineTemplateManager.from_yaml(YAML_PATH)
-    rt_manager.run_refine_template(
-        output_dataframe_path="/path/to/refined_results.csv",
-        orientation_batch_size=ORIENTATION_BATCH_SIZE,
-    )
-
+    rt_manager = RefineTemplateManager.from_yaml(YAML_CONFIG_PATH)
+    rt_manager.run_refine_template(DATAFRAME_OUTPUT_PATH, PARTICLE_BATCH_SIZE)
 
 if __name__ == "__main__":
     main()
-
 ```
 
 ## Installation for Development

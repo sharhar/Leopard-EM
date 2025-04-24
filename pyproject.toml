@@ -19,7 +19,7 @@ name = "leopard_em"
 dynamic = ["version"]
 description = "Location & Orientation of Particles using Two-Dimensional Template Matching"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "BSD-3-Clause" }
 authors = [
     { name = "Josh Dickerson", email = "jdickerson@berkeley.edu" },
@@ -49,8 +49,9 @@ dependencies = [
     "tqdm",
     "torch-fourier-slice>=v0.0.8",
     "torch-fourier-filter>=v0.2.3",
-    "torch-so3>=v0.1.3",
+    "torch-so3>=v0.2.0",
     "ttsim3d>=v0.3.0",
+    "lmfit",
 ]
 
 [tool.hatch.metadata]
@@ -69,6 +70,7 @@ dev = [
     "pre-commit",
     "rich",       # https://github.com/Textualize/rich
     "ruff",
+    "pylint",
 ]
 # Documentation dependencies
 docs = [
@@ -121,6 +123,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*.py" = ["D", "S"]
+"tests/pydantic_models/test_basic_imports.py" = ["F401"]
 
 # https://docs.astral.sh/ruff/formatter/
 [tool.ruff.format]

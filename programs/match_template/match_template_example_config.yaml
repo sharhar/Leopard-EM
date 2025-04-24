@@ -1,0 +1,52 @@
+##################################################
+### MatchTemplateManager configuration example ###
+##################################################
+# An example YAML configuration to modify.
+# Call `MatchTemplateManager.from_yaml(path)` to load this configuration.
+template_volume_path: /some/path/to/template.mrc
+micrograph_path:      /some/path/to/micrograph.mrc
+match_template_result:
+  allow_file_overwrite: true
+  mip_path:                   /some/path/to/output_mip.mrc
+  scaled_mip_path:            /some/path/to/output_scaled_mip.mrc
+  orientation_psi_path:       /some/path/to/output_orientation_psi.mrc
+  orientation_theta_path:     /some/path/to/output_orientation_theta.mrc
+  orientation_phi_path:       /some/path/to/output_orientation_phi.mrc
+  relative_defocus_path:      /some/path/to/output_relative_defocus.mrc
+  correlation_average_path:   /some/path/to/output_correlation_average.mrc
+  correlation_variance_path:  /some/path/to/output_correlation_variance.mrc
+optics_group:
+  label: some_label
+  voltage: 300.0
+  pixel_size: 1.06   # in Angstroms
+  defocus_u: 5200.0  # in Angstroms
+  defocus_v: 4950.0  # in Angstroms
+  astigmatism_angle: 25.0  # in degrees
+  spherical_aberration: 2.7  # in millimeters
+  amplitude_contrast_ratio: 0.07
+  phase_shift: 0.0
+  ctf_B_factor: 60.0  # in Angstroms^2
+defocus_search_config:
+  defocus_max:  1200.0  # in Angstroms, relative to the defocus_u and defocus_v values
+  defocus_min: -1200.0  # in Angstroms, relative to the defocus_u and defocus_v values
+  defocus_step: 200.0   # in Angstroms
+  enabled: true
+orientation_search_config:
+  base_grid_method: uniform
+  psi_step: 1.5      # in degrees
+  theta_step: 2.5  # in degrees
+preprocessing_filters:
+  whitening_filter:
+    enabled: true
+    do_power_spectrum: true
+    max_freq: 0.5  # In terms of Nyquist frequency
+    num_freq_bins: null
+  bandpass_filter:
+    enabled: false
+    falloff: null
+    high_freq_cutoff: null  # Both high/low in terms of Nyquist frequency
+    low_freq_cutoff: null   # e.g. low-pass to 3 Å @ 1.06 Å/px would be 0.353
+computational_config:
+  gpu_ids:
+  - 0
+  num_cpus: 1

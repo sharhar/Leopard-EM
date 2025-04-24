@@ -10,7 +10,7 @@ description: Overview of the Leopard-EM package for 2DTM in Python
 ## Installation
 
 Pre-packaged versions of Leopard-EM are released on the Python Package Index (PyPI).
-We target Linux operating systems on Python versions 3.9 - 3.12 for these releases, and the PyTorch GPU acceleration backend is only tested against NVIDIA GPUs.
+We target Linux operating systems on Python 3.10 and above for these releases, and the PyTorch GPU acceleration backend is only tested against NVIDIA GPUs.
 With these caveats in mind, the package can be installed using pip:
 
 ```bash
@@ -56,12 +56,58 @@ There are currently 4 main programs under `/src/programs` which can be edited in
 A minimally working Python script for running the match template program is shown below; further information on running each program can be found here: [Programs](programs/programs_landing_page.md)
 
 ```python
-from leopard_em.pydantic_models import MatchTemplateManager
+from leopard_em.pydantic_models.managers import MatchTemplateManager
+from leopard_em.pydantic_models.config import MatchTemplateResult
+from leopard_em.pydantic_models.config import OpticsGroup
+from leopard_em.pydantic_models.config import DefocusSearchConfig
+from leopard_em.pydantic_models.config import OrientationSearchConfig
 
-# Editable parameters for the program
-YAML_CONFIG_PATH = "/path/to/match-template-configuration.yaml"
-DATAFRAME_OUTPUT_PATH = "/path/to/match-template-results.csv"
-ORIENTATION_BATCH_SIZE = 32  # Tune based on GPU vram
+# Microscope imaging parameters
+my_optics_group = OpticsGroup(
+    label="my_optics_group",
+    pixel_size=1.2,    # In Angstroms
+    voltage=300,       # In kV
+    defocus_u=5100.0,  # In Angstroms
+    defocus_v=4900.0,  # In Angstroms
+    astigmatism_angle=0.0,  # In degrees
+)
+
+# Relative defocus planes to search across
+df_search_config = DefocusSearchConfig(
+    label="defocus_search",
+    min_defocus=1000,   # In Angstroms, relative
+    max_defocus=-1000,  # In Angstroms, relative
+    step_size=200.0,    # In Angstroms
+)
+
+# Orientation sampling of SO(3) space, using default
+orientation_search_config = OrientationSearchConfig()
+
+# Where to save the output results
+mt_result = MatchTemplateResult(
+    allow_file_overwrite=True,
+    mip_path="/path/to/output_mip.mrc",
+    scaled_mip_path="/path/to/output_scaled_mip.mrc",
+    correlation_average_path="/path/to/output_correlation_average.mrc",
+    correlation_variance_path="/path/to/output_correlation_variance.mrc",
+    orientation_psi_path="/path/to/output_orientation_psi.mrc",
+    orientation_theta_path="/path/to/output_orientation_theta.mrc",
+    orientation_phi_path="/path/to/output_orientation_phi.mrc",
+    relative_defocus_path="/path/to/output_relative_defocus.mrc",
+    pixel_size_path="/path/to/output_pixel_size.mrc",
+)
+
+mt_manager = MatchTemplateManager(
+    micrograph_path="/path/to/2D_image.mrc",
+    template_volume_path="/path/to/template_volume.mrc",
+    optics_group=my_optics_group,
+    defocus_search_config=df_search_config,
+    orientation_search_config=orientation_search_config,
+    match_template_result=mt_result,
+    # pixel_size_search_config
+    # preprocessing_filters
+    # computational_config
+)
 
 
 def main():
