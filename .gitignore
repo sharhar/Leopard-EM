@@ -5,6 +5,7 @@ __pycache__/
 
 # C extensions
 *.so
+*.npy
 
 # Distribution / packaging
 .Python
@@ -24,6 +25,8 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+
+data/
 
 .DS_Store
 

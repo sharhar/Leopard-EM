@@ -2,10 +2,13 @@
 
 from multiprocessing import Manager, Process, set_start_method
 
+import numpy as np
 import roma
 import torch
 import tqdm
 from torch_fourier_slice import extract_central_slices_rfft_3d
+
+from .core_match_template_vkdispatch import _core_match_template_vkdispatch_single_gpu
 
 from leopard_em.backend.process_results import (
     aggregate_distributed_results,
@@ -135,6 +138,7 @@ def core_match_template(
     for i, kwargs in enumerate(kwargs_per_device):
         p = Process(
             target=_core_match_template_single_gpu,
+            #target=_core_match_template_vkdispatch_single_gpu,
             args=(result_dict, i),
             kwargs=kwargs,
         )
@@ -378,6 +382,7 @@ def _core_match_template_single_gpu(
             template_dft=template_dft,
             rotation_matrices=rot_matrix,
             projective_filters=projective_filters,
+            device_id=device_id,
         )
 
         # Update the tracked statistics through compiled function
@@ -421,6 +426,7 @@ def _do_bached_orientation_cross_correlate(
     template_dft: torch.Tensor,
     rotation_matrices: torch.Tensor,
     projective_filters: torch.Tensor,
+    device_id: int,
 ) -> torch.Tensor:
     """Batched projection and cross-correlation with fixed (batched) filters.
 
@@ -461,6 +467,14 @@ def _do_bached_orientation_cross_correlate(
         image_shape=(h,) * 3,  # NOTE: requires cubic template
         rotation_matrices=rotation_matrices,
     )
+
+    fourier_slice_cpu = fourier_slice.cpu().numpy()
+
+    print(f"fourier_slice_cpu {device_id} shape: {fourier_slice_cpu.shape}")
+    np.save(f"fourier_slice_{device_id}.npy", fourier_slice_cpu[0])
+
+    exit()
+
     fourier_slice = torch.fft.ifftshift(fourier_slice, dim=(-2,))
     fourier_slice[..., 0, 0] = 0 + 0j  # zero out the DC component (mean zero)
     fourier_slice *= -1  # flip contrast
