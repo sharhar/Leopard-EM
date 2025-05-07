@@ -23,7 +23,7 @@ class ComputationalConfig(BaseModel):
     num_cpus: Annotated[int, Field(ge=1)] = 1
 
     @field_validator("gpu_ids")  # type: ignore
-    def validate_gpu_ids(cls, v):
+    def validate_gpu_ids(cls, v):  # pylint: disable=no-self-argument
         """Validate input value for GPU ids."""
         if isinstance(v, int):
             v = [v]

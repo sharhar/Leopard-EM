@@ -1,4 +1,4 @@
-from leopard_em.pydantic_models import MatchTemplateManager
+from leopard_em.pydantic_models.managers import MatchTemplateManager
 
 YAML_CONFIG_PATH = "/home/shaharsandhaus/Leopard-EM/data/benchmark_configuration_torch.yaml"
 ORIENTATION_BATCH_SIZE = 1

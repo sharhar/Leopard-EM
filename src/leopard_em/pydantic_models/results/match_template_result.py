@@ -1,5 +1,9 @@
 """Reading, storing, and exporting results from the match_template program."""
 
+# NOTE: Disabling pylint for too-many-instance-attributes since this class holds a
+# number of result attributes that are independent and should not be grouped further.
+# pylint: disable=too-many-instance-attributes
+
 import os
 from typing import ClassVar
 
@@ -7,13 +11,13 @@ import pandas as pd
 from pydantic import ConfigDict, Field, model_validator
 from typing_extensions import Self
 
-from leopard_em.analysis.pick_match_template_peaks import (
+from leopard_em.analysis import (
     MatchTemplatePeaks,
-    extract_peaks_and_statistics,
+    extract_peaks_and_statistics_zscore,
     match_template_peaks_to_dataframe,
     match_template_peaks_to_dict,
 )
-from leopard_em.pydantic_models.types import BaseModel2DTM, ExcludedTensor
+from leopard_em.pydantic_models.custom_types import BaseModel2DTM, ExcludedTensor
 from leopard_em.utils.data_io import load_mrc_image, write_mrc_from_tensor
 
 
@@ -127,14 +131,10 @@ class MatchTemplateResult(BaseModel2DTM):
 
     model_config: ClassVar = ConfigDict(arbitrary_types_allowed=True)
 
-    # TODO: Implement compression options.
-
     # Serialized attributes
     # NOTE: This overwrite attribute is a bit overbearing currently. I predict
     # it will lead to headaches when attempting to load a result, this is set
     # to True, and the result files already exist.
-    # TODO: Figure how to handle data overwrite prevention (and file write
-    # perms) before running expensive GPU computations.
     allow_file_overwrite: bool = False
     mip_path: str
     scaled_mip_path: str
@@ -222,9 +222,9 @@ class MatchTemplateResult(BaseModel2DTM):
         None
         """
         # Assuming all statistic files have the same shape (which should be true!)
-        H, W = self.mip.shape
+        img_h, img_w = self.mip.shape
         h, w = template_shape
-        slice_obj = (slice(H - h + 1), slice(W - w + 1))
+        slice_obj = (slice(img_h - h + 1), slice(img_w - w + 1))
 
         self.mip = self.mip[slice_obj]
         self.scaled_mip = self.scaled_mip[slice_obj]
@@ -272,7 +272,7 @@ class MatchTemplateResult(BaseModel2DTM):
             Named tuple object containing the peak locations, heights, and pose
             statistics.
         """
-        self.match_template_peaks = extract_peaks_and_statistics(
+        self.match_template_peaks = extract_peaks_and_statistics_zscore(
             mip=self.mip,
             scaled_mip=self.scaled_mip,
             best_psi=self.orientation_psi,
@@ -307,8 +307,6 @@ class MatchTemplateResult(BaseModel2DTM):
 
     def export_results(self) -> None:
         """Export the torch.Tensor results to the specified mrc files."""
-        # TODO: Handle pixel_size and other mrc metadata when exporting
-
         paths = [
             self.mip_path,
             self.scaled_mip_path,

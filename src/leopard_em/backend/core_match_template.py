@@ -1,6 +1,9 @@
 """Pure PyTorch implementation of whole orientation search backend."""
 
-from multiprocessing import Manager, Process, set_start_method
+# Following pylint error ignored because torc.fft.* is not recognized as callable
+# pylint: disable=E1102
+
+from multiprocessing import set_start_method
 
 import numpy as np
 import roma
@@ -17,6 +20,7 @@ from leopard_em.backend.process_results import (
 from leopard_em.backend.utils import (
     do_iteration_statistics_updates,
     normalize_template_projection,
+    run_multiprocess_jobs,
 )
 
 COMPILE_BACKEND = "inductor"
@@ -42,12 +46,14 @@ do_iteration_statistics_updates_compiled = torch.compile(
 ###########################################################
 
 
+# pylint: disable=too-many-locals
 def core_match_template(
     image_dft: torch.Tensor,
     template_dft: torch.Tensor,  # already fftshifted
     ctf_filters: torch.Tensor,
     whitening_filter_template: torch.Tensor,
     defocus_values: torch.Tensor,
+    pixel_values: torch.Tensor,
     euler_angles: torch.Tensor,
     device: torch.device | list[torch.device],
     orientation_batch_size: int = 1,
@@ -79,6 +85,9 @@ def core_match_template(
     defocus_values : torch.Tensor
         What defoucs values correspond with the CTF filters. Has shape
         (defocus_batch,).
+    pixel_values : torch.Tensor
+        What pixel size values correspond with the CTF filters. Has shape
+        (pixel_size_batch,).
     device : torch.device | list[torch.device]
         Device or devices to split computation across.
     orientation_batch_size : int, optional
@@ -95,6 +104,7 @@ def core_match_template(
             - "best_theta": Best theta angle for each pixel.
             - "best_psi": Best psi angle for each pixel.
             - "best_defocus": Best defocus value for each pixel.
+            - "best_pixel_size": Best pixel size value for each pixel.
             - "correlation_sum": Sum of cross-correlation values for each pixel.
             - "correlation_squared_sum": Sum of squared cross-correlation values for
               each pixel.
@@ -106,7 +116,7 @@ def core_match_template(
     ### Pre-multiply the whitening filter with the CTF filters ###
     ##############################################################
 
-    projective_filters = ctf_filters * whitening_filter_template[None, ...]
+    projective_filters = ctf_filters * whitening_filter_template[None, None, ...]
 
     #########################################
     ### Split orientations across devices ###
@@ -121,36 +131,23 @@ def core_match_template(
         euler_angles=euler_angles,
         projective_filters=projective_filters,
         defocus_values=defocus_values,
+        pixel_values=pixel_values,
         orientation_batch_size=orientation_batch_size,
         devices=device,
+    )
+
+    result_dict = run_multiprocess_jobs(
+        target=_core_match_template_single_gpu,
+        kwargs_list=kwargs_per_device,
     )
 
     ##################################################
     ### Initialize and start multiprocessing queue ###
     ##################################################
-    manager = Manager()
-    result_dict = manager.dict()
-
-    # lists to track processes
-    processes = []
-
-    # Start processes
-    for i, kwargs in enumerate(kwargs_per_device):
-        p = Process(
-            target=_core_match_template_single_gpu,
-            #target=_core_match_template_vkdispatch_single_gpu,
-            args=(result_dict, i),
-            kwargs=kwargs,
-        )
-        processes.append(p)
-        p.start()
-
-    # Wait for all processes to complete
-    for p in processes:
-        p.join()
+    
 
     # Get the aggregated results
-    partial_results = [result_dict[i] for i in range(len(processes))]
+    partial_results = [result_dict[i] for i in range(len(kwargs_per_device))]
     aggregated_results = aggregate_distributed_results(partial_results)
     mip = aggregated_results["mip"]
     best_phi = aggregated_results["best_phi"]
@@ -191,6 +188,7 @@ def construct_multi_gpu_match_template_kwargs(
     euler_angles: torch.Tensor,
     projective_filters: torch.Tensor,
     defocus_values: torch.Tensor,
+    pixel_values: torch.Tensor,
     orientation_batch_size: int,
     devices: list[torch.device],
 ) -> list[dict[str, torch.Tensor | int]]:
@@ -211,6 +209,8 @@ def construct_multi_gpu_match_template_kwargs(
         filters to apply to each projection
     defocus_values : torch.Tensor
         corresponding defocus values for each filter
+    pixel_values : torch.Tensor
+        corresponding pixel size values for each filter
     orientation_batch_size : int
         number of projections to calculate at once
     devices : list[torch.device]
@@ -223,27 +223,20 @@ def construct_multi_gpu_match_template_kwargs(
         function. Each index in the list corresponds to a different device,
         and all tensors in the dictionary have been allocated to that device.
     """
-    num_devices = len(devices)
     kwargs_per_device = []
 
     # Split the euler angles across devices
-    euler_angles_split = euler_angles.chunk(num_devices)
+    euler_angles_split = euler_angles.chunk(len(devices))
 
     for device, euler_angles_device in zip(devices, euler_angles_split):
-        # Allocate all tensors to the device
-        image_dft_device = image_dft.to(device)
-        template_dft_device = template_dft.to(device)
-        euler_angles_device = euler_angles_device.to(device)
-        projective_filters_device = projective_filters.to(device)
-        defocus_values_device = defocus_values.to(device)
-
-        # Construct the kwargs dictionary
+        # Allocate and construct the kwargs for this device
         kwargs = {
-            "image_dft": image_dft_device,
-            "template_dft": template_dft_device,
-            "euler_angles": euler_angles_device,
-            "projective_filters": projective_filters_device,
-            "defocus_values": defocus_values_device,
+            "image_dft": image_dft.to(device),
+            "template_dft": template_dft.to(device),
+            "euler_angles": euler_angles_device.to(device),
+            "projective_filters": projective_filters.to(device),
+            "defocus_values": defocus_values.to(device),
+            "pixel_values": pixel_values.to(device),
             "orientation_batch_size": orientation_batch_size,
         }
 
@@ -252,6 +245,7 @@ def construct_multi_gpu_match_template_kwargs(
     return kwargs_per_device
 
 
+# pylint: disable=too-many-locals
 def _core_match_template_single_gpu(
     result_dict: dict,
     device_id: int,
@@ -260,6 +254,7 @@ def _core_match_template_single_gpu(
     euler_angles: torch.Tensor,
     projective_filters: torch.Tensor,
     defocus_values: torch.Tensor,
+    pixel_values: torch.Tensor,
     orientation_batch_size: int,
 ) -> None:
     """Single-GPU call for template matching.
@@ -294,6 +289,9 @@ def _core_match_template_single_gpu(
     defocus_values : torch.Tensor
         What defoucs values correspond with the CTF filters. Has shape
         (defocus_batch,).
+    pixel_values : torch.Tensor
+        What pixel size values correspond with the CTF filters. Has shape
+        (pixel_size_batch,).
     orientation_batch_size : int
         The number of projections to calculate the correlation for at once.
 
@@ -302,51 +300,53 @@ def _core_match_template_single_gpu(
     None
     """
     device = image_dft.device
-    H, W = image_dft.shape
-    h, w = template_dft.shape[-2:]
-    # account for RFFT
-    W = 2 * (W - 1)
-    w = 2 * (w - 1)
+    image_shape_real = (image_dft.shape[0], image_dft.shape[1] * 2 - 2)  # adj. for RFFT
 
     ################################################
     ### Initialize the tracked output statistics ###
     ################################################
 
     mip = torch.full(
-        size=(H, W),
+        size=image_shape_real,
         fill_value=-float("inf"),
         dtype=DEFAULT_STATISTIC_DTYPE,
         device=device,
     )
     best_phi = torch.full(
-        size=(H, W),
+        size=image_shape_real,
         fill_value=-1000.0,
         dtype=DEFAULT_STATISTIC_DTYPE,
         device=device,
     )
     best_theta = torch.full(
-        size=(H, W),
+        size=image_shape_real,
         fill_value=-1000.0,
         dtype=DEFAULT_STATISTIC_DTYPE,
         device=device,
     )
     best_psi = torch.full(
-        size=(H, W),
+        size=image_shape_real,
         fill_value=-1000.0,
         dtype=DEFAULT_STATISTIC_DTYPE,
         device=device,
     )
     best_defocus = torch.full(
-        size=(H, W),
+        size=image_shape_real,
+        fill_value=float("inf"),
+        dtype=DEFAULT_STATISTIC_DTYPE,
+        device=device,
+    )
+    best_pixel_size = torch.full(
+        size=image_shape_real,
         fill_value=float("inf"),
         dtype=DEFAULT_STATISTIC_DTYPE,
         device=device,
     )
     correlation_sum = torch.zeros(
-        size=(H, W), dtype=DEFAULT_STATISTIC_DTYPE, device=device
+        size=image_shape_real, dtype=DEFAULT_STATISTIC_DTYPE, device=device
     )
     correlation_squared_sum = torch.zeros(
-        size=(H, W), dtype=DEFAULT_STATISTIC_DTYPE, device=device
+        size=image_shape_real, dtype=DEFAULT_STATISTIC_DTYPE, device=device
     )
 
     ########################################################
@@ -363,7 +363,9 @@ def _core_match_template_single_gpu(
         position=device.index,
     )
 
-    total_projections = euler_angles.shape[0] * defocus_values.shape[0]
+    total_projections = (
+        euler_angles.shape[0] * defocus_values.shape[0] * pixel_values.shape[0]
+    )
 
     ##################################
     ### Start the orientation loop ###
@@ -390,15 +392,17 @@ def _core_match_template_single_gpu(
             cross_correlation,
             euler_angles_batch,
             defocus_values,
+            pixel_values,
             mip,
             best_phi,
             best_theta,
             best_psi,
             best_defocus,
+            best_pixel_size,
             correlation_sum,
             correlation_squared_sum,
-            H,
-            W,
+            image_shape_real[0],
+            image_shape_real[1],
         )
 
     # NOTE: Need to send all tensors back to the CPU as numpy arrays for the shared
@@ -409,6 +413,7 @@ def _core_match_template_single_gpu(
         "best_theta": best_theta.cpu().numpy(),
         "best_psi": best_psi.cpu().numpy(),
         "best_defocus": best_defocus.cpu().numpy(),
+        "best_pixel_size": best_pixel_size.cpu().numpy(),
         "correlation_sum": correlation_sum.cpu().numpy(),
         "correlation_squared_sum": correlation_squared_sum.cpu().numpy(),
         "total_projections": total_projections,
@@ -417,8 +422,6 @@ def _core_match_template_single_gpu(
     # Place the results in the shared multi-process manager dictionary so accessible
     # by the main process.
     result_dict[device_id] = result
-
-    return None
 
 
 def _do_bached_orientation_cross_correlate(
@@ -456,15 +459,14 @@ def _do_bached_orientation_cross_correlate(
         orientation and defocus value. Will have shape
         (orientations, defocus_batch, H, W).
     """
-    _, h, w = template_dft.shape
-    H, W = image_dft.shape
-    W = 2 * (W - 1)
-    w = 2 * (w - 1)
+    # Accounting for RFFT shape
+    projection_shape_real = (template_dft.shape[1], template_dft.shape[2] * 2 - 2)
+    image_shape_real = (image_dft.shape[0], image_dft.shape[1] * 2 - 2)
 
     # Extract central slice(s) from the template volume
     fourier_slice = extract_central_slices_rfft_3d(
         volume_rfft=template_dft,
-        image_shape=(h,) * 3,  # NOTE: requires cubic template
+        image_shape=(projection_shape_real[0],) * 3,  # NOTE: requires cubic template
         rotation_matrices=rotation_matrices,
     )
 
@@ -480,21 +482,25 @@ def _do_bached_orientation_cross_correlate(
     fourier_slice *= -1  # flip contrast
 
     # Apply the projective filters on a new batch dimension
-    fourier_slice = fourier_slice[None, ...] * projective_filters[:, None, ...]
-
+    fourier_slice = fourier_slice[None, None, ...] * projective_filters[:, :, None, ...]
     # Inverse Fourier transform into real space and normalize
     projections = torch.fft.irfftn(fourier_slice, dim=(-2, -1))
     projections = torch.fft.ifftshift(projections, dim=(-2, -1))
-    projections = normalize_template_projection_compiled(projections, (h, w), (H, W))
+    projections = normalize_template_projection_compiled(
+        projections,
+        projection_shape_real,
+        image_shape_real,
+    )
 
     # Padded forward Fourier transform for cross-correlation
-    projections_dft = torch.fft.rfftn(projections, dim=(-2, -1), s=(H, W))
+    projections_dft = torch.fft.rfftn(projections, dim=(-2, -1), s=image_shape_real)
     projections_dft[..., 0, 0] = 0 + 0j  # zero out the DC component (mean zero)
 
     # Cross correlation step by element-wise multiplication
-    projections_dft = image_dft[None, None, ...] * projections_dft.conj()
+    projections_dft = image_dft[None, None, None, ...] * projections_dft.conj()
     cross_correlation = torch.fft.irfftn(projections_dft, dim=(-2, -1))
 
+    # shape is (n_Cs n_defoc n_orientations, H, W)
     return cross_correlation
 
 
@@ -533,15 +539,14 @@ def _do_bached_orientation_cross_correlate_cpu(
     torch.Tensor
         Cross-correlation for the batch of orientations and defocus values.s
     """
-    _, h, w = template_dft.shape
-    H, W = image_dft.shape
-    W = 2 * (W - 1)
-    w = 2 * (w - 1)
+    # Accounting for RFFT shape
+    projection_shape_real = (template_dft.shape[1], template_dft.shape[2] * 2 - 2)
+    image_shape_real = (image_dft.shape[0], image_dft.shape[1] * 2 - 2)
 
     # Extract central slice(s) from the template volume
     fourier_slice = extract_central_slices_rfft_3d(
         volume_rfft=template_dft,
-        image_shape=(h,) * 3,  # NOTE: requires cubic template
+        image_shape=(projection_shape_real[0],) * 3,  # NOTE: requires cubic template
         rotation_matrices=rotation_matrices,
     )
     fourier_slice = torch.fft.ifftshift(fourier_slice, dim=(-2,))
@@ -549,19 +554,23 @@ def _do_bached_orientation_cross_correlate_cpu(
     fourier_slice *= -1  # flip contrast
 
     # Apply the projective filters on a new batch dimension
-    fourier_slice = fourier_slice[None, ...] * projective_filters[:, None, ...]
+    fourier_slice = fourier_slice[None, None, ...] * projective_filters[:, :, None, ...]
 
     # Inverse Fourier transform into real space and normalize
     projections = torch.fft.irfftn(fourier_slice, dim=(-2, -1))
     projections = torch.fft.ifftshift(projections, dim=(-2, -1))
-    projections = normalize_template_projection(projections, (h, w), (H, W))
+    projections = normalize_template_projection(
+        projections,
+        projection_shape_real,
+        image_shape_real,
+    )
 
     # Padded forward Fourier transform for cross-correlation
-    projections_dft = torch.fft.rfftn(projections, dim=(-2, -1), s=(H, W))
+    projections_dft = torch.fft.rfftn(projections, dim=(-2, -1), s=image_shape_real)
     projections_dft[..., 0, 0] = 0 + 0j  # zero out the DC component (mean zero)
 
     # Cross correlation step by element-wise multiplication
-    projections_dft = image_dft[None, None, ...] * projections_dft.conj()
+    projections_dft = image_dft[None, None, None, ...] * projections_dft.conj()
     cross_correlation = torch.fft.irfftn(projections_dft, dim=(-2, -1))
 
     return cross_correlation

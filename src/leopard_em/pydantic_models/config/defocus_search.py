@@ -2,10 +2,11 @@
 
 from typing import Annotated
 
-import numpy as np
+import torch
 from pydantic import Field
 
-from leopard_em.pydantic_models.types import BaseModel2DTM
+from leopard_em.pydantic_models.custom_types import BaseModel2DTM
+from leopard_em.pydantic_models.utils import get_search_tensors
 
 
 class DefocusSearchConfig(BaseModel2DTM):
@@ -23,26 +24,29 @@ class DefocusSearchConfig(BaseModel2DTM):
         'defocus_v' in OpticsGroup) of micrograph in units of Angstroms.
     defocus_step : float
         Step size for defocus search in units of Angstroms.
+    skip_enforce_zero : bool
+        Whether to skip enforcing a zero value, by default False.
 
     Properties
     ----------
-    defocus_values : list[float]
-        List of relative defocus values to search over based on held params.
+    defocus_values : torch.Tensor
+        Tensor of relative defocus values to search over based on held params.
     """
 
     enabled: bool = True
-    defocus_min: float
-    defocus_max: float
-    defocus_step: Annotated[float, Field(..., gt=0.0)]
+    defocus_min: float = -1000.0
+    defocus_max: float = 1000.0
+    defocus_step: Annotated[float, Field(..., gt=0.0)] = 200.0
+    skip_enforce_zero: bool = False
 
     @property
-    def defocus_values(self) -> list[float]:
+    def defocus_values(self) -> torch.Tensor:
         """Relative defocus values to search over based on held params.
 
         Returns
         -------
-        list[float]
-            List of relative defocus values to search over, in units of Angstroms.
+        torch.Tensor
+            Tensor of relative defocus values to search over, in units of Angstroms.
 
         Raises
         ------
@@ -51,17 +55,10 @@ class DefocusSearchConfig(BaseModel2DTM):
         """
         # Return a relative defocus of 0.0 if search is disabled.
         if not self.enabled:
-            return [0.0]
+            return torch.tensor([0.0])
 
-        vals = np.arange(
-            self.defocus_min,
-            self.defocus_max + self.defocus_step,
-            self.defocus_step,
-        )
-        vals = vals.tolist()
-
-        # Ensure that there is at least one defocus value to search over.
-        if len(vals) == 0:
+            # Check if parameters would result in valid range before calling arange
+        if self.defocus_max < self.defocus_min:
             raise ValueError(
                 "Defocus search parameters result in no values to search over!\n"
                 f"  self.defocus_min: {self.defocus_min}\n"
@@ -69,4 +66,9 @@ class DefocusSearchConfig(BaseModel2DTM):
                 f"  self.defocus_step: {self.defocus_step}\n"
             )
 
-        return vals  # type: ignore
+        return get_search_tensors(
+            self.defocus_min,
+            self.defocus_max,
+            self.defocus_step,
+            self.skip_enforce_zero,
+        )

@@ -10,7 +10,7 @@ from torch_fourier_filter.phase_randomize import phase_randomize
 from torch_fourier_filter.utils import curve_1dim_to_ndim
 from torch_fourier_filter.whitening import whitening_filter
 
-from leopard_em.pydantic_models.types import BaseModel2DTM
+from leopard_em.pydantic_models.custom_types import BaseModel2DTM
 
 
 class WhiteningFilterConfig(BaseModel2DTM):
@@ -151,7 +151,6 @@ class PhaseRandomizationFilterConfig(BaseModel2DTM):
             return torch.ones(output_shape, dtype=ref_img_rfft.dtype)
 
         # Fix for underlying shape bug in torch_fourier_filter
-        # TODO: fix this in package
         output_shape = output_shape[:-1] + (2 * (output_shape[-1] - 1),)
 
         return phase_randomize(

@@ -1,4 +1,7 @@
-"""Utility functions associated with backend functions."""
+"""Utility and helper functions associated with the backend of Leopard-EM."""
+
+from multiprocessing import Manager, Process
+from typing import Any, Callable, Optional
 
 import torch
 
@@ -51,9 +54,6 @@ def normalize_template_projection(
         Edge-mean subtracted projections, still in small space, but normalized
         so variance of zero-padded projection is 1.
     """
-    h, w = small_shape
-    H, W = large_shape
-
     # Extract edges while preserving batch dimensions
     top_edge = projections[..., 0, :]  # shape: (..., w)
     bottom_edge = projections[..., -1, :]  # shape: (..., w)
@@ -64,8 +64,7 @@ def normalize_template_projection(
     )
 
     # Subtract the edge pixel mean and calculate variance of small, unpadded projection
-    edge_mean = edge_pixels.mean(dim=-1)
-    projections -= edge_mean[..., None, None]
+    projections -= edge_pixels.mean(dim=-1)[..., None, None]
 
     # # Calculate variance like cisTEM (does not match desired results...)
     # variance = (projections**2).sum(dim=(-1, -2), keepdim=True) * relative_size - (
@@ -73,32 +72,43 @@ def normalize_template_projection(
     # ) ** 2
 
     # Fast calculation of mean/var using Torch + appropriate scaling.
-    relative_size = h * w / (H * W)
+    relative_size = (small_shape[0] * small_shape[1]) / (
+        large_shape[0] * large_shape[1]
+    )
     mean = torch.mean(projections, dim=(-2, -1), keepdim=True) * relative_size
     mean *= relative_size
 
     # First term of the variance calculation
     variance = torch.sum((projections - mean) ** 2, dim=(-2, -1), keepdim=True)
     # Add the second term of the variance calculation
-    variance += (H - h) * (W - w) * mean**2
-    variance /= H * W
+    variance += (
+        (large_shape[0] - small_shape[0]) * (large_shape[0] - small_shape[0]) * mean**2
+    )
+    variance /= large_shape[0] * large_shape[1]
 
     return projections / torch.sqrt(variance)
 
 
+# NOTE: Disabling pylint for number of argument since these all need updated in-place
+# and is more efficient than packing into some other type of object.
+# pylint: disable=too-many-locals
+# pylint: disable=too-many-arguments
+# pylint: disable=too-many-positional-arguments
 def do_iteration_statistics_updates(
     cross_correlation: torch.Tensor,
     euler_angles: torch.Tensor,
     defocus_values: torch.Tensor,
+    pixel_values: torch.Tensor,
     mip: torch.Tensor,
     best_phi: torch.Tensor,
     best_theta: torch.Tensor,
     best_psi: torch.Tensor,
     best_defocus: torch.Tensor,
+    best_pixel_size: torch.Tensor,
     correlation_sum: torch.Tensor,
     correlation_squared_sum: torch.Tensor,
-    H: int,
-    W: int,
+    img_h: int,
+    img_w: int,
 ) -> None:
     """Helper function for updating maxima and tracked statistics.
 
@@ -119,6 +129,8 @@ def do_iteration_statistics_updates(
         Euler angles for the current iteration. Has shape (orientations, 3).
     defocus_values : torch.Tensor
         Defocus values for the current iteration. Has shape (defocus,).
+    pixel_values : torch.Tensor
+        Pixel size values for the current iteration. Has shape (pixel_size_batch,).
     mip : torch.Tensor
         Maximum intensity projection of the cross-correlation values.
     best_phi : torch.Tensor
@@ -129,18 +141,22 @@ def do_iteration_statistics_updates(
         Best psi angle for each pixel.
     best_defocus : torch.Tensor
         Best defocus value for each pixel.
+    best_pixel_size : torch.Tensor
+        Best pixel size value for each pixel.
     correlation_sum : torch.Tensor
         Sum of cross-correlation values for each pixel.
     correlation_squared_sum : torch.Tensor
         Sum of squared cross-correlation values for each pixel.
-    H : int
+    img_h : int
         Height of the cross-correlation values.
-    W : int
+    img_w : int
         Width of the cross-correlation values.
     """
-    max_values, max_indices = torch.max(cross_correlation.view(-1, H, W), dim=0)
-    max_defocus_idx = max_indices // euler_angles.shape[0]
-    max_orientation_idx = max_indices % euler_angles.shape[0]
+    num_cs, num_defocs, num_orientations = cross_correlation.shape[0:3]
+    max_values, max_indices = torch.max(cross_correlation.view(-1, img_h, img_w), dim=0)
+    max_cs_idx = (max_indices // (num_defocs * num_orientations)) % num_cs
+    max_defocus_idx = (max_indices // num_orientations) % num_defocs
+    max_orientation_idx = max_indices % num_orientations
 
     # using torch.where directly
     update_mask = max_values > mip
@@ -158,6 +174,76 @@ def do_iteration_statistics_updates(
     torch.where(
         update_mask, defocus_values[max_defocus_idx], best_defocus, out=best_defocus
     )
+    torch.where(
+        update_mask, pixel_values[max_cs_idx], best_pixel_size, out=best_pixel_size
+    )
 
-    correlation_sum += cross_correlation.view(-1, H, W).sum(dim=0)
-    correlation_squared_sum += (cross_correlation.view(-1, H, W) ** 2).sum(dim=0)
+    correlation_sum += cross_correlation.view(-1, img_h, img_w).sum(dim=0)
+    correlation_squared_sum += (cross_correlation.view(-1, img_h, img_w) ** 2).sum(
+        dim=0
+    )
+
+
+def run_multiprocess_jobs(
+    target: Callable,
+    kwargs_list: list[dict[str, Any]],
+    extra_args: tuple[Any, ...] = (),
+    extra_kwargs: Optional[dict[str, Any]] = None,
+) -> dict[Any, Any]:
+    """Helper function for running multiple processes on the same target function.
+
+    Spawns multiple processes to run the same target function with different keyword
+    arguments, aggregates results in a shared dictionary, and returns them.
+
+    Parameters
+    ----------
+    target : Callable
+        The function that each process will execute. It must accept at least two
+        positional arguments: a shared dict and a unique index.
+    kwargs_list : list[dict[str, Any]]
+        A list of dictionaries containing keyword arguments for each process.
+    extra_args : tuple[Any, ...], optional
+        Additional positional arguments to pass to the target (prepending the shared
+        parameters).
+    extra_kwargs : Optional[dict[str, Any]], optional
+        Additional common keyword arguments for all processes.
+
+    Returns
+    -------
+    dict[Any, Any]
+        Aggregated results stored in the shared dictionary.
+
+    Example
+    -------
+    def worker(result_dict, idx, param1, param2):
+        # perform work
+        result_dict[idx] = param1 + param2
+
+    kwargs_per_process = [
+        {"param1": 1, "param2": 2},
+        {"param1": 3, "param2": 4},
+    ]
+    results = run_multiprocess_jobs(worker, kwargs_per_process)
+    # results will be something like: {0: 3, 1: 7}
+    """
+    if extra_kwargs is None:
+        extra_kwargs = {}
+
+    # Manager object for shared result data as a dictionary
+    manager = Manager()
+    result_dict = manager.dict()
+    processes: list[Process] = []
+
+    for i, kwargs in enumerate(kwargs_list):
+        args = (*extra_args, result_dict, i)
+
+        # Merge per-process kwargs with common kwargs.
+        proc_kwargs = {**extra_kwargs, **kwargs}
+        p = Process(target=target, args=args, kwargs=proc_kwargs)
+        processes.append(p)
+        p.start()
+
+    for p in processes:
+        p.join()
+
+    return dict(result_dict)

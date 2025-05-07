@@ -5,7 +5,7 @@ from typing import Annotated, Optional, Union
 
 from pydantic import Field
 
-from leopard_em.pydantic_models.types import BaseModel2DTM
+from leopard_em.pydantic_models.custom_types import BaseModel2DTM
 
 
 class OpticsGroup(BaseModel2DTM):
