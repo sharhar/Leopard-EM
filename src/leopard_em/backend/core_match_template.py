@@ -137,7 +137,8 @@ def core_match_template(
     )
 
     result_dict = run_multiprocess_jobs(
-        target=_core_match_template_single_gpu,
+        #target=_core_match_template_single_gpu,
+        target=_core_match_template_vkdispatch_single_gpu,
         kwargs_list=kwargs_per_device,
     )
 
@@ -472,10 +473,10 @@ def _do_bached_orientation_cross_correlate(
 
     fourier_slice_cpu = fourier_slice.cpu().numpy()
 
-    print(f"fourier_slice_cpu {device_id} shape: {fourier_slice_cpu.shape}")
-    np.save(f"fourier_slice_{device_id}.npy", fourier_slice_cpu[0])
+    #print(f"fourier_slice_cpu {device_id} shape: {fourier_slice_cpu.shape}")
+    #np.save(f"fourier_slice_{device_id}.npy", fourier_slice_cpu[0])
 
-    exit()
+    #exit()
 
     fourier_slice = torch.fft.ifftshift(fourier_slice, dim=(-2,))
     fourier_slice[..., 0, 0] = 0 + 0j  # zero out the DC component (mean zero)
@@ -483,6 +484,12 @@ def _do_bached_orientation_cross_correlate(
 
     # Apply the projective filters on a new batch dimension
     fourier_slice = fourier_slice[None, None, ...] * projective_filters[:, :, None, ...]
+
+    print(f"fourier_slice_cpu2 {device_id} shape: {fourier_slice_cpu.shape}")
+    np.save(f"fourier_slice2_{device_id}.npy", fourier_slice_cpu[0])
+
+    exit()
+
     # Inverse Fourier transform into real space and normalize
     projections = torch.fft.irfftn(fourier_slice, dim=(-2, -1))
     projections = torch.fft.ifftshift(projections, dim=(-2, -1))

@@ -38,6 +38,7 @@ def _core_match_template_vkdispatch_single_gpu(
     euler_angles: torch.Tensor,
     projective_filters: torch.Tensor,
     defocus_values: torch.Tensor,
+    pixel_values: torch.Tensor,
     orientation_batch_size: int,
 ) -> None:
     """Single-GPU call for template matching.
@@ -100,20 +101,32 @@ def _core_match_template_vkdispatch_single_gpu(
     template_dft_cpu = template_dft.cpu().numpy()
     euler_angles_cpu = euler_angles.cpu().numpy()
     projective_filters_cpu = projective_filters.cpu().numpy()
+    pixel_values_cpu = pixel_values.cpu().numpy()
     defocus_values_cpu = defocus_values.cpu().numpy()
 
-    image_dft_buffer = vd.asbuffer(image_dft_cpu)
-    projective_filters_buffer = vd.asbuffer(projective_filters_cpu)
-    defocus_values_buffer = vd.asbuffer(defocus_values_cpu)
-
-    template_image = vd.Image3D(template_dft_cpu.shape, vd.float32, 2)
-    template_image.write(template_dft_cpu)
+    projective_filters_cpu = projective_filters_cpu.reshape(
+        -1, projective_filters_cpu.shape[-2], projective_filters_cpu.shape[-1]
+    )
 
     print("image_dft_cpu", image_dft_cpu.shape)
     print("template_dft_cpu", template_dft_cpu.shape)
     print("euler_angles_cpu", euler_angles_cpu.shape)
     print("projective_filters_cpu", projective_filters_cpu.shape)
+    print("pixel_values_cpu", pixel_values_cpu.shape)
     print("defocus_values_cpu", defocus_values_cpu.shape)
+    
+    image_dft_buffer = vd.RFFTBuffer((image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2)) #vd.asbuffer(image_dft_cpu)
+    image_dft_buffer.write_fourier(image_dft_cpu)
+    
+    projective_filters_buffer = vd.asbuffer(projective_filters_cpu)
+    defocus_values_buffer = vd.asbuffer(defocus_values_cpu)
+
+    template_buffer = vd.RFFTBuffer((template_dft_cpu.shape[1], (template_dft_cpu.shape[2] - 1) * 2))
+    correlation_buffer = vd.RFFTBuffer((image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2))
+
+    template_image = vd.Image3D(template_dft_cpu.shape, vd.float32, 2)
+    template_image.write(template_dft_cpu)
+
 
     ########################################################
     ### Setup iterator object with tqdm for progress bar ###
@@ -143,10 +156,15 @@ def _core_match_template_vkdispatch_single_gpu(
         # calculate the planar position of the current buffer pixel
         my_pos = vc.new_vec4(0, 0, 0, 1)
         my_pos.xy[:] = vc.unravel_index(ind, buff.shape).xy
-        my_pos.xy += buff.shape.xy / 2
-        my_pos.xy[:] = vc.mod(my_pos.xy, buff.shape.xy)
-        my_pos.xy -= buff.shape.xy / 2
+        
+        #my_pos.xy += buff.shape.xy / 2
+        #my_pos.xy[:] = vc.mod(my_pos.xy, buff.shape.xy)
+        #my_pos.xy -= buff.shape.xy / 2
 
+        my_pos.x += buff.shape.x / 2
+        my_pos.x[:] = vc.mod(my_pos.x, buff.shape.x)
+        my_pos.x -= buff.shape.x / 2
+        
         # rotate the position to 3D template space
         my_pos[:] = rotation * my_pos
         my_pos.xyz += img_shape.xyz.cast_to(vc.v3) / 2
@@ -163,11 +181,16 @@ def _core_match_template_vkdispatch_single_gpu(
     vd.set_global_cmd_stream(cmd_stream)
 
     extract_fft_slices(
-        image_dft_buffer,
-        template_image,
+        template_buffer,
+        template_image.sample(),
         (*template_image.shape, 0),
         cmd_stream.bind_var("rotation_matrix"),
     )
+
+    vd.fft.irfft2(template_buffer)
+
+    vd.fft.convolve2DR(correlation_buffer, image_dft_buffer)
+    #vd.fft.convolve2DR(correlation_buffer, image_dft_buffer)
 
     ##################################
     ### Start the orientation loop ###
@@ -180,10 +203,19 @@ def _core_match_template_vkdispatch_single_gpu(
 
         rotation_matricies = euler_angles_to_rotation_matricies(euler_angles_batch)
 
-        print(euler_angles_batch)
+        cmd_stream.set_var("rotation_matrix", rotation_matricies)
 
-        time.sleep(1)  # Sleep to allow the progress bar to update
+        cmd_stream.submit(rotation_matricies.shape[0])
 
-        exit()
+        #result_cpu = template_buffer.read()[0]
+
+        #print(f"slice_cpu {device_id} shape: {result_cpu.shape}")
+        #np.save(f"slice_{device_id}.npy", result_cpu)
+
+        #exit()
+
+        #time.sleep(0.1)  # Sleep to allow the progress bar to update
+
+        #exit()
 
 
