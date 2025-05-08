@@ -88,6 +88,8 @@ def _core_match_template_vkdispatch_single_gpu(
     try:
         import vkdispatch as vd
         import vkdispatch.codegen as vc
+
+        from .vkdispatch_utils import extract_fft_slices
     except ImportError:
         raise ImportError("The 'vkdispatch' package must be installed to use the vkdispatch backend.")
     
@@ -95,12 +97,21 @@ def _core_match_template_vkdispatch_single_gpu(
 
     vd.make_context(devices=[device_id]) #, all_queues=True)
 
+    #################################################################################
+    ### Inverse FFT shift the template, since we need to redo the FFT calculation ###
+    #################################################################################
+
+    template_dft_temp = torch.fft.ifftshift(template_dft, dim=(0, 1))
+    density_volume = torch.fft.irfftn(template_dft_temp, dim=(0, 1, 2))
+    density_volume_fft = torch.fft.fftn(density_volume, dim=(0, 1, 2))
+    density_volume_fft: torch.Tensor = torch.fft.fftshift(density_volume_fft, dim=(0, 1, 2))
+
     ###############################################################
     ### Copy Tensor data back to CPU and then to vkdispatch GPU ###
     ###############################################################
 
     image_dft_cpu = image_dft.cpu().numpy()
-    template_dft_cpu = template_dft.cpu().numpy()
+    density_volume_fft_cpu = density_volume_fft.cpu().numpy()
     euler_angles_cpu = euler_angles.cpu().numpy()
     projective_filters_cpu = projective_filters.cpu().numpy()
     pixel_values_cpu = pixel_values.cpu().numpy()
@@ -111,7 +122,7 @@ def _core_match_template_vkdispatch_single_gpu(
     )
 
     print("image_dft_cpu", image_dft_cpu.shape)
-    print("template_dft_cpu", template_dft_cpu.shape)
+    print("density_volume_fft_cpu", density_volume_fft_cpu.shape)
     print("euler_angles_cpu", euler_angles_cpu.shape)
     print("projective_filters_cpu", projective_filters_cpu.shape)
     print("pixel_values_cpu", pixel_values_cpu.shape)
@@ -127,16 +138,11 @@ def _core_match_template_vkdispatch_single_gpu(
     projective_filters_buffer = vd.asbuffer(projective_filters_cpu)
     defocus_values_buffer = vd.asbuffer(defocus_values_cpu)
 
-    template_buffer = vd.RFFTBuffer((template_dft_cpu.shape[1], (template_dft_cpu.shape[2] - 1) * 2))
+    template_buffer = vd.RFFTBuffer((density_volume_fft_cpu.shape[0], density_volume_fft_cpu.shape[0]))
     correlation_buffer = vd.RFFTBuffer((image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2))
 
-    template_image = vd.Image3D(template_dft_cpu.shape, vd.float32, 2)
-    
-    transposed_template = template_dft_cpu.transpose(2, 1, 0)
-    template_image.write(transposed_template)
-
-    #template_image.write(template_dft_cpu)
-
+    template_image = vd.Image3D(density_volume_fft_cpu.shape, vd.float32, 2)
+    template_image.write(density_volume_fft_cpu)
 
     ########################################################
     ### Setup iterator object with tqdm for progress bar ###
@@ -153,47 +159,6 @@ def _core_match_template_vkdispatch_single_gpu(
     )
 
     total_projections = euler_angles.shape[0] * defocus_values.shape[0]
-
-    @vd.shader(exec_size=lambda args: args.buff.size)
-    def extract_fft_slices(
-        buff: vc.Buff[vc.c64], 
-        img: vc.Img3[vc.f32], 
-        img_shape: vc.Const[vc.iv4], 
-        rotation: vc.Var[vc.m4]):
-
-        ind = vc.global_invocation().x.cast_to(vc.i32).copy()
-        
-        # calculate the planar position of the current buffer pixel
-        my_pos = vc.new_vec4(0, 0, 0, 1)
-        my_pos.x = ind % buff.shape.y
-        my_pos.y = ind / buff.shape.y
-
-        #my_pos.xy += img_shape.xy / 2
-        #my_pos.xy[:] = vc.mod(my_pos.xy, img_shape.xy)
-        #my_pos.xy -= img_shape.xy / 2
-        
-        my_pos.y += img_shape.y / 2
-        my_pos.y[:] = vc.mod(my_pos.y, img_shape.y)
-        my_pos.y -= img_shape.y / 2
-        
-        # rotate the position to 3D template space
-        my_pos[:] = rotation * my_pos
-        my_pos.xy += img_shape.xy.cast_to(vc.v2) / 2
-        #my_pos.y += img_shape.y / 2
-        my_pos.z += img_shape.x / 2
-
-        vc.if_statement(my_pos.x < img_shape.z)
-        buff[ind] = img.sample(my_pos.zyx).xy
-        vc.else_statement()
-
-        my_pos.x = img_shape.x - my_pos.x
-
-        #my_pos.xy = img.sample(my_pos.zyx).xy
-        #my_pos.y = -my_pos.y
-
-        buff[ind] = my_pos.zy.cast_to(vc.v2)
-
-        vc.end()
 
     ###################################################
     ### Create the CommandStream for later playback ###

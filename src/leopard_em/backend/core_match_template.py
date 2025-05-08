@@ -471,14 +471,10 @@ def _do_bached_orientation_cross_correlate(
         rotation_matrices=rotation_matrices,
     )
 
-    fourier_slice_cpu = fourier_slice.cpu().numpy()
-
-    #print(f"fourier_slice_cpu {device_id} shape: {fourier_slice_cpu.shape}")
-    #np.save(f"fourier_slice_{device_id}.npy", fourier_slice_cpu[0])
-
-    #exit()
-
     fourier_slice = torch.fft.ifftshift(fourier_slice, dim=(-2,))
+    
+    fourier_slice_cpu = fourier_slice.cpu().numpy()
+    
     fourier_slice[..., 0, 0] = 0 + 0j  # zero out the DC component (mean zero)
     fourier_slice *= -1  # flip contrast
 
