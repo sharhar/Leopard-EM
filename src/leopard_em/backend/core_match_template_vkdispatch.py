@@ -91,6 +91,8 @@ def _core_match_template_vkdispatch_single_gpu(
     except ImportError:
         raise ImportError("The 'vkdispatch' package must be installed to use the vkdispatch backend.")
     
+    vd.initialize(debug_mode=True)
+
     vd.make_context(devices=[device_id]) #, all_queues=True)
 
     ###############################################################
@@ -114,6 +116,10 @@ def _core_match_template_vkdispatch_single_gpu(
     print("projective_filters_cpu", projective_filters_cpu.shape)
     print("pixel_values_cpu", pixel_values_cpu.shape)
     print("defocus_values_cpu", defocus_values_cpu.shape)
+
+    #np.save(f"template_plan_0_device_{device_id}.npy", template_dft_cpu[0])
+    #np.save(f"template_plan_1_device_{device_id}.npy", template_dft_cpu[256])
+    #np.save(f"template_plan_2_device_{device_id}.npy", template_dft_cpu[-1])
     
     image_dft_buffer = vd.RFFTBuffer((image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2)) #vd.asbuffer(image_dft_cpu)
     image_dft_buffer.write_fourier(image_dft_cpu)
@@ -125,7 +131,11 @@ def _core_match_template_vkdispatch_single_gpu(
     correlation_buffer = vd.RFFTBuffer((image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2))
 
     template_image = vd.Image3D(template_dft_cpu.shape, vd.float32, 2)
-    template_image.write(template_dft_cpu)
+    
+    transposed_template = template_dft_cpu.transpose(2, 1, 0)
+    template_image.write(transposed_template)
+
+    #template_image.write(template_dft_cpu)
 
 
     ########################################################
@@ -155,22 +165,35 @@ def _core_match_template_vkdispatch_single_gpu(
         
         # calculate the planar position of the current buffer pixel
         my_pos = vc.new_vec4(0, 0, 0, 1)
-        my_pos.xy[:] = vc.unravel_index(ind, buff.shape).xy
-        
-        #my_pos.xy += buff.shape.xy / 2
-        #my_pos.xy[:] = vc.mod(my_pos.xy, buff.shape.xy)
-        #my_pos.xy -= buff.shape.xy / 2
+        my_pos.x = ind % buff.shape.y
+        my_pos.y = ind / buff.shape.y
 
-        my_pos.x += buff.shape.x / 2
-        my_pos.x[:] = vc.mod(my_pos.x, buff.shape.x)
-        my_pos.x -= buff.shape.x / 2
+        #my_pos.xy += img_shape.xy / 2
+        #my_pos.xy[:] = vc.mod(my_pos.xy, img_shape.xy)
+        #my_pos.xy -= img_shape.xy / 2
+        
+        my_pos.y += img_shape.y / 2
+        my_pos.y[:] = vc.mod(my_pos.y, img_shape.y)
+        my_pos.y -= img_shape.y / 2
         
         # rotate the position to 3D template space
         my_pos[:] = rotation * my_pos
-        my_pos.xyz += img_shape.xyz.cast_to(vc.v3) / 2
-        
-        # sample the 3D image at the current position
-        buff[ind] = img.sample(my_pos.xyz).xy
+        my_pos.xy += img_shape.xy.cast_to(vc.v2) / 2
+        #my_pos.y += img_shape.y / 2
+        my_pos.z += img_shape.x / 2
+
+        vc.if_statement(my_pos.x < img_shape.z)
+        buff[ind] = img.sample(my_pos.zyx).xy
+        vc.else_statement()
+
+        my_pos.x = img_shape.x - my_pos.x
+
+        #my_pos.xy = img.sample(my_pos.zyx).xy
+        #my_pos.y = -my_pos.y
+
+        buff[ind] = my_pos.zy.cast_to(vc.v2)
+
+        vc.end()
 
     ###################################################
     ### Create the CommandStream for later playback ###
@@ -187,9 +210,8 @@ def _core_match_template_vkdispatch_single_gpu(
         cmd_stream.bind_var("rotation_matrix"),
     )
 
-    vd.fft.irfft2(template_buffer)
+    #vd.fft.irfft2(template_buffer)
 
-    vd.fft.convolve2DR(correlation_buffer, image_dft_buffer)
     #vd.fft.convolve2DR(correlation_buffer, image_dft_buffer)
 
     ##################################
@@ -207,12 +229,12 @@ def _core_match_template_vkdispatch_single_gpu(
 
         cmd_stream.submit(rotation_matricies.shape[0])
 
-        #result_cpu = template_buffer.read()[0]
+        result_cpu = template_buffer.read()[0]
 
-        #print(f"slice_cpu {device_id} shape: {result_cpu.shape}")
-        #np.save(f"slice_{device_id}.npy", result_cpu)
+        print(f"slice_cpu {device_id} shape: {result_cpu.shape}")
+        np.save(f"slice_{device_id}.npy", result_cpu)
 
-        #exit()
+        exit()
 
         #time.sleep(0.1)  # Sleep to allow the progress bar to update
 

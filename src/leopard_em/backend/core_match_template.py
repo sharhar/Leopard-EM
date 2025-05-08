@@ -23,6 +23,7 @@ from leopard_em.backend.utils import (
     run_multiprocess_jobs,
 )
 
+USE_VKDISPATCH = True
 COMPILE_BACKEND = "inductor"
 DEFAULT_STATISTIC_DTYPE = torch.float32
 
@@ -137,8 +138,7 @@ def core_match_template(
     )
 
     result_dict = run_multiprocess_jobs(
-        #target=_core_match_template_single_gpu,
-        target=_core_match_template_vkdispatch_single_gpu,
+        target=_core_match_template_vkdispatch_single_gpu if USE_VKDISPATCH else _core_match_template_single_gpu,
         kwargs_list=kwargs_per_device,
     )
 
