@@ -125,6 +125,7 @@ def _core_match_template_vkdispatch_single_gpu(
     print("density_volume_fft_cpu", density_volume_fft_cpu.shape)
     print("euler_angles_cpu", euler_angles_cpu.shape)
     print("projective_filters_cpu", projective_filters_cpu.shape)
+    print("projective_filters_cpu dtype", projective_filters_cpu.dtype)
     print("pixel_values_cpu", pixel_values_cpu.shape)
     print("defocus_values_cpu", defocus_values_cpu.shape)
 
@@ -138,7 +139,7 @@ def _core_match_template_vkdispatch_single_gpu(
     projective_filters_buffer = vd.asbuffer(projective_filters_cpu)
     defocus_values_buffer = vd.asbuffer(defocus_values_cpu)
 
-    template_buffer = vd.RFFTBuffer((density_volume_fft_cpu.shape[0], density_volume_fft_cpu.shape[0]))
+    template_buffer = vd.RFFTBuffer((projective_filters_cpu.shape[0], density_volume_fft_cpu.shape[0], density_volume_fft_cpu.shape[0]))
     correlation_buffer = vd.RFFTBuffer((image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2))
 
     template_image = vd.Image3D(density_volume_fft_cpu.shape, vd.float32, 2)
@@ -170,8 +171,8 @@ def _core_match_template_vkdispatch_single_gpu(
 
     extract_fft_slices(
         template_buffer,
-        template_image.sample(),
-        (*template_image.shape, 0),
+        projective_filters_buffer,
+        template_image,
         cmd_stream.bind_var("rotation_matrix"),
     )
 
@@ -194,7 +195,7 @@ def _core_match_template_vkdispatch_single_gpu(
 
         cmd_stream.submit(rotation_matricies.shape[0])
 
-        result_cpu = template_buffer.read()[0]
+        result_cpu = template_buffer.read()[0][2]
 
         print(f"slice_cpu {device_id} shape: {result_cpu.shape}")
         np.save(f"slice_{device_id}.npy", result_cpu)
