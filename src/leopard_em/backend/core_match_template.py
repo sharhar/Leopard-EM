@@ -477,18 +477,20 @@ def _do_bached_orientation_cross_correlate(
     fourier_slice *= -1  # flip contrast
 
     # Apply the projective filters on a new batch dimension
-    fourier_slice = fourier_slice[None, None, ...] * projective_filters[:, :, None, ...]
+    fourier_slice = fourier_slice[None, None, ...] * projective_filters[:, :, None, ...] 
 
-    fourier_slice_cpu = fourier_slice.cpu().numpy()
+    # Inverse Fourier transform into real space and normalize
+    projections = torch.fft.irfftn(fourier_slice, dim=(-2, -1))
+    projections = torch.fft.ifftshift(projections, dim=(-2, -1))
+    
+    fourier_slice_cpu = projections.cpu().numpy()
     
     print(f"fourier_slice_cpu {device_id} shape: {fourier_slice_cpu.shape}")
     np.save(f"fourier_slice3_{device_id}.npy", fourier_slice_cpu[0][2][0])
 
     exit()
+    
 
-    # Inverse Fourier transform into real space and normalize
-    projections = torch.fft.irfftn(fourier_slice, dim=(-2, -1))
-    projections = torch.fft.ifftshift(projections, dim=(-2, -1))
     projections = normalize_template_projection_compiled(
         projections,
         projection_shape_real,

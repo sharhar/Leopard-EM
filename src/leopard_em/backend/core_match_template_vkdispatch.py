@@ -89,13 +89,13 @@ def _core_match_template_vkdispatch_single_gpu(
         import vkdispatch as vd
         import vkdispatch.codegen as vc
 
-        from .vkdispatch_utils import extract_fft_slices
+        from .vkdispatch_utils import extract_fft_slices, fftshift, normalize_signal
     except ImportError:
         raise ImportError("The 'vkdispatch' package must be installed to use the vkdispatch backend.")
     
     vd.initialize(debug_mode=True)
 
-    vd.make_context(devices=[device_id]) #, all_queues=True)
+    vd.make_context(devices=[device_id]) #, queue_families=[[0, 2]])
 
     #################################################################################
     ### Inverse FFT shift the template, since we need to redo the FFT calculation ###
@@ -120,18 +120,6 @@ def _core_match_template_vkdispatch_single_gpu(
     projective_filters_cpu = projective_filters_cpu.reshape(
         -1, projective_filters_cpu.shape[-2], projective_filters_cpu.shape[-1]
     )
-
-    print("image_dft_cpu", image_dft_cpu.shape)
-    print("density_volume_fft_cpu", density_volume_fft_cpu.shape)
-    print("euler_angles_cpu", euler_angles_cpu.shape)
-    print("projective_filters_cpu", projective_filters_cpu.shape)
-    print("projective_filters_cpu dtype", projective_filters_cpu.dtype)
-    print("pixel_values_cpu", pixel_values_cpu.shape)
-    print("defocus_values_cpu", defocus_values_cpu.shape)
-
-    #np.save(f"template_plan_0_device_{device_id}.npy", template_dft_cpu[0])
-    #np.save(f"template_plan_1_device_{device_id}.npy", template_dft_cpu[256])
-    #np.save(f"template_plan_2_device_{device_id}.npy", template_dft_cpu[-1])
     
     image_dft_buffer = vd.RFFTBuffer((image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2)) #vd.asbuffer(image_dft_cpu)
     image_dft_buffer.write_fourier(image_dft_cpu)
@@ -140,7 +128,9 @@ def _core_match_template_vkdispatch_single_gpu(
     defocus_values_buffer = vd.asbuffer(defocus_values_cpu)
 
     template_buffer = vd.RFFTBuffer((projective_filters_cpu.shape[0], density_volume_fft_cpu.shape[0], density_volume_fft_cpu.shape[0]))
-    correlation_buffer = vd.RFFTBuffer((image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2))
+    template_buffer2 = vd.RFFTBuffer((projective_filters_cpu.shape[0], density_volume_fft_cpu.shape[0], density_volume_fft_cpu.shape[0]))
+    
+    correlation_buffer = vd.RFFTBuffer((projective_filters_cpu.shape[0], image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2))
 
     template_image = vd.Image3D(density_volume_fft_cpu.shape, vd.float32, 2)
     template_image.write(density_volume_fft_cpu)
@@ -169,6 +159,8 @@ def _core_match_template_vkdispatch_single_gpu(
 
     vd.set_global_cmd_stream(cmd_stream)
 
+    # This part of the TM algorithm has been correctly implemented
+
     extract_fft_slices(
         template_buffer,
         projective_filters_buffer,
@@ -176,8 +168,19 @@ def _core_match_template_vkdispatch_single_gpu(
         cmd_stream.bind_var("rotation_matrix"),
     )
 
-    #vd.fft.irfft2(template_buffer)
+    vd.fft.irfft2(template_buffer)
 
+    fftshift(template_buffer2, template_buffer)
+
+    print(fftshift)
+
+    # These parts are just an approximation of the algorithm for performance comparisons
+    #normalize_signal(template_buffer2)
+
+    # Copy data from template buffer into bigger correlation buffer
+    #fftshift(correlation_buffer, template_buffer2)
+    
+    # Do fused convolution of padded templates with reference image
     #vd.fft.convolve2DR(correlation_buffer, image_dft_buffer)
 
     ##################################
@@ -193,9 +196,9 @@ def _core_match_template_vkdispatch_single_gpu(
 
         cmd_stream.set_var("rotation_matrix", rotation_matricies)
 
-        cmd_stream.submit(rotation_matricies.shape[0])
+        cmd_stream.submit_any(rotation_matricies.shape[0])
 
-        result_cpu = template_buffer.read()[0][2]
+        result_cpu = template_buffer2.read_real()[0][2]
 
         print(f"slice_cpu {device_id} shape: {result_cpu.shape}")
         np.save(f"slice_{device_id}.npy", result_cpu)
