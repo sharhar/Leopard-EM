@@ -16,6 +16,8 @@ nav:
   - Programs:
     - Match Template: programs/match_template.md
     - Refine Template: programs/refine_template.md
+    - Optimize Template: programs/optimize_template.md
+    - Constrained Search: programs/constrained_search.md
   - Program Output Formats: data_formats.md
   - Examples:
     - Match Template Configuration: examples/basic_configuration.ipynb

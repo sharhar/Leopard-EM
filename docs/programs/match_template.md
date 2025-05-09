@@ -153,9 +153,12 @@ We have an example script, [`src/programs/run_match_template.py`](https://github
 Again, you will need to simulate a 3D electron scattering potential from a PDB file (for example with the [ttsim3d](https://github.com/teamtomo/ttsim3d) package) before running the script.
 
 We have not specified any arguments in the line `df = mt_manager.results_to_dataframe()`.
-You can have more control over the peak extraction by specifiying a locate_peak_kwargs dictionary.
+You can have more control over the peak extraction by specifying a locate_peak_kwargs dictionary.
+
   `df = mt_manager.results_to_dataframe(locate_peaks_kwargs={"false_positives": 1.0})`
+
 or 
+
   `df = mt_manager.results_to_dataframe(locate_peaks_kwargs={"z_score_cutoff": 7.8})`
 
 
