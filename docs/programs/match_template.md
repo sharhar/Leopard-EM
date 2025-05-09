@@ -10,7 +10,7 @@ Notably, the match template program simultaneously find the orientations of thes
 
 ## Configuration options
 
-A default config file for the match template program is available [here on the GitHub page](https://raw.githubusercontent.com/Lucaslab-Berkeley/Leopard-EM/refs/heads/main/match_template_example_config.yaml).
+A default config file for the match template program is available [here on the GitHub page](https://raw.githubusercontent.com/Lucaslab-Berkeley/Leopard-EM/refs/heads/main/programs/match_template/match_template_example_config.yaml).
 This file is separated into multiple "blocks" each configuring distinct portions of the program discussed briefly below.
 Defining and exporting these configurations in terms of Python objects is detailed in [Match Template Configuration](../examples/basic_configuration.ipynb)
 
@@ -86,15 +86,16 @@ Also, the defocus search can be turned off by changing `enabled: true` to `enabl
 ### Orientation search space configuration
 
 Defining the orientation search space is configured using the `orientation_search_config` block which defines the orientation sampling parameters.
-We find that an in-plane step size of 1.5 degrees and out-of-plane step size of 2.5 degrees with a uniform base grid works well when searching for ribosomes, but other sized structures may need these parameters adjusted.
-There is also the `"heapix"` option for the `base_grid_method` field which uses the [HEALPix](https://healpix.jpl.nasa.gov) discretization of the sphere to sample orientation space.
-Also, the underlying [torch-so3 package](https://github.com/teamtomo/torch-so3) supports multiple particles symmetries but we are working to port that into the Leopard-EM package; currently only C1 symmetry is used.
+We find that a psi step size of 1.5 degrees and theta step size of 2.5 degrees with a uniform base grid works well when searching for ribosomes, but other sized structures may need these parameters adjusted.
+There is also the `"healpix"` option for the `base_grid_method` field which uses the [HEALPix](https://healpix.jpl.nasa.gov) discretization of the sphere to sample orientation space.
+Also, the underlying [torch-so3 package](https://github.com/teamtomo/torch-so3) supports multiple particles symmetries, and the use if this in Leopard-EM is discussed [here](../examples/basic_configuration.ipynb).
+
 
 ```yaml
 orientation_search_config:
   base_grid_method: uniform
-  in_plane_step: 1.5      # in degrees
-  out_of_plane_step: 2.5  # in degrees
+  psi_step: 1.5      # in degrees
+  theta_step: 2.5  # in degrees
 
 ```
 
@@ -148,8 +149,15 @@ computational_config:
 ## Running the match template program
 
 Once you've configured a YAML file, running the match template program is fairly simple.
-We have an example script, [`src/programs/match_template.py`](https://github.com/Lucaslab-Berkeley/Leopard-EM/blob/main/src/programs/match_template.py), which processes a single micrograph against a single reference template.
+We have an example script, [`src/programs/run_match_template.py`](https://github.com/Lucaslab-Berkeley/Leopard-EM/blob/main/src/programs/run_match_template.py), which processes a single micrograph against a single reference template.
 Again, you will need to simulate a 3D electron scattering potential from a PDB file (for example with the [ttsim3d](https://github.com/teamtomo/ttsim3d) package) before running the script.
+
+We have not specified any arguments in the line `df = mt_manager.results_to_dataframe()`.
+You can have more control over the peak extraction by specifiying a locate_peak_kwargs dictionary.
+  `df = mt_manager.results_to_dataframe(locate_peaks_kwargs={"false_positives": 1.0})`
+or 
+  `df = mt_manager.results_to_dataframe(locate_peaks_kwargs={"z_score_cutoff": 7.8})`
+
 
 ### Match template output files
 
