@@ -482,20 +482,19 @@ def _do_bached_orientation_cross_correlate(
     # Inverse Fourier transform into real space and normalize
     projections = torch.fft.irfftn(fourier_slice, dim=(-2, -1))
     projections = torch.fft.ifftshift(projections, dim=(-2, -1))
-    
-    fourier_slice_cpu = projections.cpu().numpy()
-    
-    print(f"fourier_slice_cpu {device_id} shape: {fourier_slice_cpu.shape}")
-    np.save(f"fourier_slice3_{device_id}.npy", fourier_slice_cpu[0][2][0])
-
-    exit()
-    
 
     projections = normalize_template_projection_compiled(
         projections,
         projection_shape_real,
         image_shape_real,
     )
+
+    fourier_slice_cpu = projections.cpu().numpy()
+    
+    print(f"fourier_slice_cpu {device_id} shape: {fourier_slice_cpu.shape}")
+    np.save(f"fourier_slice4_{device_id}.npy", fourier_slice_cpu[0][2][0])
+
+    exit()
 
     # Padded forward Fourier transform for cross-correlation
     projections_dft = torch.fft.rfftn(projections, dim=(-2, -1), s=image_shape_real)

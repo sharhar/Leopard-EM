@@ -89,7 +89,7 @@ def _core_match_template_vkdispatch_single_gpu(
         import vkdispatch as vd
         import vkdispatch.codegen as vc
 
-        from .vkdispatch_utils import extract_fft_slices, fftshift, normalize_signal
+        from .vkdispatch_utils import extract_fft_slices, fftshift, get_template_sums, normalize_templates, clear_buffer
     except ImportError:
         raise ImportError("The 'vkdispatch' package must be installed to use the vkdispatch backend.")
     
@@ -109,6 +109,10 @@ def _core_match_template_vkdispatch_single_gpu(
     ###############################################################
     ### Copy Tensor data back to CPU and then to vkdispatch GPU ###
     ###############################################################
+
+    # Accounting for RFFT shape
+    projection_shape_real = (template_dft.shape[1], template_dft.shape[2] * 2 - 2)
+    image_shape_real = (image_dft.shape[0], image_dft.shape[1] * 2 - 2)
 
     image_dft_cpu = image_dft.cpu().numpy()
     density_volume_fft_cpu = density_volume_fft.cpu().numpy()
@@ -170,12 +174,13 @@ def _core_match_template_vkdispatch_single_gpu(
 
     vd.fft.irfft2(template_buffer)
 
+    # Not sure why I need to clear the buffer here, should investigate
+    clear_buffer(template_buffer2)
     fftshift(template_buffer2, template_buffer)
 
-    print(fftshift)
-
-    # These parts are just an approximation of the algorithm for performance comparisons
-    #normalize_signal(template_buffer2)
+    # Now, we normalize the templates
+    sums = get_template_sums(template_buffer2)
+    normalize_templates(template_buffer2, sums, projection_shape_real, image_shape_real)
 
     # Copy data from template buffer into bigger correlation buffer
     #fftshift(correlation_buffer, template_buffer2)
@@ -196,7 +201,10 @@ def _core_match_template_vkdispatch_single_gpu(
 
         cmd_stream.set_var("rotation_matrix", rotation_matricies)
 
-        cmd_stream.submit_any(rotation_matricies.shape[0])
+        cmd_stream.submit(rotation_matricies.shape[0])
+
+        print(sums.shape)
+        print(device_id, sums.read(0)[0])
 
         result_cpu = template_buffer2.read_real()[0][2]
 

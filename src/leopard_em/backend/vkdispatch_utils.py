@@ -14,37 +14,111 @@ def suppress_print():
     finally:
         builtins.print = original_print
 
-@vd.map_reduce(vd.SubgroupAdd)
-def calc_sums(wave: Buff[v2]) -> v2:
-    ind = vc.mapping_index()
+def get_template_sums(templates: vd.Buffer):
 
-    result = vc.new_vec2()
+    @vd.map_reduce(vd.SubgroupAdd, axes=[1, 2])
+    def calculate_sums(buff: Buff[v2]) -> v4:
+        """
+        This function is a mapping function that preprocesses each "couplet" of real-space pixels
+        in the projected template into a 4-vector which contains:
+        1) The sum of the two real-space pixels
+        2) The sum of the squares of the two real-space pixels
+        3) The sum of only edge pixels
+        4) Reserved as padding
 
-    result.x = wave[ind].x
-    result.y = result.x * result.x
+        These vectors then get added together per template such that in the end we get the sum
+        vector for each of out templates in this batch.
+        """
 
-    wave[ind].x = result.x
-    wave[ind].y = 0
+        ind = vc.mapping_index()
 
-    return result
+        result = vc.new_vec4()
 
-@vd.shader(exec_size=lambda args: args.image.size)
-def apply_normalization(image: Buff[v2], sum_buff: Buff[v2]):
-    ind = vc.global_invocation().x.copy()
+        result.zw[:] = buff[ind]
 
-    sum_vec = (sum_buff[0] / (image.shape.x * image.shape.y)).copy()
-    sum_vec.y = vc.sqrt(sum_vec.y - sum_vec.x * sum_vec.x)
+        result.x = result.z + result.w
+        result.y = result.z * result.z + result.w * result.w
 
-    image[ind].x = (image[ind].x - sum_vec.x) / sum_vec.y
+        in_batch_index = ind % (templates.shape[1] * templates.shape[2])
 
-def normalize_signal(signal: vd.Buffer):
+        x_index = in_batch_index % templates.shape[2]
+        y_index = in_batch_index / templates.shape[2]
+
+        vc.if_any(y_index == 0, y_index == templates.shape[1] - 1)
+        result.z = result.x
+        vc.else_if_statement(x_index == 0)
+        vc.else_if_statement(x_index == templates.shape[2] - 1)
+        result.x = 0
+        result.y = 0
+        result.z = 0
+
+        buff[ind].x = 0
+        buff[ind].y = 0
+
+        vc.else_if_statement(x_index == templates.shape[2] - 2)
+        result.z = result.w
+        vc.else_statement()
+        result.z = 0
+        vc.end()
+
+        result.w = 0
+
+        return result
 
     # I accidentally left some print statements in the reduction code in vkdispatch
     # so for now we will suppress the print statements when calling this function,
     # and I will fix this in the next release.
     with suppress_print():
-        sum_buff = calc_sums(signal) # The reduction returns a buffer with the result in the first value
-        apply_normalization(signal, sum_buff)
+        sums = calculate_sums(templates)
+
+    return sums
+
+@vd.shader(exec_size=lambda args: args.buff.size * 2)
+def normalize_templates_shader(buff: Buff[f32], sums: Buff[v4], relative_size: Const[v4]):
+    ind = vc.global_invocation().x.copy()
+    template_index = ind / (buff.shape.y * buff.shape.z * 2)
+
+    vc.if_any(template_index > 6, template_index < 0)
+    vc.print(template_index)
+    vc.end()
+
+    template_sums = sums[template_index].copy()
+
+    N = vc.new_int(buff.shape.y * buff.shape.y)
+    mean = vc.new_float(template_sums.x / N)
+    variance = vc.new_float(template_sums.y)
+    edge_mean = vc.new_float(template_sums.z / (4 * buff.shape.y - 4))
+
+    # This block calculates the "mean" and "variance" values such that they will
+    # equal the same values in the "normalize_template_projection" function after 
+    # we subtract the edge mean.
+    variance[:] = variance - 2 * N * edge_mean * mean
+    mean[:] = (mean - edge_mean) * relative_size[0] * relative_size[0]
+    variance[:] = variance + mean * mean * (1 - 2 * N / (relative_size[0] * relative_size[0]))
+
+    # These lines then match the same lines of code in the "normalize_template_projection" function
+    variance[:] = variance + relative_size[1] * mean * mean
+    variance[:] = variance / relative_size[2]
+
+    buff[ind] = (buff[ind] - edge_mean) / vc.sqrt(variance)
+
+def normalize_templates(templates_buffer, sums_buffer, small_shape, large_shape):
+    relative_size_array = [
+        (small_shape[0] * small_shape[1]) / (large_shape[0] * large_shape[1]),
+        (large_shape[0] - small_shape[0]) * (large_shape[1] - small_shape[1]),
+        large_shape[0] * large_shape[1],
+        0 # Padding
+    ]
+
+    #print(normalize_templates_shader)
+
+    #vd.set_log_level(vd.LogLevel.INFO)
+
+    normalize_templates_shader(
+        templates_buffer,
+        sums_buffer,
+        relative_size_array)
+    
 
 @vd.shader(exec_size=lambda args: args.input.size * 2)
 def fftshift(output: Buff[f32], input: Buff[f32]):
@@ -114,3 +188,7 @@ def extract_fft_slices(template_buffer: vd.Buffer, projection_filters: vd.Buffer
         (*image.shape, 0),
         rotation
     )
+
+@vd.shader("buff.size")
+def clear_buffer(buff: Buff[c64]):
+    buff[vc.global_invocation().x] = "vec2(0)"
