@@ -90,6 +90,7 @@ def _core_match_template_vkdispatch_single_gpu(
         import vkdispatch.codegen as vc
 
         from .vkdispatch_utils import extract_fft_slices, fftshift, get_template_sums, normalize_templates, pad_templates
+        from .vkdispatch_utils import accumulate_per_pixel
     except ImportError:
         raise ImportError("The 'vkdispatch' package must be installed to use the vkdispatch backend.")
     
@@ -129,12 +130,17 @@ def _core_match_template_vkdispatch_single_gpu(
     image_dft_buffer.write_fourier(image_dft_cpu)
     
     projective_filters_buffer = vd.asbuffer(projective_filters_cpu)
-    defocus_values_buffer = vd.asbuffer(defocus_values_cpu)
 
     template_buffer = vd.RFFTBuffer((projective_filters_cpu.shape[0], density_volume_fft_cpu.shape[0], density_volume_fft_cpu.shape[0]))
     template_buffer2 = vd.RFFTBuffer((projective_filters_cpu.shape[0], density_volume_fft_cpu.shape[0], density_volume_fft_cpu.shape[0]))
     
     correlation_buffer = vd.RFFTBuffer((projective_filters_cpu.shape[0], image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2))
+
+    mip_buffer = vd.Buffer(correlation_buffer.real_shape, vd.float32)
+    best_index_buffer = vd.Buffer(correlation_buffer.real_shape, vd.int32)
+
+    mip_buffer.write(np.zeros(shape=mip_buffer.shape, dtype=np.float32))
+    best_index_buffer.write(np.ones(shape=best_index_buffer.shape, dtype=np.int32) * -1)
 
     template_buffer.write(np.zeros(shape=template_buffer.shape, dtype=np.complex64))
     template_buffer2.write(np.zeros(shape=template_buffer2.shape, dtype=np.complex64))
@@ -198,6 +204,12 @@ def _core_match_template_vkdispatch_single_gpu(
 
     vd.fft.convolve2DR(correlation_buffer, image_dft_buffer, kernel_map=kernel_mapping)
 
+    results = accumulate_per_pixel(correlation_buffer, [
+        cmd_stream.bind_var("index0"),
+        cmd_stream.bind_var("index1"),
+        cmd_stream.bind_var("index2")
+    ])
+
     ##################################
     ### Start the orientation loop ###
     ##################################
@@ -209,9 +221,12 @@ def _core_match_template_vkdispatch_single_gpu(
 
         rotation_matricies = euler_angles_to_rotation_matricies(euler_angles_batch)
 
-        cmd_stream.set_var("rotation_matrix", rotation_matricies[0])
+        cmd_stream.set_var("rotation_matrix", rotation_matricies)
+        cmd_stream.set_var("index0", 0)
+        cmd_stream.set_var("index1", 0)
+        cmd_stream.set_var("index2", 0)
 
-        cmd_stream.submit(1) #rotation_matricies.shape[0])
+        cmd_stream.submit(rotation_matricies.shape[0])
 
         result_cpu = correlation_buffer.read_real()[0][2]
 

@@ -2,6 +2,10 @@ import vkdispatch as vd
 import vkdispatch.codegen as vc
 from vkdispatch.codegen.abreviations import *
 
+import numpy as np
+
+from typing import Tuple, List
+
 import builtins
 from contextlib import contextmanager
 
@@ -200,3 +204,236 @@ def pad_templates(output: Buff[c64], input: Buff[c64]):
     new_ind[:] = new_ind + ind_2 * output.shape.y * output.shape.z
 
     output[new_ind] = input[ind]
+
+class PixelResults:
+    max_cross: vd.Buffer
+    best_index: vd.Buffer
+    sum_cross: vd.Buffer # running mean
+    sum2_cross: vd.Buffer # running variance
+    count: vd.Buffer # counter
+
+    compiled: bool
+
+    compiled_mip: np.ndarray
+    compiled_best_index_array: np.ndarray
+    compiled_location_of_best_match: Tuple[int, int]
+    compiled_index_of_params_match: int
+    compiled_sum_cross: np.ndarray
+    compiled_sum2_cross: np.ndarray
+    compiled_count: np.ndarray
+    compiled_z_score: np.ndarray
+
+    def __init__(self, width: int, height: int) -> None:
+        self.max_cross = vd.Buffer((width, height), vd.float32)
+        self.best_index = vd.Buffer((width, height), vd.int32)
+        self.sum_cross = vd.Buffer((width, height), vd.vec2)
+        self.sum2_cross = vd.Buffer((width, height), vd.vec2)
+        self.count = vd.Buffer((width, height), vd.int32)
+        self.compiled = False
+        self.compiled_mip = None
+        self.compiled_best_index_array = None
+        self.compiled_location_of_best_match = None
+        self.compiled_index_of_params_match = None
+        self.compiled_sum_cross = None
+        self.compiled_sum2_cross = None
+        self.compiled_count = None
+        self.compiled_z_score = None
+
+        self.reset()
+
+    def reset(self):
+        self.max_cross.write((np.ones(shape=self.max_cross.shape, dtype=np.float32) * -1000000).astype(np.float32))
+        self.best_index.write((np.ones(shape=self.best_index.shape, dtype=np.int32) * -1).astype(np.int32))
+        self.sum_cross.write((np.ones(shape=(*self.sum_cross.shape, 2), dtype=np.float32) * 0).astype(np.float32))
+        self.sum2_cross.write((np.ones(shape=(*self.sum2_cross.shape, 2), dtype=np.float32) * 0).astype(np.float32))
+        self.count.write((np.ones(shape=self.count.shape, dtype=np.int32) * 0).astype(np.int32))
+
+        self.compiled = False
+
+    def compile_results(self):
+        max_crosses = self.max_cross.read()
+        best_indicies = self.best_index.read()
+        sum_crosses = self.sum_cross.read()
+        sum2_crosses = self.sum2_cross.read()
+        counts = self.count.read()
+
+        final_results = [np.zeros(shape=(self.max_cross.shape[0], self.max_cross.shape[1], 2), dtype=np.float64) for _ in max_crosses]
+
+        for i in range(len(max_crosses)):
+            final_results[i][:, :, 0] = np.fft.ifftshift(max_crosses[i])
+            final_results[i][:, :, 1] = np.fft.ifftshift(best_indicies[i])
+
+        true_final_result = final_results[0]
+
+        for other_result in final_results[1:]:
+            true_final_result = np.where(other_result[:, :, 0:1] > true_final_result[:, :, 0:1], other_result, true_final_result)
+
+        self.compiled_mip = true_final_result[:, :, 0]
+        self.compiled_best_index_array = true_final_result[:, :, 1].astype(np.int32)
+
+        self.compiled_location_of_best_match = np.unravel_index(np.argmax(self.compiled_mip), self.compiled_mip.shape)
+        self.compiled_index_of_params_match = self.compiled_best_index_array[self.compiled_location_of_best_match]
+
+        self.compiled_sum_cross = np.fft.ifftshift(np.array(sum_crosses, dtype=np.float64).sum(axis=(0, 3)))
+        self.compiled_sum2_cross = np.fft.ifftshift(np.array(sum2_crosses, dtype=np.float64).sum(axis=(0, 3)))
+        self.compiled_count = np.fft.ifftshift(np.array(counts).sum(axis=0))
+
+        mean_cross = self.compiled_sum_cross / self.compiled_count # per-pixel mean of cross-correlation
+        var_cross = self.compiled_sum2_cross / self.compiled_count - mean_cross * mean_cross # per-pixel variance of cross-correlation
+        self.compiled_z_score = (self.compiled_mip - mean_cross) / np.sqrt(var_cross)
+
+        self.compiled = True
+    
+    def get_mip(self):
+        if not self.compiled:
+            self.compile_results()
+
+        return self.compiled_mip
+
+    def get_best_index_array(self):
+        if not self.compiled:
+            self.compile_results()
+
+        return self.compiled_best_index_array
+
+    def get_location_of_best_match(self):
+        if not self.compiled:
+            self.compile_results()
+
+        return self.compiled_location_of_best_match
+
+    def get_index_of_params_match(self):
+        if not self.compiled:
+            self.compile_results()
+
+        return self.compiled_index_of_params_match
+    
+    def get_sum_cross(self):
+        if not self.compiled:
+            self.compile_results()
+
+        return self.compiled_sum_cross
+    
+    def get_sum2_cross(self):
+        if not self.compiled:
+            self.compile_results()
+
+        return self.compiled_sum2_cross
+    
+    def get_count(self):
+        if not self.compiled:
+            self.compile_results()
+
+        return self.compiled_count
+    
+    def get_z_score(self):
+        if not self.compiled:
+            self.compile_results()
+
+        return self.compiled_z_score
+    
+@vd.shader(exec_size=lambda args: args.back_buffer.size)
+def update_max(max_cross: Buff[f32], best_index: Buff[i32], sum_cross: Buff[v2], sum2_cross: Buff[v2], count: Buff[i32], back_buffer: Buff[c64], index: Var[i32]):
+    ind = vc.global_invocation().x.copy()
+
+    current_cross_correlation = back_buffer[ind].real
+
+    count[ind] += 1
+
+    sum_cross[ind] = sum_cross[ind] + current_cross_correlation
+    sum2_cross[ind] = sum2_cross[ind] + current_cross_correlation * current_cross_correlation
+
+    vc.if_statement(current_cross_correlation > max_cross[ind])
+    max_cross[ind] = current_cross_correlation
+    best_index[ind] = index
+    vc.end()
+
+def accumulate_per_pixel(correlation_signal: vd.RFFTBuffer, indicies: List[int]) -> PixelResults:
+    result = PixelResults(correlation_signal.real_shape[1], correlation_signal.real_shape[2])
+
+    with vc.builder_context(enable_exec_bounds=False) as builder:
+        input_buffer_types = [
+            Buff[f32], # max_cross
+            Buff[i32], # best_index
+            Buff[v2], # sum_cross
+            Buff[v2], # sum2_cross
+            Buff[i32], # count
+            Buff[f32], # back_buffer
+        ]
+
+        signature = vd.ShaderSignature.from_type_annotations(
+            builder,
+            input_buffer_types + [Var[i32]] * len(indicies),
+        )
+
+        max_cross_buffer = signature.get_variables()[0]
+        best_index_buffer = signature.get_variables()[1]
+        sum_cross = signature.get_variables()[2]
+        sum2_cross = signature.get_variables()[3]
+        count = signature.get_variables()[4]
+        back_buffer = signature.get_variables()[5]
+
+        index_list: List[vc.ShaderVariable] = signature.get_variables()[6:]
+
+        ind = vc.global_invocation().x.copy()
+        ind_padded = vc.new_int(ind + 2 * (ind / correlation_signal.shape[1]))
+
+        curr_mip = back_buffer[ind_padded].copy()
+        curr_index = index_list[0].copy()
+        count_register = count[ind].copy()
+        sum_cross_register = sum_cross[ind].copy()
+        sum2_cross_register = sum2_cross[ind].copy()
+
+        best_mip = vc.new_float(curr_mip)
+        best_index = vc.new_int(curr_index)
+
+        count_register[:] = count_register + 1
+
+        sum_cross_register[:] = sum_cross_register + curr_mip
+        sum2_cross_register[:] = sum2_cross_register + curr_mip * curr_mip
+
+        for i in range(1, len(indicies)):
+            vc.if_statement(index_list[i] != -1)
+
+            curr_mip[:] = back_buffer[ind_padded + i * (correlation_signal.shape[1] * correlation_signal.shape[2] * 2)]
+
+            count_register[:] = count_register + 1
+
+            sum_cross_register[:] = sum_cross_register + curr_mip
+            sum2_cross_register[:] = sum2_cross_register + curr_mip * curr_mip
+
+            vc.if_statement(curr_mip > best_mip)
+            best_mip[:] = curr_mip
+            best_index[:] = index_list[i]
+            vc.end()
+
+            vc.end()
+
+        sum_cross[ind] = sum_cross_register
+        sum2_cross[ind] = sum2_cross_register
+        count[ind] = count_register
+        
+        vc.if_statement(curr_mip > max_cross_buffer[ind])
+        max_cross_buffer[ind] = curr_mip
+        best_index_buffer[ind] = best_index
+        vc.end()
+
+        shader_object = vd.ShaderObject(builder.build("accumulation_shader"), signature)
+
+    print(shader_object)
+
+    shader_object(
+        result.max_cross,
+        result.best_index,
+        result.sum_cross,
+        result.sum2_cross,
+        result.count,
+        correlation_signal,
+        *indicies,
+        exec_size=(correlation_signal.shape[1] * correlation_signal.shape[1], 1, 1),
+    )
+
+    # Update the accumulators on the global command stream (so it can be run many times)
+    #update_max(result.max_cross, result.best_index, result.sum_cross, result.sum2_cross, result.count, correlation_signal, index=index)
+
+    return result
