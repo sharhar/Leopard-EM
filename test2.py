@@ -11,10 +11,12 @@ def perimeter_sum(array):
 
 for i in range(4):
     #data = np.load(f"fourier_slice3_{i}.npy")
-    data = np.load(f"slice_{i}.npy")
+    data = np.load(f"cross_ref_{i}.npy")
+    data2 = np.load(f"cross_test_{i}.npy")
     
     print(f"slice_cpu {i} shape: {data.shape}")
-    print(np.sum(data))
-    print(np.sum(data ** 2))
-    print(perimeter_sum(data) / (4 * data.shape[0] - 4))
+    print(np.sum(np.abs(data - data2)))
+    print(np.mean(np.abs(data - data2)))
+    #print(np.sum(data ** 2))
+    #print(perimeter_sum(data) / (4 * data.shape[0] - 4))
 

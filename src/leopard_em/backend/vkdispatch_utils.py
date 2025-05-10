@@ -5,6 +5,76 @@ from vkdispatch.codegen.abreviations import *
 import builtins
 from contextlib import contextmanager
 
+def extract_fft_slices(template_buffer: vd.Buffer, projection_filters: vd.Buffer, image: vd.Image3D, rotation: vc.Var[vc.m4]):
+
+    # We generate the shader source inside this function because we want to hardcode
+    # information about the buffer size into the source code of the shader.
+    @vd.shader(exec_size=lambda args: args.buff.shape[1] * args.buff.shape[2])
+    def extract_fft_slices_shader(
+        buff: Buff[c64],
+        projections: Buff[f32],
+        img: Img3[f32], 
+        img_shape: Const[iv4], 
+        rotation: Var[m4]):
+
+        ind = vc.global_invocation().x.cast_to(vc.i32).copy()
+
+        vc.if_statement(ind == 0)
+        buff[ind].x = 0
+        buff[ind].y = 0
+        vc.return_statement()
+        vc.end()
+        
+        # calculate the planar position of the current buffer pixel
+        my_pos = vc.new_vec4(0, 0, 0, 1)
+        my_pos.x = ind % template_buffer.shape[2]
+        my_pos.y = ind / template_buffer.shape[2]
+        
+        my_pos.y += img_shape.y / 2
+        my_pos.y[:] = vc.mod(my_pos.y, img_shape.y)
+        my_pos.y -= img_shape.y / 2
+        
+        # rotate the position to 3D template space
+        my_pos[:] = rotation * my_pos
+        my_pos.xyz += img_shape.xyz.cast_to(vc.v3) / 2
+
+        my_pos.xy[:] = -1 * img.sample(my_pos.xyz).xy
+
+        for i in range(projection_filters.shape[0]):
+            index = ind + i * template_buffer.shape[1] * template_buffer.shape[2]
+            buff[index] = my_pos.xy * projections[index]
+
+    extract_fft_slices_shader(
+        template_buffer,
+        projection_filters,
+        image.sample(),
+        (*image.shape, 0),
+        rotation
+    )
+
+@vd.shader(exec_size=lambda args: args.input.size * 2)
+def fftshift(output: Buff[f32], input: Buff[f32]):
+    ind = vc.global_invocation().x.cast_to(vd.int32).copy()
+
+    image_ind = vc.new_int()
+    image_ind[:] = ind % (input.shape.y * input.shape.y)
+
+    out_x = (image_ind / output.shape.y).copy()
+    out_y = (image_ind % output.shape.y).copy()
+
+    image_ind[:] = ind / (input.shape.y * input.shape.y)
+
+    in_x = ((out_x + input.shape.y / 2) % output.shape.y).copy()
+    in_y = ((out_y + input.shape.y / 2) % output.shape.y).copy()
+
+    image_ind += in_x * input.shape.y + in_y
+
+    ind[:] = ind + 2 * (ind / input.shape.y)
+    image_ind[:] = image_ind + 2 * (image_ind / input.shape.y)
+
+    output[ind] = input[image_ind]
+
+
 @contextmanager
 def suppress_print():
     original_print = builtins.print
@@ -76,11 +146,12 @@ def get_template_sums(templates: vd.Buffer):
 @vd.shader(exec_size=lambda args: args.buff.size * 2)
 def normalize_templates_shader(buff: Buff[f32], sums: Buff[v4], relative_size: Const[v4]):
     ind = vc.global_invocation().x.copy()
-    template_index = ind / (buff.shape.y * buff.shape.z * 2)
 
-    vc.if_any(template_index > 6, template_index < 0)
-    vc.print(template_index)
+    vc.if_statement(ind % (2 * buff.shape.z) >= 2 * buff.shape.z - 2)
+    vc.return_statement()
     vc.end()
+
+    template_index = ind / (buff.shape.y * buff.shape.z * 2)
 
     template_sums = sums[template_index].copy()
 
@@ -110,85 +181,22 @@ def normalize_templates(templates_buffer, sums_buffer, small_shape, large_shape)
         0 # Padding
     ]
 
-    #print(normalize_templates_shader)
-
-    #vd.set_log_level(vd.LogLevel.INFO)
-
     normalize_templates_shader(
         templates_buffer,
         sums_buffer,
         relative_size_array)
-    
 
-@vd.shader(exec_size=lambda args: args.input.size * 2)
-def fftshift(output: Buff[f32], input: Buff[f32]):
-    ind = vc.global_invocation().x.cast_to(vd.int32).copy()
+@vd.shader("input.size")
+def pad_templates(output: Buff[c64], input: Buff[c64]):
+    ind = vc.global_invocation().x.copy()
 
-    image_ind = vc.new_int()
-    image_ind[:] = ind % (input.shape.y * input.shape.y)
+    ind_0 = ind % input.shape.z
+    ind_1 = (ind / input.shape.z) % input.shape.y
+    ind_2 = ind / (input.shape.y * input.shape.z)
 
-    out_x = (image_ind / output.shape.y).copy()
-    out_y = (image_ind % output.shape.y).copy()
+    new_ind = vc.new_uint(0)
+    new_ind[:] = new_ind + ind_0
+    new_ind[:] = new_ind + ind_1 * output.shape.z
+    new_ind[:] = new_ind + ind_2 * output.shape.y * output.shape.z
 
-    image_ind[:] = ind / (input.shape.y * input.shape.y)
-
-    in_x = ((out_x + input.shape.y / 2) % output.shape.y).copy()
-    in_y = ((out_y + input.shape.y / 2) % output.shape.y).copy()
-
-    image_ind += in_x * input.shape.y + in_y
-
-    ind[:] = ind + 2 * (ind / input.shape.y)
-    image_ind[:] = image_ind + 2 * (image_ind / input.shape.y)
-
-    output[ind] = input[image_ind]
-
-def extract_fft_slices(template_buffer: vd.Buffer, projection_filters: vd.Buffer, image: vd.Image3D, rotation: vc.Var[vc.m4]):
-
-    # We generate the shader source inside this function because we want to hardcode
-    # information about the buffer size into the source code of the shader.
-    @vd.shader(exec_size=lambda args: args.buff.shape[1] * args.buff.shape[2])
-    def extract_fft_slices_shader(
-        buff: Buff[c64],
-        projections: Buff[f32],
-        img: Img3[f32], 
-        img_shape: Const[iv4], 
-        rotation: Var[m4]):
-
-        ind = vc.global_invocation().x.cast_to(vc.i32).copy()
-
-        vc.if_statement(ind == 0)
-        buff[ind].x = 0
-        buff[ind].y = 0
-        vc.return_statement()
-        vc.end()
-        
-        # calculate the planar position of the current buffer pixel
-        my_pos = vc.new_vec4(0, 0, 0, 1)
-        my_pos.x = ind % template_buffer.shape[2]
-        my_pos.y = ind / template_buffer.shape[2]
-        
-        my_pos.y += img_shape.y / 2
-        my_pos.y[:] = vc.mod(my_pos.y, img_shape.y)
-        my_pos.y -= img_shape.y / 2
-        
-        # rotate the position to 3D template space
-        my_pos[:] = rotation * my_pos
-        my_pos.xyz += img_shape.xyz.cast_to(vc.v3) / 2
-
-        my_pos.xy[:] = -1 * img.sample(my_pos.xyz).xy
-
-        for i in range(projection_filters.shape[0]):
-            index = ind + i * template_buffer.shape[1] * template_buffer.shape[2]
-            buff[index] = my_pos.xy * projections[index]
-
-    extract_fft_slices_shader(
-        template_buffer,
-        projection_filters,
-        image.sample(),
-        (*image.shape, 0),
-        rotation
-    )
-
-@vd.shader("buff.size")
-def clear_buffer(buff: Buff[c64]):
-    buff[vc.global_invocation().x] = "vec2(0)"
+    output[new_ind] = input[ind]

@@ -89,7 +89,7 @@ def _core_match_template_vkdispatch_single_gpu(
         import vkdispatch as vd
         import vkdispatch.codegen as vc
 
-        from .vkdispatch_utils import extract_fft_slices, fftshift, get_template_sums, normalize_templates, clear_buffer
+        from .vkdispatch_utils import extract_fft_slices, fftshift, get_template_sums, normalize_templates, pad_templates
     except ImportError:
         raise ImportError("The 'vkdispatch' package must be installed to use the vkdispatch backend.")
     
@@ -136,6 +136,10 @@ def _core_match_template_vkdispatch_single_gpu(
     
     correlation_buffer = vd.RFFTBuffer((projective_filters_cpu.shape[0], image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2))
 
+    template_buffer.write(np.zeros(shape=template_buffer.shape, dtype=np.complex64))
+    template_buffer2.write(np.zeros(shape=template_buffer2.shape, dtype=np.complex64))
+    correlation_buffer.write(np.zeros(shape=correlation_buffer.shape, dtype=np.complex64))
+
     template_image = vd.Image3D(density_volume_fft_cpu.shape, vd.float32, 2)
     template_image.write(density_volume_fft_cpu)
 
@@ -174,19 +178,25 @@ def _core_match_template_vkdispatch_single_gpu(
 
     vd.fft.irfft2(template_buffer)
 
-    # Not sure why I need to clear the buffer here, should investigate
-    clear_buffer(template_buffer2)
     fftshift(template_buffer2, template_buffer)
 
     # Now, we normalize the templates
     sums = get_template_sums(template_buffer2)
     normalize_templates(template_buffer2, sums, projection_shape_real, image_shape_real)
 
-    # Copy data from template buffer into bigger correlation buffer
-    #fftshift(correlation_buffer, template_buffer2)
+    # Now we pad the templates to the size of the image
+    pad_templates(correlation_buffer, template_buffer2)
     
     # Do fused convolution of padded templates with reference image
-    #vd.fft.convolve2DR(correlation_buffer, image_dft_buffer)
+    @vd.map_registers([vc.c64])
+    def kernel_mapping(kernel_buffer: vc.Buffer[vc.c64]):
+        img_val = vc.mapping_registers()[0]
+        read_register = vc.mapping_registers()[1]
+
+        read_register[:] = kernel_buffer[vc.mapping_index() % (image_dft_buffer.shape[0] * image_dft_buffer.shape[1])]
+        img_val[:] = vc.mult_conj_c64(read_register, img_val)
+
+    vd.fft.convolve2DR(correlation_buffer, image_dft_buffer, kernel_map=kernel_mapping)
 
     ##################################
     ### Start the orientation loop ###
@@ -199,17 +209,14 @@ def _core_match_template_vkdispatch_single_gpu(
 
         rotation_matricies = euler_angles_to_rotation_matricies(euler_angles_batch)
 
-        cmd_stream.set_var("rotation_matrix", rotation_matricies)
+        cmd_stream.set_var("rotation_matrix", rotation_matricies[0])
 
-        cmd_stream.submit(rotation_matricies.shape[0])
+        cmd_stream.submit(1) #rotation_matricies.shape[0])
 
-        print(sums.shape)
-        print(device_id, sums.read(0)[0])
-
-        result_cpu = template_buffer2.read_real()[0][2]
+        result_cpu = correlation_buffer.read_real()[0][2]
 
         print(f"slice_cpu {device_id} shape: {result_cpu.shape}")
-        np.save(f"slice_{device_id}.npy", result_cpu)
+        np.save(f"cross_test_{device_id}.npy", result_cpu)
 
         exit()
 
