@@ -275,7 +275,7 @@ def _core_match_template_vkdispatch_single_gpu(
         "best_defocus": accumulation[:, :, 1],
         "best_pixel_size": accumulation[:, :, 1],
         "correlation_sum": accumulation[:, :, 2],
-        "correlation_squared_sum": accumulation[:, :, 2],
+        "correlation_squared_sum": accumulation[:, :,3],
         "total_projections": total_projections,
     }
 
