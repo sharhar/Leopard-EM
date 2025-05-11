@@ -348,46 +348,46 @@ def update_max(max_cross: Buff[f32], best_index: Buff[i32], sum_cross: Buff[v2],
     best_index[ind] = index
     vc.end()
 
-def accumulate_per_pixel(correlation_signal: vd.RFFTBuffer, indicies: List[int]) -> PixelResults:
-    result = PixelResults(correlation_signal.real_shape[1], correlation_signal.real_shape[2])
+def accumulate_per_pixel(
+        accumulation_buffer: vd.Buffer,
+        correlation_signal: vd.RFFTBuffer,
+        indicies: List[int]):
 
     with vc.builder_context(enable_exec_bounds=False) as builder:
-        input_buffer_types = [
-            Buff[f32], # max_cross
-            Buff[i32], # best_index
-            Buff[v2], # sum_cross
-            Buff[v2], # sum2_cross
-            Buff[i32], # count
-            Buff[f32], # back_buffer
-        ]
+        # input_buffer_types = [
+        #     Buff[f32], # max_cross
+        #     Buff[i32], # best_index
+        #     Buff[f32], # sum_cross
+        #     Buff[f32], # sum2_cross
+        #     Buff[f32], # back_buffer
+        # ]
 
         signature = vd.ShaderSignature.from_type_annotations(
             builder,
-            input_buffer_types + [Var[i32]] * len(indicies),
+            [Buff[f32], Buff[f32]] + [Var[i32]] * len(indicies),
         )
 
-        max_cross_buffer = signature.get_variables()[0]
-        best_index_buffer = signature.get_variables()[1]
-        sum_cross = signature.get_variables()[2]
-        sum2_cross = signature.get_variables()[3]
-        count = signature.get_variables()[4]
-        back_buffer = signature.get_variables()[5]
+        #max_cross = signature.get_variables()[0]
+        #best_index = signature.get_variables()[1]
+        #sum_cross = signature.get_variables()[2]
+        #sum2_cross = signature.get_variables()[3]
+        
+        accum_buff = signature.get_variables()[0]
+        
+        back_buffer = signature.get_variables()[1]
 
-        index_list: List[vc.ShaderVariable] = signature.get_variables()[6:]
+        index_list: List[vc.ShaderVariable] = signature.get_variables()[2:]
 
         ind = vc.global_invocation().x.copy()
         ind_padded = vc.new_int(ind + 2 * (ind / correlation_signal.shape[1]))
 
         curr_mip = back_buffer[ind_padded].copy()
         curr_index = index_list[0].copy()
-        count_register = count[ind].copy()
-        sum_cross_register = sum_cross[ind].copy()
-        sum2_cross_register = sum2_cross[ind].copy()
+        sum_cross_register = accum_buff[4 * ind + 2].copy()
+        sum2_cross_register = accum_buff[4 * ind + 3].copy()
 
         best_mip = vc.new_float(curr_mip)
-        best_index = vc.new_int(curr_index)
-
-        count_register[:] = count_register + 1
+        best_curr_index = vc.new_int(curr_index)
 
         sum_cross_register[:] = sum_cross_register + curr_mip
         sum2_cross_register[:] = sum2_cross_register + curr_mip * curr_mip
@@ -397,43 +397,29 @@ def accumulate_per_pixel(correlation_signal: vd.RFFTBuffer, indicies: List[int])
 
             curr_mip[:] = back_buffer[ind_padded + i * (correlation_signal.shape[1] * correlation_signal.shape[2] * 2)]
 
-            count_register[:] = count_register + 1
-
             sum_cross_register[:] = sum_cross_register + curr_mip
             sum2_cross_register[:] = sum2_cross_register + curr_mip * curr_mip
 
             vc.if_statement(curr_mip > best_mip)
             best_mip[:] = curr_mip
-            best_index[:] = index_list[i]
+            best_curr_index[:] = index_list[i]
             vc.end()
 
             vc.end()
 
-        sum_cross[ind] = sum_cross_register
-        sum2_cross[ind] = sum2_cross_register
-        count[ind] = count_register
+        accum_buff[4 * ind + 2] = sum_cross_register
+        accum_buff[4 * ind + 3] = sum2_cross_register
         
-        vc.if_statement(curr_mip > max_cross_buffer[ind])
-        max_cross_buffer[ind] = curr_mip
-        best_index_buffer[ind] = best_index
+        vc.if_statement(curr_mip > accum_buff[4 * ind])
+        accum_buff[4 * ind] = curr_mip
+        accum_buff[4 * ind + 1] = best_curr_index
         vc.end()
 
         shader_object = vd.ShaderObject(builder.build("accumulation_shader"), signature)
 
-    print(shader_object)
-
     shader_object(
-        result.max_cross,
-        result.best_index,
-        result.sum_cross,
-        result.sum2_cross,
-        result.count,
+        accumulation_buffer,
         correlation_signal,
         *indicies,
         exec_size=(correlation_signal.shape[1] * correlation_signal.shape[1], 1, 1),
     )
-
-    # Update the accumulators on the global command stream (so it can be run many times)
-    #update_max(result.max_cross, result.best_index, result.sum_cross, result.sum2_cross, result.count, correlation_signal, index=index)
-
-    return result

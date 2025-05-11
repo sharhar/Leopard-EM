@@ -132,20 +132,37 @@ def _core_match_template_vkdispatch_single_gpu(
     projective_filters_buffer = vd.asbuffer(projective_filters_cpu)
 
     template_buffer = vd.RFFTBuffer((projective_filters_cpu.shape[0], density_volume_fft_cpu.shape[0], density_volume_fft_cpu.shape[0]))
+    template_buffer.write(np.zeros(shape=template_buffer.shape, dtype=np.complex64))
+    
     template_buffer2 = vd.RFFTBuffer((projective_filters_cpu.shape[0], density_volume_fft_cpu.shape[0], density_volume_fft_cpu.shape[0]))
+    template_buffer2.write(np.zeros(shape=template_buffer2.shape, dtype=np.complex64))
     
     correlation_buffer = vd.RFFTBuffer((projective_filters_cpu.shape[0], image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2))
-
-    mip_buffer = vd.Buffer(correlation_buffer.real_shape, vd.float32)
-    best_index_buffer = vd.Buffer(correlation_buffer.real_shape, vd.int32)
-
-    mip_buffer.write(np.zeros(shape=mip_buffer.shape, dtype=np.float32))
-    best_index_buffer.write(np.ones(shape=best_index_buffer.shape, dtype=np.int32) * -1)
-
-    template_buffer.write(np.zeros(shape=template_buffer.shape, dtype=np.complex64))
-    template_buffer2.write(np.zeros(shape=template_buffer2.shape, dtype=np.complex64))
     correlation_buffer.write(np.zeros(shape=correlation_buffer.shape, dtype=np.complex64))
 
+    # mip_buffer = vd.Buffer(correlation_buffer.real_shape, vd.float32)
+    # mip_buffer.write(np.zeros(shape=mip_buffer.shape, dtype=np.float32))
+
+    # best_index_buffer = vd.Buffer(correlation_buffer.real_shape, vd.int32)
+    # best_index_buffer.write(np.ones(shape=best_index_buffer.shape, dtype=np.int32) * -1)
+
+    # correlation_sum_buffer = vd.Buffer(correlation_buffer.real_shape, vd.float32)
+    # correlation_sum_buffer.write(np.zeros(shape=correlation_sum_buffer.shape, dtype=np.float32))
+
+    # correlation_sum2_buffer = vd.Buffer(correlation_buffer.real_shape, vd.float32)
+    # correlation_sum2_buffer.write(np.zeros(shape=correlation_sum2_buffer.shape, dtype=np.float32))
+
+    # count_buffer = vd.Buffer(correlation_buffer.real_shape, vd.int32)
+    # count_buffer.write(np.zeros(shape=count_buffer.shape, dtype=np.int32))
+
+    accumulation_buffer = vd.Buffer((correlation_buffer.shape[1], correlation_buffer.shape[1], 4), vd.float32)
+
+    accumulation_initial_values = np.zeros(shape=accumulation_buffer.shape, dtype=np.float32)
+    accumulation_initial_values[:, :, 0] = -100000000 # -float("inf")
+    accumulation_initial_values[:, :, 1] = -1
+
+    accumulation_buffer.write(accumulation_initial_values)
+    
     template_image = vd.Image3D(density_volume_fft_cpu.shape, vd.float32, 2)
     template_image.write(density_volume_fft_cpu)
 
@@ -190,6 +207,12 @@ def _core_match_template_vkdispatch_single_gpu(
     sums = get_template_sums(template_buffer2)
     normalize_templates(template_buffer2, sums, projection_shape_real, image_shape_real)
 
+    @vd.shader("buff.size")
+    def clear_buffer(buff: vc.Buff[vc.c64]):
+        buff[vc.global_invocation().x] = "vec2(0)"
+
+    clear_buffer(correlation_buffer)
+
     # Now we pad the templates to the size of the image
     pad_templates(correlation_buffer, template_buffer2)
     
@@ -204,11 +227,11 @@ def _core_match_template_vkdispatch_single_gpu(
 
     vd.fft.convolve2DR(correlation_buffer, image_dft_buffer, kernel_map=kernel_mapping)
 
-    results = accumulate_per_pixel(correlation_buffer, [
-        cmd_stream.bind_var("index0"),
-        cmd_stream.bind_var("index1"),
-        cmd_stream.bind_var("index2")
-    ])
+    accumulate_per_pixel(
+        accumulation_buffer,
+        correlation_buffer,            
+        [cmd_stream.bind_var(f"index{i}") for i in range(correlation_buffer.shape[0])]
+    )
 
     ##################################
     ### Start the orientation loop ###
@@ -222,21 +245,42 @@ def _core_match_template_vkdispatch_single_gpu(
         rotation_matricies = euler_angles_to_rotation_matricies(euler_angles_batch)
 
         cmd_stream.set_var("rotation_matrix", rotation_matricies)
-        cmd_stream.set_var("index0", 0)
-        cmd_stream.set_var("index1", 0)
-        cmd_stream.set_var("index2", 0)
+
+        for i in range(correlation_buffer.shape[0]):
+            cmd_stream.set_var(f"index{i}", i)
 
         cmd_stream.submit(rotation_matricies.shape[0])
 
-        result_cpu = correlation_buffer.read_real()[0][2]
+        # accumulation = accumulation_buffer.read(0)
 
-        print(f"slice_cpu {device_id} shape: {result_cpu.shape}")
-        np.save(f"cross_test_{device_id}.npy", result_cpu)
+        # np.save(f"mip_{device_id}.npy", accumulation[:, :, 0])
+        # np.save(f"best_index_{device_id}.npy", accumulation[:, :, 1])
+        # np.save(f"correlation_sum_{device_id}.npy", accumulation[:, :, 2])
+        # np.save(f"correlation_sum2_{device_id}.npy", accumulation[:, :, 3])
 
-        exit()
+        # corrs = correlation_buffer.read_real(0)
 
-        #time.sleep(0.1)  # Sleep to allow the progress bar to update
+        # for ii, corr in enumerate(corrs):
+        #     np.save(f"corr_{device_id}_{ii}.npy", corr)
 
-        #exit()
+        # exit()
+    
+    accumulation = accumulation_buffer.read(0)
+
+    result = {
+        "mip": accumulation[:, :, 0],
+        "best_phi": accumulation[:, :, 1],
+        "best_theta": accumulation[:, :, 1],
+        "best_psi": accumulation[:, :, 1],
+        "best_defocus": accumulation[:, :, 1],
+        "best_pixel_size": accumulation[:, :, 1],
+        "correlation_sum": accumulation[:, :, 2],
+        "correlation_squared_sum": accumulation[:, :, 2],
+        "total_projections": total_projections,
+    }
+
+    # Place the results in the shared multi-process manager dictionary so accessible
+    # by the main process.
+    result_dict[device_id] = result
 
 
