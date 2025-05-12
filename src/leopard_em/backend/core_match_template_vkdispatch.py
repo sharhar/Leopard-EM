@@ -58,7 +58,9 @@ def _core_match_template_vkdispatch_single_gpu(
     pixel_values: torch.Tensor,
     orientation_batch_size: int,
 ) -> None:
-    """Single-GPU call for template matching.
+    """Single-GPU call for template matching using the vkdispatch backend. This
+    function is an experimental implementation based on a pre-alpha build of the
+    vkdispatch GPU-acceleration library. 
 
     NOTE: All tensors *must* be allocated on the same device. By calling the
     user-facing `core_match_template` function this is handled automatically.
@@ -102,36 +104,48 @@ def _core_match_template_vkdispatch_single_gpu(
     ### Initialize vkdispatch ###
     #############################
 
+    # We import vkdispatch here to avoid requiring it unless the user opts to use it.
+    # This ensures the code remains functional without vkdispatch unless explicitly needed.
+
     try:
         import vkdispatch as vd
         import vkdispatch.codegen as vc
 
-        from .vkdispatch_utils import extract_fft_slices, fftshift, get_template_sums, normalize_templates, pad_templates
-        from .vkdispatch_utils import accumulate_per_pixel
-    except ImportError:
-        raise ImportError("The 'vkdispatch' package must be installed to use the vkdispatch backend.")
+        from .vkdispatch_utils import (
+            extract_fft_slices,
+            fftshift,
+            get_template_sums,
+            normalize_templates,
+            pad_templates,
+            accumulate_per_pixel,
+        )
+    except ImportError as exp:
+        raise ImportError(
+            "The 'vkdispatch' package must be installed to use the vkdispatch backend. "
+            "Please install it via pip or from source: https://github.com/sharhar/vkdispatch"
+        ) from exp
     
     vd.initialize(debug_mode=True)
+    vd.make_context(devices=[device_id]) # select the device we want to use 
 
-    vd.make_context(devices=[device_id]) #, queue_families=[[0, 2]])
-
-    #################################################################################
-    ### Inverse FFT shift the template, since we need to redo the FFT calculation ###
-    #################################################################################
+    ########################################################################
+    ### Calculate full density volume FFT (this is faster in vkdispatch) ###
+    ########################################################################
 
     template_dft_temp = torch.fft.ifftshift(template_dft, dim=(0, 1))
     density_volume = torch.fft.irfftn(template_dft_temp, dim=(0, 1, 2))
     density_volume_fft = torch.fft.fftn(density_volume, dim=(0, 1, 2))
     density_volume_fft: torch.Tensor = torch.fft.fftshift(density_volume_fft, dim=(0, 1, 2))
 
-    ###############################################################
-    ### Copy Tensor data back to CPU and then to vkdispatch GPU ###
-    ###############################################################
+    ####################################
+    ### Copy Tensor data back to CPU ###
+    ####################################
 
     # Accounting for RFFT shape
     projection_shape_real = (template_dft.shape[1], template_dft.shape[2] * 2 - 2)
     image_shape_real = (image_dft.shape[0], image_dft.shape[1] * 2 - 2)
 
+    # Copy all tensors to numpy arrays
     image_dft_cpu = image_dft.cpu().numpy()
     density_volume_fft_cpu = density_volume_fft.cpu().numpy()
     euler_angles_cpu = euler_angles.cpu().numpy()
@@ -139,11 +153,16 @@ def _core_match_template_vkdispatch_single_gpu(
     pixel_values_cpu = pixel_values.cpu().numpy()
     defocus_values_cpu = defocus_values.cpu().numpy()
 
+    # vkdispatch can only handle 1-3D arrays, so we need to flatten the projection filer tensore
     projective_filters_cpu = projective_filters_cpu.reshape(
         -1, projective_filters_cpu.shape[-2], projective_filters_cpu.shape[-1]
     )
-    
-    image_dft_buffer = vd.RFFTBuffer((image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2)) #vd.asbuffer(image_dft_cpu)
+
+    ########################################
+    ### Upload Tensor data to vkdispatch ###
+    ########################################
+
+    image_dft_buffer = vd.RFFTBuffer((image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2))
     image_dft_buffer.write_fourier(image_dft_cpu)
     
     projective_filters_buffer = vd.asbuffer(projective_filters_cpu)
@@ -160,7 +179,7 @@ def _core_match_template_vkdispatch_single_gpu(
     accumulation_buffer = vd.Buffer((correlation_buffer.shape[1], correlation_buffer.shape[1], 4), vd.float32)
 
     accumulation_initial_values = np.zeros(shape=accumulation_buffer.shape, dtype=np.float32)
-    accumulation_initial_values[:, :, 0] = -100000000 # -float("inf")
+    accumulation_initial_values[:, :, 0] = -100000000
     accumulation_initial_values[:, :, 1] = -1
 
     accumulation_buffer.write(accumulation_initial_values)
@@ -224,7 +243,9 @@ def _core_match_template_vkdispatch_single_gpu(
         img_val = vc.mapping_registers()[0]
         read_register = vc.mapping_registers()[1]
 
-        read_register[:] = kernel_buffer[vc.mapping_index() % (image_dft_buffer.shape[0] * image_dft_buffer.shape[1])]
+        kernel_index = vc.mapping_index() % (image_dft_buffer.shape[0] * image_dft_buffer.shape[1])
+
+        read_register[:] = kernel_buffer[kernel_index]
         img_val[:] = vc.mult_conj_c64(read_register, img_val)
 
     vd.fft.convolve2DR(correlation_buffer, image_dft_buffer, kernel_map=kernel_mapping)
@@ -240,14 +261,15 @@ def _core_match_template_vkdispatch_single_gpu(
     ##################################
 
     for i in orientation_batch_iterator:
-        euler_angles_batch = euler_angles_cpu[
-            i * orientation_batch_size : (i + 1) * orientation_batch_size
-        ]
+        idx_start = i * orientation_batch_size
+        idx_end = (i + 1) * orientation_batch_size
 
-        rotation_matricies = euler_angles_to_rotation_matricies(euler_angles_batch)
+        rotation_matricies = euler_angles_to_rotation_matricies(
+            euler_angles_cpu[idx_start:idx_end]
+        )
 
         cmd_stream.set_var("rotation_matrix", rotation_matricies)
-        cmd_stream.set_var("index", list(range(i * orientation_batch_size, (i + 1) * orientation_batch_size)))
+        cmd_stream.set_var("index", list(range(idx_start, idx_end)))
         cmd_stream.submit(rotation_matricies.shape[0])
 
         # accumulation = accumulation_buffer.read(0)

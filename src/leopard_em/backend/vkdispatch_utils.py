@@ -1,6 +1,5 @@
 import vkdispatch as vd
 import vkdispatch.codegen as vc
-from vkdispatch.codegen.abreviations import *
 
 import numpy as np
 
@@ -15,11 +14,11 @@ def extract_fft_slices(template_buffer: vd.Buffer, projection_filters: vd.Buffer
     # information about the buffer size into the source code of the shader.
     @vd.shader(exec_size=lambda args: args.buff.shape[1] * args.buff.shape[2])
     def extract_fft_slices_shader(
-        buff: Buff[c64],
-        projections: Buff[f32],
-        img: Img3[f32], 
-        img_shape: Const[iv4], 
-        rotation: Var[m4]):
+        buff: vc.Buff[vc.c64],
+        projections: vc.Buff[vc.f32],
+        img: vc.Img3[vc.f32], 
+        img_shape: vc.Const[vc.iv4], 
+        rotation: vc.Var[vc.m4]):
 
         ind = vc.global_invocation().x.cast_to(vc.i32).copy()
 
@@ -57,7 +56,7 @@ def extract_fft_slices(template_buffer: vd.Buffer, projection_filters: vd.Buffer
     )
 
 @vd.shader(exec_size=lambda args: args.input.size * 2)
-def fftshift(output: Buff[f32], input: Buff[f32]):
+def fftshift(output: vc.Buff[vc.f32], input: vc.Buff[vc.f32]):
     ind = vc.global_invocation().x.cast_to(vd.int32).copy()
 
     image_ind = vc.new_int()
@@ -91,7 +90,7 @@ def suppress_print():
 def get_template_sums(templates: vd.Buffer):
 
     @vd.map_reduce(vd.SubgroupAdd, axes=[1, 2])
-    def calculate_sums(buff: Buff[v2]) -> v4:
+    def calculate_sums(buff: vc.Buff[vc.v2]) -> vc.v4:
         """
         This function is a mapping function that preprocesses each "couplet" of real-space pixels
         in the projected template into a 4-vector which contains:
@@ -148,7 +147,7 @@ def get_template_sums(templates: vd.Buffer):
     return sums
 
 @vd.shader(exec_size=lambda args: args.buff.size * 2)
-def normalize_templates_shader(buff: Buff[f32], sums: Buff[v4], relative_size: Const[v4]):
+def normalize_templates_shader(buff: vc.Buff[vc.f32], sums: vc.Buff[vc.v4], relative_size: vc.Const[vc.v4]):
     ind = vc.global_invocation().x.copy()
 
     vc.if_statement(ind % (2 * buff.shape.z) >= 2 * buff.shape.z - 2)
@@ -191,7 +190,7 @@ def normalize_templates(templates_buffer, sums_buffer, small_shape, large_shape)
         relative_size_array)
 
 @vd.shader("input.size")
-def pad_templates(output: Buff[c64], input: Buff[c64]):
+def pad_templates(output: vc.Buff[vc.c64], input: vc.Buff[vc.c64]):
     ind = vc.global_invocation().x.copy()
 
     ind_0 = ind % input.shape.z
@@ -213,7 +212,7 @@ def accumulate_per_pixel(
     with vc.builder_context(enable_exec_bounds=False) as builder:
         signature = vd.ShaderSignature.from_type_annotations(
             builder,
-            [Buff[f32], Buff[f32], Var[i32]]
+            [vc.Buff[vc.f32], vc.Buff[vc.f32], vc.Var[vc.i32]]
         )
         
         accum_buff = signature.get_variables()[0]
