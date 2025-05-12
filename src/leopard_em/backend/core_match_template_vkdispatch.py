@@ -30,6 +30,23 @@ def euler_angles_to_rotation_matricies(angles: np.ndarray) -> np.ndarray:
 
     return m.T
 
+def decompose_best_indicies(
+        best_indicies: np.ndarray,
+        euler_angles: np.ndarray,
+        defocus_values: np.ndarray,
+        pixel_values: np.ndarray,):
+
+    total_projections = defocus_values.shape[0] * pixel_values.shape[0]
+
+    best_phi = euler_angles[best_indicies // total_projections, 0]
+    best_theta = euler_angles[best_indicies // total_projections, 1]
+    best_psi = euler_angles[best_indicies // total_projections, 2]
+
+    best_defocus = defocus_values[best_indicies % defocus_values.shape[0]]
+    best_pixel_size = pixel_values[(best_indicies % total_projections) // defocus_values.shape[0]]
+
+    return best_phi, best_theta, best_psi, best_defocus, best_pixel_size
+
 def _core_match_template_vkdispatch_single_gpu(
     result_dict: dict,
     device_id: int,
@@ -140,21 +157,6 @@ def _core_match_template_vkdispatch_single_gpu(
     correlation_buffer = vd.RFFTBuffer((projective_filters_cpu.shape[0], image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2))
     correlation_buffer.write(np.zeros(shape=correlation_buffer.shape, dtype=np.complex64))
 
-    # mip_buffer = vd.Buffer(correlation_buffer.real_shape, vd.float32)
-    # mip_buffer.write(np.zeros(shape=mip_buffer.shape, dtype=np.float32))
-
-    # best_index_buffer = vd.Buffer(correlation_buffer.real_shape, vd.int32)
-    # best_index_buffer.write(np.ones(shape=best_index_buffer.shape, dtype=np.int32) * -1)
-
-    # correlation_sum_buffer = vd.Buffer(correlation_buffer.real_shape, vd.float32)
-    # correlation_sum_buffer.write(np.zeros(shape=correlation_sum_buffer.shape, dtype=np.float32))
-
-    # correlation_sum2_buffer = vd.Buffer(correlation_buffer.real_shape, vd.float32)
-    # correlation_sum2_buffer.write(np.zeros(shape=correlation_sum2_buffer.shape, dtype=np.float32))
-
-    # count_buffer = vd.Buffer(correlation_buffer.real_shape, vd.int32)
-    # count_buffer.write(np.zeros(shape=count_buffer.shape, dtype=np.int32))
-
     accumulation_buffer = vd.Buffer((correlation_buffer.shape[1], correlation_buffer.shape[1], 4), vd.float32)
 
     accumulation_initial_values = np.zeros(shape=accumulation_buffer.shape, dtype=np.float32)
@@ -230,7 +232,7 @@ def _core_match_template_vkdispatch_single_gpu(
     accumulate_per_pixel(
         accumulation_buffer,
         correlation_buffer,            
-        [cmd_stream.bind_var(f"index{i}") for i in range(correlation_buffer.shape[0])]
+        cmd_stream.bind_var("index")
     )
 
     ##################################
@@ -245,10 +247,7 @@ def _core_match_template_vkdispatch_single_gpu(
         rotation_matricies = euler_angles_to_rotation_matricies(euler_angles_batch)
 
         cmd_stream.set_var("rotation_matrix", rotation_matricies)
-
-        for i in range(correlation_buffer.shape[0]):
-            cmd_stream.set_var(f"index{i}", i)
-
+        cmd_stream.set_var("index", list(range(i * orientation_batch_size, (i + 1) * orientation_batch_size)))
         cmd_stream.submit(rotation_matricies.shape[0])
 
         # accumulation = accumulation_buffer.read(0)
@@ -267,13 +266,20 @@ def _core_match_template_vkdispatch_single_gpu(
     
     accumulation = accumulation_buffer.read(0)
 
+    best_phi, best_theta, best_psi, best_defocus, best_pixel_size = decompose_best_indicies(
+        accumulation[:, :, 1].astype(np.int32),
+        euler_angles_cpu,
+        defocus_values_cpu,
+        pixel_values_cpu,
+    )
+
     result = {
         "mip": accumulation[:, :, 0],
-        "best_phi": accumulation[:, :, 1],
-        "best_theta": accumulation[:, :, 1],
-        "best_psi": accumulation[:, :, 1],
-        "best_defocus": accumulation[:, :, 1],
-        "best_pixel_size": accumulation[:, :, 1],
+        "best_phi": best_phi,
+        "best_theta": best_theta,
+        "best_psi": best_psi,
+        "best_defocus": best_defocus,
+        "best_pixel_size": best_pixel_size,
         "correlation_sum": accumulation[:, :, 2],
         "correlation_squared_sum": accumulation[:, :,3],
         "total_projections": total_projections,
