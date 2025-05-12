@@ -1,10 +1,23 @@
 import torch
 import tqdm
-import time
 
 import numpy as np
 
 def euler_angles_to_rotation_matricies(angles: np.ndarray) -> np.ndarray:
+    """
+    Calculate the rotation matrix from the euler angles.
+
+    Parameters
+    ----------
+    angles : np.ndarray
+        The euler angles to calculate the rotation matrix from. Has shape (n, 3).
+
+    Returns
+    -------
+    np.ndarray
+        The rotation matrix. Has shape (n, 4, 4).
+    """
+
     m = np.zeros(shape=(4, 4, angles.shape[0]), dtype=np.float32)
 
     cos_phi   = np.cos(np.deg2rad(angles[:, 0]))
@@ -16,17 +29,14 @@ def euler_angles_to_rotation_matricies(angles: np.ndarray) -> np.ndarray:
     m[0][0]   = cos_phi * cos_theta * cos_psi - sin_phi * sin_psi
     m[1][0]   = sin_phi * cos_theta * cos_psi + cos_phi * sin_psi
     m[2][0]   = -sin_theta * cos_psi
-    #m[3][0]   = offsets[0]
 
     m[0][1]   = -cos_phi * cos_theta * sin_psi - sin_phi * cos_psi
     m[1][1]   = -sin_phi * cos_theta * sin_psi + cos_phi * cos_psi
     m[2][1]   = sin_theta * sin_psi
-    #m[3][1]   = offsets[1]    
     
     m[0][2]   = sin_theta * cos_phi
     m[1][2]   = sin_theta * sin_phi
     m[2][2]   = cos_theta
-    #m[3][2]   = offsets[2]
 
     return m.T
 
@@ -35,6 +45,33 @@ def decompose_best_indicies(
         euler_angles: np.ndarray,
         defocus_values: np.ndarray,
         pixel_values: np.ndarray,):
+    """
+    Decompose the best indicies into their respective components.
+
+    Parameters
+    ----------
+    best_indicies : np.ndarray
+        The best indicies to decompose.
+    euler_angles : np.ndarray
+        The euler angles that were used.
+    defocus_values : np.ndarray
+        The defocus values that were used.
+    pixel_values : np.ndarray
+        The pixel values that were used.
+
+    Returns
+    -------
+    best_phi : np.ndarray
+        The best phi values.
+    best_theta : np.ndarray
+        The best theta values.
+    best_psi : np.ndarray
+        The best psi values.
+    best_defocus : np.ndarray
+        The best defocus values.
+    best_pixel_size : np.ndarray
+        The best pixel size values.
+    """
 
     total_projections = defocus_values.shape[0] * pixel_values.shape[0]
 
@@ -162,28 +199,31 @@ def _core_match_template_vkdispatch_single_gpu(
     ### Upload Tensor data to vkdispatch ###
     ########################################
 
-    image_dft_buffer = vd.RFFTBuffer((image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2))
+    image_real_size = (image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2)
+    template_real_size = (density_volume_fft_cpu.shape[0], density_volume_fft_cpu.shape[0])
+
+    image_dft_buffer = vd.RFFTBuffer(image_real_size)
     image_dft_buffer.write_fourier(image_dft_cpu)
-    
+
     projective_filters_buffer = vd.asbuffer(projective_filters_cpu)
 
-    template_buffer = vd.RFFTBuffer((projective_filters_cpu.shape[0], density_volume_fft_cpu.shape[0], density_volume_fft_cpu.shape[0]))
+    template_buffer = vd.RFFTBuffer((projective_filters_cpu.shape[0], *template_real_size))
     template_buffer.write(np.zeros(shape=template_buffer.shape, dtype=np.complex64))
-    
-    template_buffer2 = vd.RFFTBuffer((projective_filters_cpu.shape[0], density_volume_fft_cpu.shape[0], density_volume_fft_cpu.shape[0]))
+
+    template_buffer2 = vd.RFFTBuffer((projective_filters_cpu.shape[0], *template_real_size))
     template_buffer2.write(np.zeros(shape=template_buffer2.shape, dtype=np.complex64))
-    
-    correlation_buffer = vd.RFFTBuffer((projective_filters_cpu.shape[0], image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2))
+
+    correlation_buffer = vd.RFFTBuffer((projective_filters_cpu.shape[0], *image_real_size))
     correlation_buffer.write(np.zeros(shape=correlation_buffer.shape, dtype=np.complex64))
 
-    accumulation_buffer = vd.Buffer((correlation_buffer.shape[1], correlation_buffer.shape[1], 4), vd.float32)
+    accumulation_buffer = vd.Buffer((template_real_size[0], template_real_size[0], 4), vd.float32)
 
     accumulation_initial_values = np.zeros(shape=accumulation_buffer.shape, dtype=np.float32)
     accumulation_initial_values[:, :, 0] = -100000000
     accumulation_initial_values[:, :, 1] = -1
 
     accumulation_buffer.write(accumulation_initial_values)
-    
+
     template_image = vd.Image3D(density_volume_fft_cpu.shape, vd.float32, 2)
     template_image.write(density_volume_fft_cpu)
 
@@ -285,7 +325,7 @@ def _core_match_template_vkdispatch_single_gpu(
         #     np.save(f"corr_{device_id}_{ii}.npy", corr)
 
         # exit()
-    
+
     accumulation = accumulation_buffer.read(0)
 
     best_phi, best_theta, best_psi, best_defocus, best_pixel_size = decompose_best_indicies(

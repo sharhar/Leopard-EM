@@ -11,8 +11,6 @@ import torch
 import tqdm
 from torch_fourier_slice import extract_central_slices_rfft_3d
 
-from .core_match_template_vkdispatch import _core_match_template_vkdispatch_single_gpu
-
 from leopard_em.backend.process_results import (
     aggregate_distributed_results,
     scale_mip,
@@ -23,7 +21,11 @@ from leopard_em.backend.utils import (
     run_multiprocess_jobs,
 )
 
-USE_VKDISPATCH = True
+from leopard_em.backend.core_match_template_vkdispatch import (
+    _core_match_template_vkdispatch_single_gpu
+)
+
+USE_VKDISPATCH = False
 COMPILE_BACKEND = "inductor"
 DEFAULT_STATISTIC_DTYPE = torch.float32
 
@@ -496,6 +498,14 @@ def _do_bached_orientation_cross_correlate(
     # Cross correlation step by element-wise multiplication
     projections_dft = image_dft[None, None, None, ...] * projections_dft.conj()
     cross_correlation = torch.fft.irfftn(projections_dft, dim=(-2, -1))
+
+
+    corrs = cross_correlation.cpu().numpy()
+
+    for ii, corr in enumerate(corrs[0]):
+        np.save(f"corr_ref_{device_id}_{ii}.npy", corr[0])
+
+    exit()
 
     # fourier_slice_cpu = cross_correlation.cpu().numpy()
     

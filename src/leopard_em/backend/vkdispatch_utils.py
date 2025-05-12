@@ -1,14 +1,32 @@
-import vkdispatch as vd
-import vkdispatch.codegen as vc
-
-import numpy as np
-
-from typing import Tuple, List, Callable
-
+from typing import Tuple, Callable
 import builtins
 from contextlib import contextmanager
 
-def extract_fft_slices(template_buffer: vd.Buffer, projection_filters: vd.Buffer, image: vd.Image3D, rotation: vc.Var[vc.m4]):
+import vkdispatch as vd
+import vkdispatch.codegen as vc
+
+def extract_fft_slices(
+        template_buffer: vd.Buffer,
+        projection_filters: vd.Buffer,
+        image: vd.Image3D,
+        rotation: vc.Var[vc.m4]):
+    """
+    This function extracts the FFT slices from the image and stores them in the
+    template buffer. The FFT slices are extracted by rotating the image and
+    projecting it onto the template buffer. The projection filters are used to
+    filter the FFT slices before they are stored in the template buffer.
+
+    Parameters
+    ----------
+    template_buffer : vd.Buffer
+        The buffer to store the FFT slices in.
+    projection_filters : vd.Buffer
+        The filters to apply to the FFT slices.
+    image : vd.Image3D
+        The image to extract the FFT slices from.
+    rotation : vc.Var[vc.m4]
+        The rotation matrix to apply to the image before extracting the FFT slices.
+    """
 
     # We generate the shader source inside this function because we want to hardcode
     # information about the buffer size into the source code of the shader.
@@ -19,6 +37,23 @@ def extract_fft_slices(template_buffer: vd.Buffer, projection_filters: vd.Buffer
         img: vc.Img3[vc.f32], 
         img_shape: vc.Const[vc.iv4], 
         rotation: vc.Var[vc.m4]):
+        """
+        This is the shader that performs the sampling of the volume's FFT and
+        the application of the projection filters.
+
+        Parameters
+        ----------
+        buff : vc.Buff[vc.c64]
+            The buffer to store the FFT slices in.
+        projections : vc.Buff[vc.f32]
+            The filters to apply to the FFT slices.
+        img : vc.Img3[vc.f32]
+            The image to extract the FFT slices from.
+        img_shape : vc.Const[vc.iv4]
+            The shape of the image.
+        rotation : vc.Var[vc.m4]
+            The rotation matrix to apply to the image before extracting the FFT slices.
+        """
 
         ind = vc.global_invocation().x.cast_to(vc.i32).copy()
 
@@ -57,6 +92,18 @@ def extract_fft_slices(template_buffer: vd.Buffer, projection_filters: vd.Buffer
 
 @vd.shader(exec_size=lambda args: args.input.size * 2)
 def fftshift(output: vc.Buff[vc.f32], input: vc.Buff[vc.f32]):
+    """
+    This function performs an FFT shift on the input buffer and stores the result
+    in the output buffer.
+
+    Parameters
+    ----------
+    output : vc.Buff[vc.f32]
+        The buffer to store the FFT shift result in.
+    input : vc.Buff[vc.f32]
+        The buffer to perform the FFT shift on.
+    """
+
     ind = vc.global_invocation().x.cast_to(vd.int32).copy()
 
     image_ind = vc.new_int()
@@ -80,6 +127,10 @@ def fftshift(output: vc.Buff[vc.f32], input: vc.Buff[vc.f32]):
 
 @contextmanager
 def suppress_print():
+    """
+    Context manager to suppress print statements in vkdispatch shaders.
+    """
+
     original_print = builtins.print
     builtins.print = lambda *args, **kwargs: None
     try:
@@ -88,6 +139,23 @@ def suppress_print():
         builtins.print = original_print
 
 def get_template_sums(templates: vd.Buffer):
+    """
+    This function calculates the sums of the templates in the batch. It does this by
+    mapping the templates to a 4-vector which contains:
+    1) The sum of the two real-space pixels
+    2) The sum of the squares of the two real-space pixels
+    3) The sum of only edge pixels
+    4) Reserved as padding
+
+    These vectors then get added together per template such that in the end we get the sum
+    vector for each of out templates in this batch.
+
+    Parameters
+    ----------
+    templates : vd.Buffer
+        The buffer to store the sums in.
+    """
+
 
     @vd.map_reduce(vd.SubgroupAdd, axes=[1, 2])
     def calculate_sums(buff: vc.Buff[vc.v2]) -> vc.v4:
@@ -101,6 +169,11 @@ def get_template_sums(templates: vd.Buffer):
 
         These vectors then get added together per template such that in the end we get the sum
         vector for each of out templates in this batch.
+
+        Parameters
+        ----------
+        buff : vc.Buff[vc.v2]
+            The buffer to store the sums in.
         """
 
         ind = vc.mapping_index()
@@ -148,6 +221,19 @@ def get_template_sums(templates: vd.Buffer):
 
 @vd.shader(exec_size=lambda args: args.buff.size * 2)
 def normalize_templates_shader(buff: vc.Buff[vc.f32], sums: vc.Buff[vc.v4], relative_size: vc.Const[vc.v4]):
+    """
+    This is the shader for 'normalize_templates'.
+
+    Parameters
+    ----------
+    buff : vc.Buff[vc.f32]
+        The buffer to normalize.
+    sums : vc.Buff[vc.v4]
+        The buffer containing the sums of the templates.
+    relative_size : vc.Const[vc.v4]
+        The relative size of the small and large templates.
+    """
+
     ind = vc.global_invocation().x.copy()
 
     vc.if_statement(ind % (2 * buff.shape.z) >= 2 * buff.shape.z - 2)
@@ -176,7 +262,29 @@ def normalize_templates_shader(buff: vc.Buff[vc.f32], sums: vc.Buff[vc.v4], rela
 
     buff[ind] = (buff[ind] - edge_mean) / vc.sqrt(variance)
 
-def normalize_templates(templates_buffer, sums_buffer, small_shape, large_shape):
+def normalize_templates(
+        templates_buffer: vd.Buffer,
+        sums_buffer: vd.Buffer,
+        small_shape: tuple[int, int],
+        large_shape: tuple[int, int]):
+    """
+    This function normalizes the templates in the buffer by subtracting the mean
+    of the edge pixels and dividing by the standard deviation. The standard deviation
+    is calculated such that the variance of the zero-padded projection is 1.
+    The mean of the edge pixels is subtracted from the template.
+
+    Parameters
+    ----------
+    templates_buffer : vd.Buffer
+        The buffer to normalize.
+    sums_buffer : vd.Buffer
+        The buffer containing the sums of the templates.
+    small_shape : tuple[int, int]
+        The shape of the small template.
+    large_shape : tuple[int, int]
+        The shape of the large template.
+    """
+
     relative_size_array = [
         (small_shape[0] * small_shape[1]) / (large_shape[0] * large_shape[1]),
         (large_shape[0] - small_shape[0]) * (large_shape[1] - small_shape[1]),
@@ -191,6 +299,19 @@ def normalize_templates(templates_buffer, sums_buffer, small_shape, large_shape)
 
 @vd.shader("input.size")
 def pad_templates(output: vc.Buff[vc.c64], input: vc.Buff[vc.c64]):
+    """
+    This function pads the input buffer with zeros to match the size of the output buffer.
+    The input buffer is assumed to be in the small space and the output buffer is
+    assumed to be in the large space.
+
+    Parameters
+    ----------
+    output : vc.Buff[vc.c64]
+        The buffer to put the padded data in.
+    input : vc.Buff[vc.c64]
+        The buffer to read from.
+    """
+
     ind = vc.global_invocation().x.copy()
 
     ind_0 = ind % input.shape.z
@@ -207,7 +328,19 @@ def pad_templates(output: vc.Buff[vc.c64], input: vc.Buff[vc.c64]):
 def accumulate_per_pixel(
         accumulation_buffer: vd.Buffer,
         correlation_signal: vd.RFFTBuffer,
-        index_var: Callable[[Tuple[str, str]], None],):
+        index_var):
+    """
+    This function accumulates the correlation signal per pixel in the accumulation buffer.
+
+    Parameters
+    ----------
+    accumulation_buffer : vd.Buffer
+        The buffer to accumulate the correlation signal in.
+    correlation_signal : vd.RFFTBuffer
+        The buffer containing the correlation signal.
+    index_var : BoundVariable
+        The variable to store the index of the correlation signal.
+    """
 
     with vc.builder_context(enable_exec_bounds=False) as builder:
         signature = vd.ShaderSignature.from_type_annotations(
