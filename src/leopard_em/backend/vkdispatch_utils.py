@@ -24,8 +24,10 @@ def extract_fft_slices(template_buffer: vd.Buffer, projection_filters: vd.Buffer
         ind = vc.global_invocation().x.cast_to(vc.i32).copy()
 
         vc.if_statement(ind == 0)
-        buff[ind].x = 0
-        buff[ind].y = 0
+        for i in range(projection_filters.shape[0]):
+            index = ind + i * template_buffer.shape[1] * template_buffer.shape[2]
+            buff[index].x = 0
+            buff[index].y = 0
         vc.return_statement()
         vc.end()
         
@@ -48,6 +50,8 @@ def extract_fft_slices(template_buffer: vd.Buffer, projection_filters: vd.Buffer
             index = ind + i * template_buffer.shape[1] * template_buffer.shape[2]
             buff[index] = my_pos.xy * projections[index]
 
+    print(extract_fft_slices_shader)
+
     extract_fft_slices_shader(
         template_buffer,
         projection_filters,
@@ -61,22 +65,32 @@ def fftshift(output: Buff[f32], input: Buff[f32]):
     ind = vc.global_invocation().x.cast_to(vd.int32).copy()
 
     image_ind = vc.new_int()
-    image_ind[:] = ind % (input.shape.y * input.shape.y)
+    image_ind[:] = ind % (input.shape.y * input.shape.z * 2)
 
-    out_x = (image_ind / output.shape.y).copy()
-    out_y = (image_ind % output.shape.y).copy()
+    out_x = (image_ind / (2 * input.shape.z)).copy()
+    out_y = (image_ind % (2 * input.shape.z)).copy()
 
-    image_ind[:] = ind / (input.shape.y * input.shape.y)
+    vc.if_statement(out_y >= 2 * input.shape.z - 2)
+    output[ind].x = 0
+    output[ind].y = 0
+    vc.return_statement()
+    vc.end()
+
+    image_ind[:] = ind / (input.shape.y * input.shape.z * 2)
+
+    image_ind[:] = image_ind * (input.shape.y * input.shape.z * 2)
 
     in_x = ((out_x + input.shape.y / 2) % output.shape.y).copy()
     in_y = ((out_y + input.shape.y / 2) % output.shape.y).copy()
 
-    image_ind += in_x * input.shape.y + in_y
+    image_ind += in_x * 2 * input.shape.z + in_y
 
-    ind[:] = ind + 2 * (ind / input.shape.y)
-    image_ind[:] = image_ind + 2 * (image_ind / input.shape.y)
+    #ind[:] = ind + 2 * (ind / input.shape.y)
+    #image_ind[:] = image_ind + 2 * (image_ind / input.shape.y)
 
     output[ind] = input[image_ind]
+    
+    #output[ind] = in_x * 2 * input.shape.z + in_y
 
 
 @contextmanager

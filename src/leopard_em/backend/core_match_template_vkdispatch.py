@@ -203,15 +203,17 @@ def _core_match_template_vkdispatch_single_gpu(
 
     vd.fft.irfft2(template_buffer)
 
+    @vd.shader("buff.size")
+    def clear_buffer(buff: vc.Buff[vc.c64]):
+        buff[vc.global_invocation().x] = "vec2(0)"
+
+    #clear_buffer(template_buffer2)
+    
     fftshift(template_buffer2, template_buffer)
 
     # Now, we normalize the templates
     sums = get_template_sums(template_buffer2)
     normalize_templates(template_buffer2, sums, projection_shape_real, image_shape_real)
-
-    @vd.shader("buff.size")
-    def clear_buffer(buff: vc.Buff[vc.c64]):
-        buff[vc.global_invocation().x] = "vec2(0)"
 
     clear_buffer(correlation_buffer)
 
@@ -257,7 +259,7 @@ def _core_match_template_vkdispatch_single_gpu(
         # np.save(f"correlation_sum_{device_id}.npy", accumulation[:, :, 2])
         # np.save(f"correlation_sum2_{device_id}.npy", accumulation[:, :, 3])
 
-        # corrs = correlation_buffer.read_real(0)
+        # corrs = template_buffer2.read_real(0)
 
         # for ii, corr in enumerate(corrs):
         #     np.save(f"corr_{device_id}_{ii}.npy", corr)
