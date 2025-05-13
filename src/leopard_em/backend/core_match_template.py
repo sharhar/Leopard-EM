@@ -25,7 +25,7 @@ from leopard_em.backend.core_match_template_vkdispatch import (
     _core_match_template_vkdispatch_single_gpu
 )
 
-USE_VKDISPATCH = False
+USE_VKDISPATCH = True
 COMPILE_BACKEND = "inductor"
 DEFAULT_STATISTIC_DTYPE = torch.float32
 
@@ -485,11 +485,18 @@ def _do_bached_orientation_cross_correlate(
     projections = torch.fft.irfftn(fourier_slice, dim=(-2, -1))
     projections = torch.fft.ifftshift(projections, dim=(-2, -1))
 
-    projections = normalize_template_projection_compiled(
-        projections,
-        projection_shape_real,
-        image_shape_real,
-    )
+    # projections = normalize_template_projection_compiled(
+    #     projections,
+    #     projection_shape_real,
+    #     image_shape_real,
+    # )
+    
+    corrs = projections.cpu().numpy()
+
+    for ii, corr in enumerate(corrs[0]):
+        np.save(f"test_data/temp_ref_{device_id}_{ii}.npy", corr[0])
+
+    exit()
 
     # Padded forward Fourier transform for cross-correlation
     projections_dft = torch.fft.rfftn(projections, dim=(-2, -1), s=image_shape_real)
@@ -503,7 +510,7 @@ def _do_bached_orientation_cross_correlate(
     corrs = cross_correlation.cpu().numpy()
 
     for ii, corr in enumerate(corrs[0]):
-        np.save(f"corr_ref_{device_id}_{ii}.npy", corr[0])
+        np.save(f"test_data/corr_ref_{device_id}_{ii}.npy", corr[0])
 
     exit()
 

@@ -190,6 +190,8 @@ def _core_match_template_vkdispatch_single_gpu(
     pixel_values_cpu = pixel_values.cpu().numpy()
     defocus_values_cpu = defocus_values.cpu().numpy()
 
+    print(projective_filters_cpu.shape)
+
     # vkdispatch can only handle 1-3D arrays, so we need to flatten the projection filer tensore
     projective_filters_cpu = projective_filters_cpu.reshape(
         -1, projective_filters_cpu.shape[-2], projective_filters_cpu.shape[-1]
@@ -209,6 +211,8 @@ def _core_match_template_vkdispatch_single_gpu(
 
     template_buffer = vd.RFFTBuffer((projective_filters_cpu.shape[0], *template_real_size))
     template_buffer.write(np.zeros(shape=template_buffer.shape, dtype=np.complex64))
+
+    print(projective_filters_cpu.shape, projective_filters_cpu.dtype,  template_buffer.shape)
 
     template_buffer2 = vd.RFFTBuffer((projective_filters_cpu.shape[0], *template_real_size))
     template_buffer2.write(np.zeros(shape=template_buffer2.shape, dtype=np.complex64))
@@ -253,6 +257,10 @@ def _core_match_template_vkdispatch_single_gpu(
 
     # This part of the TM algorithm has been correctly implemented
 
+    @vd.shader("buff.size")
+    def clear_buffer(buff: vc.Buff[vc.c64]):
+        buff[vc.global_invocation().x] = "vec2(0)"
+
     extract_fft_slices(
         template_buffer,
         projective_filters_buffer,
@@ -262,15 +270,13 @@ def _core_match_template_vkdispatch_single_gpu(
 
     vd.fft.irfft2(template_buffer)
 
+    clear_buffer(template_buffer2)
+
     fftshift(template_buffer2, template_buffer)
 
     # Now, we normalize the templates
     sums = get_template_sums(template_buffer2)
     normalize_templates(template_buffer2, sums, projection_shape_real, image_shape_real)
-
-    @vd.shader("buff.size")
-    def clear_buffer(buff: vc.Buff[vc.c64]):
-        buff[vc.global_invocation().x] = "vec2(0)"
 
     clear_buffer(correlation_buffer)
 
@@ -319,10 +325,10 @@ def _core_match_template_vkdispatch_single_gpu(
         # np.save(f"correlation_sum_{device_id}.npy", accumulation[:, :, 2])
         # np.save(f"correlation_sum2_{device_id}.npy", accumulation[:, :, 3])
 
-        # corrs = correlation_buffer.read_real(0)
+        # corrs = template_buffer2.read_fourier(0)
 
         # for ii, corr in enumerate(corrs):
-        #     np.save(f"corr_{device_id}_{ii}.npy", corr)
+        #     np.save(f"test_data/temp_{device_id}_{ii}_1.npy", corr)
 
         # exit()
 

@@ -28,6 +28,8 @@ def extract_fft_slices(
         The rotation matrix to apply to the image before extracting the FFT slices.
     """
 
+    dim_size = image.shape[0]
+
     # We generate the shader source inside this function because we want to hardcode
     # information about the buffer size into the source code of the shader.
     @vd.shader(exec_size=lambda args: args.buff.shape[1] * args.buff.shape[2])
@@ -35,7 +37,6 @@ def extract_fft_slices(
         buff: vc.Buff[vc.c64],
         projections: vc.Buff[vc.f32],
         img: vc.Img3[vc.f32], 
-        img_shape: vc.Const[vc.iv4], 
         rotation: vc.Var[vc.m4]):
         """
         This is the shader that performs the sampling of the volume's FFT and
@@ -55,11 +56,16 @@ def extract_fft_slices(
             The rotation matrix to apply to the image before extracting the FFT slices.
         """
 
-        ind = vc.global_invocation().x.cast_to(vc.i32).copy()
+        ind = vc.global_invocation().x.copy()
 
         vc.if_statement(ind == 0)
-        buff[ind].x = 0
-        buff[ind].y = 0
+
+        for i in range(projection_filters.shape[0]):
+            if i != 0:
+                ind[:] = ind + template_buffer.shape[1] * template_buffer.shape[2]
+
+            buff[ind].x = 0
+            buff[ind].y = 0
         vc.return_statement()
         vc.end()
         
@@ -68,25 +74,30 @@ def extract_fft_slices(
         my_pos.x = ind % template_buffer.shape[2]
         my_pos.y = ind / template_buffer.shape[2]
         
-        my_pos.y += img_shape.y / 2
-        my_pos.y[:] = vc.mod(my_pos.y, img_shape.y)
-        my_pos.y -= img_shape.y / 2
+        my_pos.y[:] = my_pos.y + dim_size // 2
+        my_pos.y[:] = vc.mod(my_pos.y, dim_size)
+        my_pos.y[:] = my_pos.y - dim_size // 2
         
         # rotate the position to 3D template space
         my_pos[:] = rotation * my_pos
-        my_pos.xyz += img_shape.xyz.cast_to(vc.v3) / 2
+        my_pos.xyz += dim_size // 2 #img_shape.xyz.cast_to(vc.v3) / 2
 
-        my_pos.xy[:] = -1 * img.sample(my_pos.xyz).xy
+        sampled_value = (-1 * img.sample(my_pos.xyz).xy).copy()
 
         for i in range(projection_filters.shape[0]):
-            index = ind + i * template_buffer.shape[1] * template_buffer.shape[2]
-            buff[index] = my_pos.xy * projections[index]
+            if i != 0:
+                ind[:] = ind + template_buffer.shape[1] * template_buffer.shape[2]
+            
+            buff[ind] = sampled_value * projections[ind]   
 
     extract_fft_slices_shader(
         template_buffer,
         projection_filters,
-        image.sample(),
-        (*image.shape, 0),
+        image.sample(
+            address_mode=vd.AddressMode.CLAMP_TO_BORDER,
+            border_color=vd.BorderColor.FLOAT_OPAQUE_BLACK
+        ),
+        #(*image.shape, 0),
         rotation
     )
 
@@ -244,17 +255,17 @@ def normalize_templates_shader(buff: vc.Buff[vc.f32], sums: vc.Buff[vc.v4], rela
 
     template_sums = sums[template_index].copy()
 
-    N = vc.new_int(buff.shape.y * buff.shape.y)
-    mean = vc.new_float(template_sums.x / N)
+    num = vc.new_int(buff.shape.y * buff.shape.y)
+    mean = vc.new_float(template_sums.x / num)
     variance = vc.new_float(template_sums.y)
     edge_mean = vc.new_float(template_sums.z / (4 * buff.shape.y - 4))
 
     # This block calculates the "mean" and "variance" values such that they will
     # equal the same values in the "normalize_template_projection" function after 
     # we subtract the edge mean.
-    variance[:] = variance - 2 * N * edge_mean * mean
+    variance[:] = variance - 2 * num * edge_mean * mean
     mean[:] = (mean - edge_mean) * relative_size[0] * relative_size[0]
-    variance[:] = variance + mean * mean * (1 - 2 * N / (relative_size[0] * relative_size[0]))
+    variance[:] = variance + mean * mean * (1 - 2 * num / (relative_size[0] * relative_size[0]))
 
     # These lines then match the same lines of code in the "normalize_template_projection" function
     variance[:] = variance + relative_size[1] * mean * mean
