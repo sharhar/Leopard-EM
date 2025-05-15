@@ -107,7 +107,6 @@ def extract_peaks_and_statistics_gev(
     correlation_average: torch.Tensor,
     correlation_variance: torch.Tensor,
     total_correlation_positions: int,
-    num_bins: int = 128,
     false_positives: float = 1.0,
     mask_radius: float = 5.0,
 ) -> MatchTemplatePeaks:
