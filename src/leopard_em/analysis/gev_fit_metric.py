@@ -1,108 +1,97 @@
 """Fit a General Extreme Value (GEV) distribution to calculate cutoff value."""
 
 import warnings
-from typing import Any
+from typing import Optional
 
 import numpy as np
 import torch
-from scipy.optimize import curve_fit
 from scipy.stats import genextreme
+from scipy.stats._distn_infrastructure import rv_frozen
 
 from .match_template_peaks import MatchTemplatePeaks
 from .zscore_metric import find_peaks_from_zscore
 
 
-def gev_zscore_cutoff(zscore_map: torch.Tensor, false_positives: float = 1.0) -> float:
-    """Calculate the z-score cutoff value based on a fitted GEV distribution."""
-    (shape, loc, scale), _, _ = fit_gev_distribution(zscore_map)
-    gev_opt = genextreme(shape, loc=loc, scale=scale)
+def fit_gev_to_zscore(
+    zscore_map: torch.Tensor,
+    min_zscore_value: Optional[float] = None,
+    max_zscore_value: Optional[float] = None,
+    num_samples: Optional[int] = None,
+) -> tuple[rv_frozen, tuple[float, float, float]]:
+    """Helper function to fit a GEV distribution to the z-score map.
 
-    # False positive rate based on the number of search positions
-    num_search_positions = zscore_map.numel()
-    false_positive_rate = false_positives / num_search_positions
-
-    # Calculate the z-score cutoff value
-    zscore_cutoff = gev_opt.ppf(1.0 - false_positive_rate)
-
-    return float(zscore_cutoff)
-
-
-def genextreme_fit_function(
-    x: np.ndarray, shape: float, loc: float, scale: float
-) -> np.ndarray:
-    """Helper function to evaluate when fitting GEV distn. to data histogram.
-
-    Parameters
-    ----------
-    x: np.ndarray
-        The coordinates to evaluate the GEV distribution at.
-    shape: float
-        The shape parameter of the GEV distribution.
-    loc: float
-        The location parameter of the GEV distribution.
-    scale: float
-        The scale parameter of the GEV distribution.
-
-    Returns
-    -------
-    np.ndarray
-        The evaluated GEV distribution at the given coordinates.
-    """
-    return genextreme.pdf(x, shape, loc=loc, scale=scale)
-
-
-def fit_gev_distribution(
-    zscore_map: torch.Tensor | np.ndarray,
-    num_bins: int = 128,
-) -> tuple[tuple[float, float, float], np.ndarray, dict[str, Any]]:
-    """Fit a General Extreme Value (GEV) distribution to the z-score map.
-
-    This function effectively acts as a wrapper around the scipy.optimize.curve_fit
-    function to fit the GEV distribution to the histogram of z-scores. It returns
-    the fitted parameters, the covariance matrix, and additional information about
-    the fit. See scipy.optimize.curve_fit for more details.
-
-    For more advanced usage (e.g. imposing user-defined bounds), consider
-    re-implementing this function in your own codebase.
-
-    Parameters
-    ----------
-    zscore_map : torch.Tensor | np.ndarray
-        Input tensor/array containing z-score values. Can be 2D.
-    num_bins : int, optional
-        Optional number of bins to use for histogram. Default is 128.
-
-    Returns
-    -------
-    popt : tuple
-        Fitted parameters of the GEV distribution (shape, loc, scale).
-    pcov : 2D array
-        Covariance matrix of the fitted parameters.
-    infodict : dict
-        Dictionary containing additional information about the fit.
+    See `gev_zscore_cutoff` for more details.
     """
     if isinstance(zscore_map, torch.Tensor):
         zscore_map = zscore_map.cpu().numpy()
 
-    # Generate a histogram of the flattened z-score map
-    counts, bin_edges = np.histogram(zscore_map.flatten(), bins=num_bins, density=True)
-    bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+    # Logic for handling optional parameters
+    if min_zscore_value is None:
+        min_zscore_value = zscore_map.min().item()
+    if max_zscore_value is None:
+        max_zscore_value = zscore_map.max().item()
+    if num_samples is None or num_samples > zscore_map.size:
+        num_samples = zscore_map.size
 
-    # Initial guess and bounds for the parameters
-    initial_guess = (0.0, 5.0, 0.2)
-    bounds = ([-np.inf, -np.inf, 0.0], [np.inf, np.inf, np.inf])
+    # Get flattened and filtered data to fit the GEV distribution
+    data = zscore_map.flatten()
+    data = data[(data >= min_zscore_value) & (data <= max_zscore_value)]
+    if len(data) > num_samples:  # type: ignore
+        data = np.random.choice(data, num_samples, replace=False)
 
-    popt, pcov, infodict = curve_fit(
-        genextreme_fit_function,
-        bin_centers,
-        counts,
-        p0=initial_guess,
-        bounds=bounds,
-        maxfev=10000,
-        full_output=True,
+    # Fit the parameters of the GEV distribution
+    shape, loc, scale = genextreme.fit(data)
+
+    return genextreme(shape, loc=loc, scale=scale), (shape, loc, scale)
+
+
+def gev_zscore_cutoff(
+    zscore_map: torch.Tensor,
+    false_positives: Optional[float] = 1.0,
+    min_zscore_value: Optional[float] = None,
+    max_zscore_value: Optional[float] = None,
+    num_samples: Optional[int] = None,
+) -> float:
+    """Calculate the z-score cutoff value by fitting a GEV distn to the z-score map.
+
+    NOTE: This function can take on the order of 10s to 100s of seconds to run when
+    there are a large number of pixels in the z-score map. The 'num_samples' parameter
+    can be set to fit only using a random subset of the z-score map.
+
+    Parameters
+    ----------
+    zscore_map: torch.Tensor
+        The z-score map to fit the GEV distribution to.
+    false_positives: float, optional
+        The number of false positives to allow in the image (over all pixels). Default
+        is 1.0 which corresponds to a single false-positive.
+    min_zscore_value: float, optional
+        The minimum z-score value to consider for fitting the GEV distribution. If
+        None, the minimum value in the z-score map is used.
+    max_zscore_value: float, optional
+        The maximum z-score value to consider for fitting the GEV distribution. If
+        None, the maximum value in the z-score map is used. Setting this to around 8.5
+        may be useful to avoid fitting to scores from true positives.
+    num_samples: int, optional
+        The number of samples to use for fitting the GEV distribution. If None, the
+        number of samples is set to the number of pixels in the z-score map. Fewer
+        samples can speed up the fitting process
+    """
+    if isinstance(zscore_map, torch.Tensor):
+        zscore_map = zscore_map.cpu().numpy()
+
+    gev_opt, _ = fit_gev_to_zscore(
+        zscore_map,
+        min_zscore_value=min_zscore_value,
+        max_zscore_value=max_zscore_value,
+        num_samples=num_samples,
     )
 
-    return popt, pcov, infodict
+    # False positive rate of the survival function
+    false_positive_density = false_positives / zscore_map.size
+    tmp = gev_opt.isf(false_positive_density)
+
+    return float(tmp)
 
 
 # pylint: disable=too-many-arguments
