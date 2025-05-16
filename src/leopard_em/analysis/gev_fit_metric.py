@@ -11,12 +11,14 @@ from scipy.stats._distn_infrastructure import rv_frozen
 from .match_template_peaks import MatchTemplatePeaks
 from .zscore_metric import find_peaks_from_zscore
 
+LARGE_PEAK_WARNING_VALUE = 1000
+
 
 def fit_gev_to_zscore(
     zscore_map: torch.Tensor,
     min_zscore_value: Optional[float] = None,
-    max_zscore_value: Optional[float] = None,
-    num_samples: Optional[int] = None,
+    max_zscore_value: Optional[float] = 8.5,
+    num_samples: Optional[int] = 1_000_000,
 ) -> tuple[rv_frozen, tuple[float, float, float]]:
     """Helper function to fit a GEV distribution to the z-score map.
 
@@ -49,14 +51,23 @@ def gev_zscore_cutoff(
     zscore_map: torch.Tensor,
     false_positives: Optional[float] = 1.0,
     min_zscore_value: Optional[float] = None,
-    max_zscore_value: Optional[float] = None,
-    num_samples: Optional[int] = None,
+    max_zscore_value: Optional[float] = 8.5,
+    num_samples: Optional[int] = 1_000_000,
 ) -> float:
     """Calculate the z-score cutoff value by fitting a GEV distn to the z-score map.
 
     NOTE: This function can take on the order of 10s to 100s of seconds to run when
     there are a large number of pixels in the z-score map. The 'num_samples' parameter
     can be set to fit only using a random subset of the z-score map.
+
+    NOTE: Fitting with ~1,000,000 points seems to sufficiently capture the GEV behavior.
+    Your fit results may vary depending on the data; inspecting the quality of your fit
+    is recommended.
+
+    NOTE: The 'max_zscore_value' parameter is set to 8.5 by default which performs well
+    for a full orientation search (1.5 degrees in-plane and 2.5 degrees out-of-plane).
+    Adjusting the search space parameters will require adjustment from the default
+    value.
 
     Parameters
     ----------
@@ -70,12 +81,17 @@ def gev_zscore_cutoff(
         None, the minimum value in the z-score map is used.
     max_zscore_value: float, optional
         The maximum z-score value to consider for fitting the GEV distribution. If
-        None, the maximum value in the z-score map is used. Setting this to around 8.5
-        may be useful to avoid fitting to scores from true positives.
+        None, the maximum value in the z-score map is used. Default is 8.5 and all
+        values above this are ignored.
     num_samples: int, optional
         The number of samples to use for fitting the GEV distribution. If None, the
-        number of samples is set to the number of pixels in the z-score map. Fewer
-        samples can speed up the fitting process
+        number of samples is set to the number of pixels in the z-score map. The default
+        is 1,000,000, and 1 million random pixels are sampled from the z-score map.
+
+    Returns
+    -------
+    float
+        The z-score cutoff value for the GEV distribution.
     """
     if isinstance(zscore_map, torch.Tensor):
         zscore_map = zscore_map.cpu().numpy()
@@ -155,6 +171,15 @@ def extract_peaks_and_statistics_gev(
     # Raise warning if no peaks are found
     if len(pos_y) == 0:
         warnings.warn("No peaks found using z-score metric.", stacklevel=2)
+
+    # Raise warning if a very large number of peaks are found
+    if len(pos_y) > LARGE_PEAK_WARNING_VALUE:
+        warnings.warn(
+            f"Found {len(pos_y)} peaks using the fitted GEV distribution. This is a "
+            "lot and could indicate a poor fit to the data. You should inspect the fit "
+            "before using these results. See the online documentation for details.",
+            stacklevel=2,
+        )
 
     # Extract peak heights, orientations, etc. from other maps
     return MatchTemplatePeaks(
