@@ -473,21 +473,28 @@ def _do_bached_orientation_cross_correlate(
 
     fourier_slice = torch.fft.ifftshift(fourier_slice, dim=(-2,))
         
-    fourier_slice[..., 0, 0] = 0 + 0j  # zero out the DC component (mean zero)
-    fourier_slice *= -1  # flip contrast
+    #fourier_slice[..., 0, 0] = 0 + 0j  # zero out the DC component (mean zero)
+    #fourier_slice *= -1  # flip contrast
+
+    fourier_slice_cpu = fourier_slice.cpu().numpy()
+
+    for ii, corr in enumerate(fourier_slice_cpu):
+        np.save(f"test_data/corr_ref_{device_id}_{ii}.npy", corr)
+
+    exit()
 
     # Apply the projective filters on a new batch dimension
-    fourier_slice = fourier_slice[None, None, ...] * projective_filters[:, :, None, ...] 
+    fourier_slice = fourier_slice[None, None, ...] * projective_filters[:, :, None, ...]
 
     # Inverse Fourier transform into real space and normalize
     projections = torch.fft.irfftn(fourier_slice, dim=(-2, -1))
     projections = torch.fft.ifftshift(projections, dim=(-2, -1))
-
     projections = normalize_template_projection_compiled(
         projections,
         projection_shape_real,
         image_shape_real,
     )
+ 
 
     # Padded forward Fourier transform for cross-correlation
     projections_dft = torch.fft.rfftn(projections, dim=(-2, -1), s=image_shape_real)
@@ -497,12 +504,12 @@ def _do_bached_orientation_cross_correlate(
     projections_dft = image_dft[None, None, None, ...] * projections_dft.conj()
     cross_correlation = torch.fft.irfftn(projections_dft, dim=(-2, -1))
 
-    # fourier_slice_cpu = cross_correlation.cpu().numpy()
-    
-    # print(f"fourier_slice_cpu {device_id} shape: {fourier_slice_cpu.shape}")
-    # np.save(f"cross_ref_{device_id}.npy", fourier_slice_cpu[0][2][0])
+    fourier_slice_cpu = cross_correlation.cpu().numpy()
 
-    # exit()
+    for ii, corr in enumerate(fourier_slice_cpu[0]):
+        np.save(f"test_data/corr_ref_{device_id}_{ii}.npy", corr[1])
+
+    exit()
     
     # shape is (n_Cs n_defoc n_orientations, H, W)
     return cross_correlation

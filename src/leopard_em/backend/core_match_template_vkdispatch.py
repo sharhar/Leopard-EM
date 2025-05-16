@@ -122,7 +122,7 @@ def _core_match_template_vkdispatch_single_gpu(
     template_dft_temp = torch.fft.ifftshift(template_dft, dim=(0, 1))
     density_volume = torch.fft.irfftn(template_dft_temp, dim=(0, 1, 2))
     density_volume_fft = torch.fft.fftn(density_volume, dim=(0, 1, 2))
-    density_volume_fft: torch.Tensor = torch.fft.fftshift(density_volume_fft, dim=(0, 1, 2))
+    #density_volume_fft: torch.Tensor = torch.fft.fftshift(density_volume_fft, dim=(0, 1, 2))
 
     ###############################################################
     ### Copy Tensor data back to CPU and then to vkdispatch GPU ###
@@ -164,6 +164,21 @@ def _core_match_template_vkdispatch_single_gpu(
     accumulation_initial_values[:, :, 1] = -1
 
     accumulation_buffer.write(accumulation_initial_values)
+
+    # density_volume_padding_size = 2
+    # padded_density = np.zeros(
+    #     shape=(
+    #         density_volume_fft_cpu.shape[0] + density_volume_padding_size * 2, 
+    #         density_volume_fft_cpu.shape[1] + density_volume_padding_size * 2,
+    #         density_volume_fft_cpu.shape[2] + density_volume_padding_size * 2,),
+    #     dtype=np.complex64)
+    
+    # padded_density[
+    #     density_volume_padding_size : density_volume_padding_size + density_volume_fft_cpu.shape[0],
+    #     density_volume_padding_size : density_volume_padding_size + density_volume_fft_cpu.shape[1],
+    #     density_volume_padding_size : density_volume_padding_size + density_volume_fft_cpu.shape[2],
+    # ] = density_volume_fft_cpu
+    
     
     template_image = vd.Image3D(density_volume_fft_cpu.shape, vd.float32, 2)
     template_image.write(density_volume_fft_cpu)
@@ -198,6 +213,7 @@ def _core_match_template_vkdispatch_single_gpu(
         template_buffer,
         projective_filters_buffer,
         template_image,
+        density_volume_fft_cpu.shape,
         cmd_stream.bind_var("rotation_matrix"),
     )
 
@@ -207,7 +223,7 @@ def _core_match_template_vkdispatch_single_gpu(
     def clear_buffer(buff: vc.Buff[vc.c64]):
         buff[vc.global_invocation().x] = "vec2(0)"
 
-    #clear_buffer(template_buffer2)
+    # #clear_buffer(template_buffer2)
     
     fftshift(template_buffer2, template_buffer)
 
@@ -259,10 +275,10 @@ def _core_match_template_vkdispatch_single_gpu(
         # np.save(f"correlation_sum_{device_id}.npy", accumulation[:, :, 2])
         # np.save(f"correlation_sum2_{device_id}.npy", accumulation[:, :, 3])
 
-        # corrs = template_buffer2.read_real(0)
+        # corrs = template_buffer.read(0)
 
         # for ii, corr in enumerate(corrs):
-        #     np.save(f"corr_{device_id}_{ii}.npy", corr)
+        #     np.save(f"test_data/corr_{device_id}_{ii}.npy", corr)
 
         # exit()
     

@@ -9,7 +9,12 @@ from typing import Tuple, List, Callable
 import builtins
 from contextlib import contextmanager
 
-def extract_fft_slices(template_buffer: vd.Buffer, projection_filters: vd.Buffer, image: vd.Image3D, rotation: vc.Var[vc.m4]):
+def extract_fft_slices(
+        template_buffer: vd.Buffer,
+        projection_filters: vd.Buffer,
+        image: vd.Image3D,
+        image_shape: tuple[int, int, int],
+        rotation: vc.Var[vc.m4]):
 
     # We generate the shader source inside this function because we want to hardcode
     # information about the buffer size into the source code of the shader.
@@ -23,29 +28,43 @@ def extract_fft_slices(template_buffer: vd.Buffer, projection_filters: vd.Buffer
 
         ind = vc.global_invocation().x.cast_to(vc.i32).copy()
 
-        vc.if_statement(ind == 0)
-        for i in range(projection_filters.shape[0]):
-            index = ind + i * template_buffer.shape[1] * template_buffer.shape[2]
-            buff[index].x = 0
-            buff[index].y = 0
-        vc.return_statement()
-        vc.end()
+        # vc.if_statement(ind == 0)
+        # for i in range(projection_filters.shape[0]):
+        #     index = ind + i * template_buffer.shape[1] * template_buffer.shape[2]
+        #     buff[index].x = 0
+        #     buff[index].y = 0
+        # vc.return_statement()
+        # vc.end()
         
         # calculate the planar position of the current buffer pixel
         my_pos = vc.new_vec4(0, 0, 0, 1)
         my_pos.x = ind % template_buffer.shape[2]
         my_pos.y = ind / template_buffer.shape[2]
         
+        # my_pos.x += img_shape.y / 2
+        # my_pos.x[:] = vc.mod(my_pos.x, img_shape.y)
+        # my_pos.x -= img_shape.y / 2
+
         my_pos.y += img_shape.y / 2
         my_pos.y[:] = vc.mod(my_pos.y, img_shape.y)
         my_pos.y -= img_shape.y / 2
         
         # rotate the position to 3D template space
         my_pos[:] = rotation * my_pos
-        my_pos.xyz += img_shape.xyz.cast_to(vc.v3) / 2
+        #my_pos.xyz += img_shape.xyz.cast_to(vc.v3) / 2
+
+        #my_pos.xy[:] = -1 * img.sample(my_pos.xyz).xy
+
+        vc.if_any(my_pos.x < -256, my_pos.x > 256, my_pos.y < -256, my_pos.y > 256, my_pos.z < -256, my_pos.z > 256)
+        for i in range(projection_filters.shape[0]):
+            index = ind + i * template_buffer.shape[1] * template_buffer.shape[2]
+            buff[index].x = 0
+            buff[index].y = 0
+        vc.return_statement()
+        vc.end()
 
         my_pos.xy[:] = -1 * img.sample(my_pos.xyz).xy
-
+        
         for i in range(projection_filters.shape[0]):
             index = ind + i * template_buffer.shape[1] * template_buffer.shape[2]
             buff[index] = my_pos.xy * projections[index]
@@ -55,8 +74,11 @@ def extract_fft_slices(template_buffer: vd.Buffer, projection_filters: vd.Buffer
     extract_fft_slices_shader(
         template_buffer,
         projection_filters,
-        image.sample(),
-        (*image.shape, 0),
+        image.sample(
+            address_mode=vd.AddressMode.REPEAT,
+            #border_color=vd.BorderColor.FLOAT_OPAQUE_BLACK
+        ),
+        (*image_shape, 0),
         rotation
     )
 
