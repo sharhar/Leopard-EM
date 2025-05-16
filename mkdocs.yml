@@ -25,3 +25,4 @@ nav:
   # - Pydantic Model API: api/pydantic_models.md
   # - Backend API: api/backend.md
   # - Theory: theory.md
+  - Contributing: contributing.md
