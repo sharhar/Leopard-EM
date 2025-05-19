@@ -11,8 +11,6 @@ import torch
 import tqdm
 from torch_fourier_slice import extract_central_slices_rfft_3d
 
-from .core_match_template_vkdispatch import _core_match_template_vkdispatch_single_gpu
-
 from leopard_em.backend.process_results import (
     aggregate_distributed_results,
     scale_mip,
@@ -21,6 +19,10 @@ from leopard_em.backend.utils import (
     do_iteration_statistics_updates,
     normalize_template_projection,
     run_multiprocess_jobs,
+)
+
+from leopard_em.backend.core_match_template_vkdispatch import (
+    _core_match_template_vkdispatch_single_gpu
 )
 
 USE_VKDISPATCH = True
