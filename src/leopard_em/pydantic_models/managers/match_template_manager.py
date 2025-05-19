@@ -201,9 +201,9 @@ class MatchTemplateManager(BaseModel2DTM):
         #     (euler_angles.shape[0], 3),
         #     dtype=torch.float32,
         # )
-        # euler_angles[:, 0] = 82
-        # euler_angles[:, 1] = 120
-        # euler_angles[:, 2] = 290
+        # euler_angles[:, 0] = 6
+        # euler_angles[:, 1] = 60
+        # euler_angles[:, 2] = 10
 
         template_dft = volume_to_rfft_fourier_slice(template)
 

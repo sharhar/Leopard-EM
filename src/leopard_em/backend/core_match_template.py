@@ -487,13 +487,6 @@ def _do_bached_orientation_cross_correlate(
         projection_shape_real,
         image_shape_real,
     )
-    
-    fourier_slice_cpu = projections.cpu().numpy()
-
-    for ii, corr in enumerate(fourier_slice_cpu[0]):
-        np.save(f"test_data/corr_ref_{device_id}_{ii}.npy", corr[1])
-
-    exit()
 
     # Padded forward Fourier transform for cross-correlation
     projections_dft = torch.fft.rfftn(projections, dim=(-2, -1), s=image_shape_real)
