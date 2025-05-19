@@ -275,12 +275,12 @@ def _core_match_template_vkdispatch_single_gpu(
         # np.save(f"correlation_sum_{device_id}.npy", accumulation[:, :, 2])
         # np.save(f"correlation_sum2_{device_id}.npy", accumulation[:, :, 3])
 
-        # corrs = template_buffer.read(0)
+        corrs = template_buffer2.read_real(0)
 
-        # for ii, corr in enumerate(corrs):
-        #     np.save(f"test_data/corr_{device_id}_{ii}.npy", corr)
+        for ii, corr in enumerate(corrs):
+            np.save(f"test_data/corr_{device_id}_{ii}.npy", corr)
 
-        # exit()
+        exit()
     
     accumulation = accumulation_buffer.read(0)
 

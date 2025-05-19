@@ -473,15 +473,8 @@ def _do_bached_orientation_cross_correlate(
 
     fourier_slice = torch.fft.ifftshift(fourier_slice, dim=(-2,))
         
-    #fourier_slice[..., 0, 0] = 0 + 0j  # zero out the DC component (mean zero)
-    #fourier_slice *= -1  # flip contrast
-
-    fourier_slice_cpu = fourier_slice.cpu().numpy()
-
-    for ii, corr in enumerate(fourier_slice_cpu):
-        np.save(f"test_data/corr_ref_{device_id}_{ii}.npy", corr)
-
-    exit()
+    fourier_slice[..., 0, 0] = 0 + 0j  # zero out the DC component (mean zero)
+    fourier_slice *= -1  # flip contrast
 
     # Apply the projective filters on a new batch dimension
     fourier_slice = fourier_slice[None, None, ...] * projective_filters[:, :, None, ...]
@@ -494,7 +487,13 @@ def _do_bached_orientation_cross_correlate(
         projection_shape_real,
         image_shape_real,
     )
- 
+    
+    fourier_slice_cpu = projections.cpu().numpy()
+
+    for ii, corr in enumerate(fourier_slice_cpu[0]):
+        np.save(f"test_data/corr_ref_{device_id}_{ii}.npy", corr[1])
+
+    exit()
 
     # Padded forward Fourier transform for cross-correlation
     projections_dft = torch.fft.rfftn(projections, dim=(-2, -1), s=image_shape_real)

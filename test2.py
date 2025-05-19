@@ -10,7 +10,7 @@ def perimeter_sum(array):
     return np.sum(top) + np.sum(bottom) + np.sum(left) + np.sum(right) # - array[0, 0] - array[0, -1] - array[-1, 0] - array[-1, -1]
 
 for i in range(4):
-    for j in range(2):
+    for j in range(7):
         data = np.load(f"test_data/corr_ref_{i}_{j}.npy")
         data2 = np.load(f"test_data/corr_{i}_{j}.npy")
 
