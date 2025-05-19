@@ -18,7 +18,7 @@ This file is separated into multiple "blocks" each configuring distinct portions
 
 The first field we specify is the particle stack to optimize the pixel size with.
 With this you must specify the path to the particle stack dataframe (as output from match or refine template), the original template box size in pixels, and the box size to extract the particle with.
-This extracted box size must be even, but the absolute values are not important, although they are for [Refine Template](../programs/refine_template.md).
+This extracted box size must be even, but the absolute values are not important, although they are the same for [Refine Template](../programs/refine_template.md).
 
 ```yaml
 particle_stack:
@@ -29,9 +29,12 @@ particle_stack:
 
 ### Simulator configuration
 
-The optimize template program uses [TeamTomo ttsim3d](https://github.com/teamtomo/ttsim3d) Python package to simulate maps with different pixel sizes.
-The configuration information is described on that page.
-The pixel size specified for the simulator used will be the starting pixel size used for the search.
+The optimize template program uses the [TeamTomo ttsim3d](https://github.com/teamtomo/ttsim3d) Python package to simulate maps with different pixel sizes.
+Detailed configuration information is described on the above page, but the following is the simulator configuration in brief.
+
+!!! note
+
+    The pixel size specified for the simulator used will be the starting pixel size used for the search.
 
 ```yaml
 simulator:
@@ -53,7 +56,7 @@ simulator:
 ### Specifying pixel size search range and steps
 
 The program works in two stages, a coarse and a fine pixel size search.
-We first do a coarse search with a larger range and step size, and then use the best pixel size from that search to do a fine search.
+We first do a coarse search with a larger range and step size, and then use the best pixel size from that search to do localized, fine-grain search.
 
 ```yaml
 pixel_size_coarse_search:
@@ -72,6 +75,4 @@ This will first search between 0.90 and 1.00 in 0.01 Angstrom steps, before sear
 
 ### Pre-processing filters and computational config
 
-These should be the same as for [Match Template](../programs/match_template.md).
-
-
+These should be the same as for [Match Template](../programs/match_template.md) run to identify the particles.

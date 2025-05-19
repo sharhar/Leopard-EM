@@ -7,6 +7,9 @@ plugins:
   - mkdocs-jupyter
   - inline-select-svg
 markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
   - mdx_math
   - footnotes
 extra_javascript:
@@ -14,10 +17,11 @@ extra_javascript:
 nav:
   - Home: index.md
   - Programs:
-    - Match Template: programs/match_template.md
-    - Refine Template: programs/refine_template.md
-    - Optimize Template: programs/optimize_template.md
-    - Constrained Search: programs/constrained_search.md
+    - Overview:                   programs/overview.md
+    - Match Template details:     programs/match_template.md
+    - Refine Template details:    programs/refine_template.md
+    - Optimize Template details:  programs/optimize_template.md
+    - Constrained Search details: programs/constrained_search.md
   - Program Output Formats: data_formats.md
   - Examples:
     - Match Template Configuration: examples/basic_configuration.ipynb

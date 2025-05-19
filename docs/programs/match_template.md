@@ -1,6 +1,6 @@
 ---
 title: The Match Template Program
-description: Description of the match template program
+description: Description of the match template program and its configuration
 ---
 
 # The match template program
@@ -8,11 +8,15 @@ description: Description of the match template program
 The match template program takes in a micrograph and a simulated reference structure along with search parameters to find locations in the image which agree with expected 2D projections of this reference structure.
 Notably, the match template program simultaneously find the orientations of these particles as well as the depth of the particle within the sample.
 
+!!! info "GPU usage with match template"
+
+    The match template program is GPU-intensive, and there is the `ORIENTATION_BATCH_SIZE` parameter within the `run_match_template.py` script should be decreased if you experience a CUDA out of memory error.
+
 ## Configuration options
 
 A default config file for the match template program is available [here on the GitHub page](https://raw.githubusercontent.com/Lucaslab-Berkeley/Leopard-EM/refs/heads/main/programs/match_template/match_template_example_config.yaml).
 This file is separated into multiple "blocks" each configuring distinct portions of the program discussed briefly below.
-Defining and exporting these configurations in terms of Python objects is detailed in [Match Template Configuration](../examples/basic_configuration.ipynb)
+<!-- Defining and exporting these configurations in terms of Python objects is detailed in [Match Template Configuration](../examples/basic_configuration.ipynb) -->
 
 ### Top-level micrograph and template paths
 
@@ -29,7 +33,7 @@ A 3D volume can be simulated from a PDB structure using the [TeamTomo ttsim3d](h
 
 ### Output result files
 
-The next block is the `match_template_result` configuration which defined the output paths for the match template program results.
+The next block is the `match_template_result` configuration which defines where to save match template results to disk
 Note that these paths need to be writable by the user executing the program, and the `match_template_result` needs to be set to `true` if you are overwriting pre-existing result files.
 
 ```yaml
@@ -50,8 +54,8 @@ See [Data Formats](../data_formats.md) for more information.
 
 ### Optics group for micrograph parameters
 
-Constructing the projective filters requires knowledge of what microscope parameters were used to collect the micrograph, namely the defocus of the image.
-These microscope parameters are collected under the `optics_group` block with the most common parameters listed below.
+Constructing the appropriate projective filters requires the microscope parameters used to collect the micrograph, namely the defocus of the image.
+These microscope parameters are collected under the `optics_group` block with the most commonly modified parameters listed below.
 
 ```yaml
 optics_group:
@@ -66,11 +70,14 @@ optics_group:
   ctf_B_factor: 60.0  # in Angstroms^2
 ```
 
-Note the `label` field is currently unused, but could be integrated in the future to differentiate between multiple micrographs and/or refined optical parameters.
+!!! Note
+
+    The `label` field is currently unused and can be set to any string, but may be integrated into other workflows in the future to differentiate between multiple micrograph and/or refined optical parameters.
 
 ### Defocus search space configuration
 
 Defining the defocus search space is configured using the `defocus_search_config` block which defines the minimum, maximum, and step size of defocus values searched over in units of Angstroms.
+For example, to search defocus values ranging across -120 to +120 nm relative to the fitted CTF defocus values, use the following configuration.
 
 ```yaml
 defocus_search_config:
@@ -80,29 +87,39 @@ defocus_search_config:
   enabled: true
 ```
 
-Note that these defocus values are relative to `optics_group.defocus_u` and `optics_group.defocus_v` values.
-Also, the defocus search can be turned off by changing `enabled: true` to `enabled: false`.
+!!! Note
+
+    The defocus search can be turned off by changed the `enabled` field from `true` to `false`. This will run the 2DTM search at a single defocus plane corresponding to the fitted CTF defocus values.
 
 ### Orientation search space configuration
 
-Defining the orientation search space is configured using the `orientation_search_config` block which defines the orientation sampling parameters.
-We find that a psi step size of 1.5 degrees and theta step size of 2.5 degrees with a uniform base grid works well when searching for ribosomes, but other sized structures may need these parameters adjusted.
-There is also the `"healpix"` option for the `base_grid_method` field which uses the [HEALPix](https://healpix.jpl.nasa.gov) discretization of the sphere to sample orientation space.
-Also, the underlying [torch-so3 package](https://github.com/teamtomo/torch-so3) supports multiple particles symmetries, and the use if this in Leopard-EM is discussed [here](../examples/basic_configuration.ipynb).
+How points in orientation space (SO(3) space) are sampled is configured using the the `orientation_search_config` block.
+At its most basic, only three parameters need considered: `base_grid_method`, `psi_step`, and `theta_step`.
+The `uniform` grid sampling method uses the Hopf Fibration from the [torch-so3 package](https://github.com/teamtomo/torch-so3) to generate a uniformly distributed set of points across SO(3) space and should be the first method you try when running a 2DTM search.
+There is also `healpix` option which uses a [HEALPix](https://healpix.jpl.nasa.gov) discretization of the sphere to sample orientation space.
 
+The other two fields define how finely orientation space is sampled with lower angular values corresponding to a larger number of samples.
+The `psi_step` field controls how many degrees are between two consecutive **in-plane** rotations while `theta_step` corresponds to the step size for **out-of-plane** rotations.
+
+??? info "Angular sampling parameters"
+
+    We have empirically found an angular sampling of `psi_step: 1.5` and `theta_step: 2.5` works well for maximizing 60S ribosomal subunit detections *in situ*. These values do not come from some underlying theory. Increasing angular sampling from these parameters in the 60S case does not lead to more particle detections, but it does raise the computational cost and 2DTM noise floor. Decreasing angular sampling leads to particle "misses" which is undesirable.
+
+    If you are searching for a structure other than the 60S ribosome, then an alternate set of angular sampling parameters may work better. Finding these parameters may require some trial and error, and the search parameters must also strike a balance between computational cost, minimizing the noise floor, and maximizing sensitivity.
+
+Below, we show the `orientation_search_config` with the above parameters
 
 ```yaml
 orientation_search_config:
   base_grid_method: uniform
-  psi_step: 1.5      # in degrees
+  psi_step: 1.5    # in degrees
   theta_step: 2.5  # in degrees
-
 ```
 
 ### Configuring the pre-processing filters
 
-We also include some configuration options for pre-processing Fourier filters applied to both the image and template.
-Below, we briefly discuss the parameter choices for the whitening and band-pass filters -- the two most common filter types; there are two additional pre-processing filters (phase-randomization and arbitrary curve) discussed [here](../examples/basic_configuration.ipynb).
+Pre-processing filters are applied to both the image and template in Fourier space.
+Below, we briefly discuss the parameter choices for the whitening and band-pass filters, the two most commonly used 2DTM filters. There are two additional pre-processing filters, phase-randomization & arbitrary curve, whose configuration is discussed [here](../examples/basic_configuration.ipynb).
 In most cases, the default values should suffice, but nevertheless the knobs to tweak how calculations are performed are included for completeness' sake.
 
 The whitening filter, with parameters defined under `preprocessing_filters.whitening_filter`, flattens the 1D power spectrum of the image so each frequency component contributes equally to the cross-corelation; the same filter is applied to template projections.
@@ -110,7 +127,7 @@ The whitening filter is enabled by default and necessary to compensate for the t
 Changing the `do_power_spectrum` to `false` will calculate the whitening filter based on the amplitude spectrum instead of the power spectrum.
 The `whitening_filter.max_freq` field defines the maximum frequency considered (in terms of Nyquist) when calculating the whitening filter; the default of `0.5` should perform well in most cases.
 Similarly, keeping the default `num_freq_bins: null` will choose the number of frequency bins automatically based on input image shape.
-Values between 500-2,000 are generally good.
+Values between 500-2,000 are generally good for typical cryo-EM images with ~4,000 pixels along each dimension.
 
 Bandpass filtering is disabled by default but can be turned on by changing `enabled: false` to `enabled: true`.
 Note that the `high_freq_cutoff` and `low_freq_cutoff` fields are both defined in terms of the Nyquist frequency with values of `null` corresponding to no cutoff.
@@ -134,37 +151,43 @@ preprocessing_filters:
 ### Configuring GPUs for a match template run
 
 The final block of the match template configuration file is used to choose which GPUs will run on.
-The `num_cpus` field can currently be ignored and just set to `1`.
+The `num_cpus` field can currently be ignored and just set to `1`; this may be updated in the future to correspond to the number of CPU threads the search runs on.
 The `gpu_ids` field is a list of integers defining which GPU device index(s) the program will target.
-Configuring the search to be run on the first two GPUs is shown below.
+The example below will distribute work equally between the zeroth and first GPU device which need discoverable by PyTorch.
 
 ```yaml
 computational_config:
   gpu_ids:
   - 0
   - 1
-  num_cpus: 1
+  num_cpus: 1  # Currently unused
 ```
 
 ## Running the match template program
 
 Once you've configured a YAML file, running the match template program is fairly simple.
-We have an example script, [`src/programs/run_match_template.py`](https://github.com/Lucaslab-Berkeley/Leopard-EM/blob/main/src/programs/run_match_template.py), which processes a single micrograph against a single reference template.
+We have an example script, [`src/programs/run_match_template.py`](https://github.com/Lucaslab-Berkeley/Leopard-EM/blob/main/programs/match_template/run_match_template.py), which processes a single micrograph against a single reference template.
 Again, you will need to simulate a 3D electron scattering potential from a PDB file (for example with the [ttsim3d](https://github.com/teamtomo/ttsim3d) package) before running the script.
 
 We have not specified any arguments in the line `df = mt_manager.results_to_dataframe()`.
-You can have more control over the peak extraction by specifying a locate_peak_kwargs dictionary.
+You can have more control over the peak extraction by specifying a `locate_peak_kwargs` dictionary which can control the desired number of false positives in the search or pick particles given a pre-defined z-score cutoff.
 
-  `df = mt_manager.results_to_dataframe(locate_peaks_kwargs={"false_positives": 1.0})`
+```python
+# Select peaks bases on a number of false positives
+df = mt_manager.results_to_dataframe(locate_peaks_kwargs={"false_positives": 1.0})
 
-or 
 
-  `df = mt_manager.results_to_dataframe(locate_peaks_kwargs={"z_score_cutoff": 7.8})`
+# Uses a pre-defined z-score cutoff for peak calling
+df = mt_manager.results_to_dataframe(locate_peaks_kwargs={"z_score_cutoff": 7.8})
+```
+
+Currently, Leopard-EM uses a false-positive rate of 1 per micrograph to differentiate between true particles and background.
+
 
 
 ### Match template output files
 
-The above script will output the statistics maps over the image for the search as well as a Pandas DataFrame with compacted information on found particles.
+The provided program script will output the statistics maps over the image for the search as well as a Pandas DataFrame with compacted information on found particles.
 These data can be passed onto downstream analysis, for example the refine template program.
 More detail about these data is on the [data formats page](../data_formats.md).
 
@@ -177,18 +200,19 @@ $$
 \mathbf{P} = \mathbf{Q} \times \mathbf{R} = \{ p_{11}, \dots, p_{n1}, \dots, p_{nm} \}
 $$
 
-The "best" projection, based on cross-correlation with the cryo-EM image \( I \), is found,
+The "best" projection, based on cross-correlation with the cryo-EM image \( I \) (which is the same shape as the projection), is found,
 
 $$
 \begin{align}
-    \tilde{p}_{ij} = \argmax_{p \in \mathbf{P}} \left(p \cdot I \right)
+    \tilde{p}_{ij} = \text{argmax}_{p \in \mathbf{P}} \left(p \cdot I \right)
 \end{align}
 $$
 
 where the indexes \( i \) and \( j \) correspond to the orientation and relative defocus which generated the "best" projection.
 Orientations of the best projection are returned as Euler angles \( (\phi, \theta, \psi) \) in the ZYZ format.
-Note that this search is done simultaneous for all positions,  \( (x, y) \) within the image using the convolution theorem, but here we focus on a single location in the image.
-The match template program also returns the Maximum Intensity Projection (MIP) which is the cross-correlation score of the best projection as well as a z-score on a per-pixel level.
+Note that in practice, this search is done simultaneous for all positions, \( (x, y) \), within an image much larger than the projection using the convolution theorem, but here we focus on a single location in the image.
+
+The match template program also returns the Maximum Intensity Projection (MIP) which is the cross-correlation score of the best projection as well as a z-score (also called "scaled mip") on a per-pixel level.
 
 $$
 \begin{align}
@@ -199,7 +223,7 @@ $$
 \end{align}
 $$
 
-There are other steps, namely Fourier filtering, which are discussed further in the theory portion of the documentation.
+There are other steps, namely Fourier filtering, which will be discussed in a later theory section of the documentation.
 
 
 [^1]: J Peter Rickgauer, Nikolaus Grigorieff, Winfried Denk (2017) Single-protein detection in crowded molecular environments in cryo-EM images eLife 6:e25648, https://doi.org/10.7554/eLife.25648

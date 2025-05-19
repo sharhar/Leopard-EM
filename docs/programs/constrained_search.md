@@ -5,8 +5,9 @@ description: Description of the constrained search program
 
 # The constrained search program
 
-The constrained search program takes in a particle stack of known particle locations and orientations and searches for another particle based on these.
-This allows us to perform for fewer cross correlations, reducing the noise and thus increasing our sensitivity so we can detect smaller proteins in situ.
+The constrained search program takes in locations and orientations for one particle and searches for another particle based on these locations and orientations.
+This allows us to perform for fewer cross correlations, reducing the noise and thus increasing our sensitivity.
+This increased sensitivity is incredibly useful when searching for smaller proteins which may associate with a larger complex but otherwise fall below the noise floor of full-orientation 2DTM.
 
 ## Configuration options
 
@@ -15,8 +16,7 @@ This file is separated into multiple "blocks" each configuring distinct portions
 
 ### Top-level template paths
 
-The first two fields in the configuration is the path to the 3D reference template  MRC file
-The template should be of the particle we want to search for with the constrained search.
+The first field in the configuration file is the path to the simulated 3D map of the constrained particle we want to search for. Note this is *not* the the 3D map used in either of the match template or refine template steps.
 
 ```yaml
 template_volume_path: /some/path/to/template.mrc
@@ -24,8 +24,8 @@ template_volume_path: /some/path/to/template.mrc
 
 ### Top-level center vector
 
-The center vector is the vector that points from the reference particle to the constrained particle when all euler angles are 0 (default orientation).
-This can be calculated using the script [get_center_vector.py](https://raw.githubusercontent.com/Lucaslab-Berkeley/Leopard-EM/refs/heads/main/programs/constrained_search/utils/get_center_vector.py).
+The center vector is the vector that points from the reference particle to the constrained particle when all Euler angles are 0 (default orientation).
+We include the script [get_center_vector.py](https://raw.githubusercontent.com/Lucaslab-Berkeley/Leopard-EM/refs/heads/main/programs/constrained_search/utils/get_center_vector.py) to calculate this based on two aligned (relative to each other) PDB files.
 
 ```yaml
 center_vector: [53.658134, 82.582367, 47.170788]
@@ -36,7 +36,7 @@ center_vector: [53.658134, 82.582367, 47.170788]
 You must provide particle stacks for the constrained particle as well as the reference particle.
 The euler angles and locations are taken from the reference particle stack, and the mean and variance are taken from the constrained particle stack input, allowing us to accurately calculate a z-score.
 The extracted box size determines how many pixels will be searched over and is calculated as (extracted_size - original_size +1).
-Since we want as few cross-correlations as possible, this should be set as low as possible, ensuring that the particle can still be found within this range.
+Since we want as few cross-correlations as possible, the additional extracted pixels should be kept as low as possible while still allowing for variability in the (x, y) position.
 
 ```yaml
 particle_stack_reference: # This is from the reference particles
