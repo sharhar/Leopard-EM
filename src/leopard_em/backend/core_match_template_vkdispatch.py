@@ -112,8 +112,7 @@ def _core_match_template_vkdispatch_single_gpu(
         raise ImportError("The 'vkdispatch' package must be installed to use the vkdispatch backend.")
     
     vd.initialize(debug_mode=True)
-
-    vd.make_context(devices=[device_id]) #, queue_families=[[0, 2]])
+    vd.make_context(devices=[device_id])
 
     #################################################################################
     ### Inverse FFT shift the template, since we need to redo the FFT calculation ###
@@ -121,8 +120,7 @@ def _core_match_template_vkdispatch_single_gpu(
 
     template_dft_temp = torch.fft.ifftshift(template_dft, dim=(0, 1))
     density_volume = torch.fft.irfftn(template_dft_temp, dim=(0, 1, 2))
-    density_volume_fft = torch.fft.fftn(density_volume, dim=(0, 1, 2))
-    #density_volume_fft: torch.Tensor = torch.fft.fftshift(density_volume_fft, dim=(0, 1, 2))
+    density_volume_fft: torch.Tensor = torch.fft.fftn(density_volume, dim=(0, 1, 2))
 
     ###############################################################
     ### Copy Tensor data back to CPU and then to vkdispatch GPU ###
@@ -143,7 +141,7 @@ def _core_match_template_vkdispatch_single_gpu(
         -1, projective_filters_cpu.shape[-2], projective_filters_cpu.shape[-1]
     )
     
-    image_dft_buffer = vd.RFFTBuffer((image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2)) #vd.asbuffer(image_dft_cpu)
+    image_dft_buffer = vd.RFFTBuffer((image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2))
     image_dft_buffer.write_fourier(image_dft_cpu)
     
     projective_filters_buffer = vd.asbuffer(projective_filters_cpu)
@@ -160,25 +158,10 @@ def _core_match_template_vkdispatch_single_gpu(
     accumulation_buffer = vd.Buffer((correlation_buffer.shape[1], correlation_buffer.shape[1], 4), vd.float32)
 
     accumulation_initial_values = np.zeros(shape=accumulation_buffer.shape, dtype=np.float32)
-    accumulation_initial_values[:, :, 0] = -100000000 # -float("inf")
+    accumulation_initial_values[:, :, 0] = -float("inf")
     accumulation_initial_values[:, :, 1] = -1
 
     accumulation_buffer.write(accumulation_initial_values)
-
-    # density_volume_padding_size = 2
-    # padded_density = np.zeros(
-    #     shape=(
-    #         density_volume_fft_cpu.shape[0] + density_volume_padding_size * 2, 
-    #         density_volume_fft_cpu.shape[1] + density_volume_padding_size * 2,
-    #         density_volume_fft_cpu.shape[2] + density_volume_padding_size * 2,),
-    #     dtype=np.complex64)
-    
-    # padded_density[
-    #     density_volume_padding_size : density_volume_padding_size + density_volume_fft_cpu.shape[0],
-    #     density_volume_padding_size : density_volume_padding_size + density_volume_fft_cpu.shape[1],
-    #     density_volume_padding_size : density_volume_padding_size + density_volume_fft_cpu.shape[2],
-    # ] = density_volume_fft_cpu
-    
     
     template_image = vd.Image3D(density_volume_fft_cpu.shape, vd.float32, 2)
     template_image.write(density_volume_fft_cpu)
@@ -207,8 +190,6 @@ def _core_match_template_vkdispatch_single_gpu(
 
     vd.set_global_cmd_stream(cmd_stream)
 
-    # This part of the TM algorithm has been correctly implemented
-
     extract_fft_slices(
         template_buffer,
         projective_filters_buffer,
@@ -222,8 +203,6 @@ def _core_match_template_vkdispatch_single_gpu(
     @vd.shader("buff.size")
     def clear_buffer(buff: vc.Buff[vc.c64]):
         buff[vc.global_invocation().x] = "vec2(0)"
-
-    # #clear_buffer(template_buffer2)
     
     fftshift(template_buffer2, template_buffer)
 
@@ -267,22 +246,6 @@ def _core_match_template_vkdispatch_single_gpu(
         cmd_stream.set_var("rotation_matrix", rotation_matricies)
         cmd_stream.set_var("index", list(range(i * orientation_batch_size, (i + 1) * orientation_batch_size)))
         cmd_stream.submit(rotation_matricies.shape[0])
-
-        # accumulation = accumulation_buffer.read(0)
-
-        # np.save(f"mip_{device_id}.npy", accumulation[:, :, 0])
-        # np.save(f"best_index_{device_id}.npy", accumulation[:, :, 1])
-        # np.save(f"correlation_sum_{device_id}.npy", accumulation[:, :, 2])
-        # np.save(f"correlation_sum2_{device_id}.npy", accumulation[:, :, 3])
-
-        # corrs = accumulation_buffer.read(0)
-
-        # for ii, corr in enumerate(corrs):
-        #     np.save(f"test_data/corr_{device_id}_{ii}.npy", corr[:, :, 0])
-
-        # time.sleep(1)
-
-        # exit()
     
     accumulation = accumulation_buffer.read(0)
 

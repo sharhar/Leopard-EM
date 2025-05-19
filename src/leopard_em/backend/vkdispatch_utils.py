@@ -243,10 +243,7 @@ def accumulate_per_pixel(
         ind_padded = vc.new_int(ind + 2 * (ind / correlation_signal.shape[1]))
 
         curr_mip = back_buffer[ind_padded].copy("curr_mip")
-
-        # vc.if_statement(ind == 249 * 4096 + 476)
-        # vc.print("0: ", curr_mip)
-        # vc.end()
+        
         curr_index = (correlation_signal.shape[0] * index).copy("curr_index")
         sum_cross_register = accum_buff[4 * ind + 2].copy("sum_cross_register")
         sum2_cross_register = accum_buff[4 * ind + 3].copy("sum2_cross_register")
@@ -259,10 +256,6 @@ def accumulate_per_pixel(
 
         for i in range(1, correlation_signal.shape[0]):
             curr_mip[:] = back_buffer[ind_padded + i * (correlation_signal.shape[1] * correlation_signal.shape[2] * 2)]
-
-            # vc.if_statement(ind == 249 * 4096 + 476)
-            # vc.print(f"{i}: ", curr_mip)
-            # vc.end()
 
             sum_cross_register[:] = sum_cross_register + curr_mip
             sum2_cross_register[:] = sum2_cross_register + curr_mip * curr_mip

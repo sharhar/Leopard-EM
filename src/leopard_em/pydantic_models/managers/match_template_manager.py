@@ -196,15 +196,6 @@ class MatchTemplateManager(BaseModel2DTM):
         euler_angles = self.orientation_search_config.euler_angles
         euler_angles = euler_angles.to(torch.float32)
 
-        # # make a mock euler anles tensor for testing
-        # euler_angles = torch.zeros(
-        #     (euler_angles.shape[0], 3),
-        #     dtype=torch.float32,
-        # )
-        # euler_angles[:, 0] = 6
-        # euler_angles[:, 1] = 60
-        # euler_angles[:, 2] = 10
-
         template_dft = volume_to_rfft_fourier_slice(template)
 
         return {
