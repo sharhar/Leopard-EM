@@ -5,7 +5,6 @@
 
 from multiprocessing import set_start_method
 
-import numpy as np
 import roma
 import torch
 import tqdm

@@ -169,8 +169,8 @@ def _core_match_template_vkdispatch_single_gpu(
     ### Calculate full density volume FFT (this is faster in vkdispatch) ###
     ########################################################################
 
-    template_dft_temp = torch.fft.ifftshift(template_dft, dim=(0, 1))
-    density_volume = torch.fft.irfftn(template_dft_temp, dim=(0, 1, 2))
+    template_dft_temp: torch.Tensor = torch.fft.ifftshift(template_dft, dim=(0, 1))
+    density_volume: torch.Tensor = torch.fft.irfftn(template_dft_temp, dim=(0, 1, 2))
     density_volume_fft: torch.Tensor = torch.fft.fftn(density_volume, dim=(0, 1, 2))
 
     ####################################
@@ -189,7 +189,7 @@ def _core_match_template_vkdispatch_single_gpu(
     pixel_values_cpu = pixel_values.cpu().numpy()
     defocus_values_cpu = defocus_values.cpu().numpy()
 
-    # vkdispatch can only handle 1-3D arrays, so we need to flatten the projection filer tensore
+    # vkdispatch can only handle 1-3D arrays, so we need to flatten the projection filer tensor
     projective_filters_cpu = projective_filters_cpu.reshape(
         -1, projective_filters_cpu.shape[-2], projective_filters_cpu.shape[-1]
     )
@@ -198,21 +198,43 @@ def _core_match_template_vkdispatch_single_gpu(
     ### Upload Tensor data to vkdispatch ###
     ########################################
 
-    image_dft_buffer = vd.RFFTBuffer((image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2))
+    image_dft_buffer = vd.RFFTBuffer(
+        (image_dft_cpu.shape[0],
+         (image_dft_cpu.shape[1] - 1) * 2)
+    )
+
     image_dft_buffer.write_fourier(image_dft_cpu)
 
     projective_filters_buffer = vd.asbuffer(projective_filters_cpu)
 
-    template_buffer = vd.RFFTBuffer((projective_filters_cpu.shape[0], density_volume_fft_cpu.shape[0], density_volume_fft_cpu.shape[0]))
+    template_buffer = vd.RFFTBuffer(
+        (projective_filters_cpu.shape[0],
+         density_volume_fft_cpu.shape[0],
+         density_volume_fft_cpu.shape[0])
+    )
+    
     template_buffer.write(np.zeros(shape=template_buffer.shape, dtype=np.complex64))
 
-    template_buffer2 = vd.RFFTBuffer((projective_filters_cpu.shape[0], density_volume_fft_cpu.shape[0], density_volume_fft_cpu.shape[0]))
+    template_buffer2 = vd.RFFTBuffer(
+        (projective_filters_cpu.shape[0],
+         density_volume_fft_cpu.shape[0],
+         density_volume_fft_cpu.shape[0])
+    )
+
     template_buffer2.write(np.zeros(shape=template_buffer2.shape, dtype=np.complex64))
 
-    correlation_buffer = vd.RFFTBuffer((projective_filters_cpu.shape[0], image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2))
+    correlation_buffer = vd.RFFTBuffer(
+        (projective_filters_cpu.shape[0],
+         image_dft_cpu.shape[0],
+         (image_dft_cpu.shape[1] - 1) * 2)
+    )
+
     correlation_buffer.write(np.zeros(shape=correlation_buffer.shape, dtype=np.complex64))
 
-    accumulation_buffer = vd.Buffer((correlation_buffer.shape[1], correlation_buffer.shape[1], 4), vd.float32)
+    accumulation_buffer = vd.Buffer(
+        (correlation_buffer.shape[1], correlation_buffer.shape[1], 4),
+        vd.float32
+    )
 
     accumulation_initial_values = np.zeros(shape=accumulation_buffer.shape, dtype=np.float32)
     accumulation_initial_values[:, :, 0] = -float("inf")
@@ -271,7 +293,7 @@ def _core_match_template_vkdispatch_single_gpu(
 
     accumulate_per_pixel(
         accumulation_buffer,
-        correlation_buffer,            
+        correlation_buffer,
         cmd_stream.bind_var("index")
     )
 
@@ -290,7 +312,7 @@ def _core_match_template_vkdispatch_single_gpu(
         cmd_stream.set_var("index", list(
             range(i * orientation_batch_size, (i + 1) * orientation_batch_size)))
         cmd_stream.submit(rotation_matricies.shape[0])
-    
+
     accumulation = accumulation_buffer.read(0)
 
     best_phi, best_theta, best_psi, best_defocus, best_pixel_size = decompose_best_indicies(

@@ -34,8 +34,8 @@ def extract_fft_slices(
     def extract_fft_slices_shader(
         buff: vc.Buff[vc.c64],
         projections: vc.Buff[vc.f32],
-        img: vc.Img3[vc.f32], 
-        img_shape: vc.Const[vc.iv4], 
+        img: vc.Img3[vc.f32],
+        img_shape: vc.Const[vc.iv4],
         rotation: vc.Var[vc.m4]):
         """
         This is the shader that performs the sampling of the volume's FFT and
@@ -56,7 +56,7 @@ def extract_fft_slices(
         """
 
         ind = vc.global_invocation().x.cast_to(vc.i32).copy()
-        
+
         # calculate the planar position of the current buffer pixel
         my_pos = vc.new_vec4(0, 0, 0, 1)
         my_pos.x = ind % template_buffer.shape[2]
@@ -84,7 +84,7 @@ def extract_fft_slices(
         vc.end()
 
         my_pos.xy[:] = -1 * img.sample(my_pos.xyz).xy
-        
+
         for i in range(projection_filters.shape[0]):
             index = ind + i * template_buffer.shape[1] * template_buffer.shape[2]
             buff[index] = my_pos.xy * projections[index]
@@ -266,7 +266,7 @@ def normalize_templates_shader(
     edge_mean = vc.new_float(template_sums.z / (4 * buff.shape.y - 4))
 
     # This block calculates the "mean" and "variance" values such that they will
-    # equal the same values in the "normalize_template_projection" function after 
+    # equal the same values in the "normalize_template_projection" function after
     # we subtract the edge mean.
     variance[:] = variance - 2 * num * edge_mean * mean
     mean[:] = (mean - edge_mean) * relative_size[0] * relative_size[0]
@@ -523,7 +523,9 @@ def accumulate_per_pixel(
         sum2_cross_register[:] = sum2_cross_register + curr_mip * curr_mip
 
         for i in range(1, correlation_signal.shape[0]):
-            curr_mip[:] = back_buffer[ind_padded + i * (correlation_signal.shape[1] * correlation_signal.shape[2] * 2)]
+            curr_mip[:] = back_buffer[ind_padded + i * (
+                correlation_signal.shape[1] * correlation_signal.shape[2] * 2
+            )]
 
             sum_cross_register[:] = sum_cross_register + curr_mip
             sum2_cross_register[:] = sum2_cross_register + curr_mip * curr_mip
