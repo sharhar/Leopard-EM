@@ -20,16 +20,18 @@ This file is separated into multiple "blocks" each configuring distinct portions
 
 ### Top-level micrograph and template paths
 
-The first two fields in the configuration are paths to the 3D reference template and 2D micrograph saved as MRC files.
-Update these paths based on your system/experiment.
+The first two fields in the configuration are define where the simulated 3D reference template and 2D micrograph are located, respectfully.
+These are both saved in the mrc file format, and the paths need to be updated to match your system and experiment.
 
 ```yaml
 template_volume_path: /some/path/to/template.mrc
 micrograph_path:      /some/path/to/micrograph.mrc
 ```
 
-Note the reference template should be simulated under the same conditions as the experimental micrograph (e.g. total exposure).
-A 3D volume can be simulated from a PDB structure using the [TeamTomo ttsim3d](https://github.com/teamtomo/ttsim3d) Python package.
+!!! note
+
+    The reference template should be simulated under the same conditions as the experimental micrograph (pixel size, cumulative electron exposure, etc.).
+    A 3D volume can be simulated from a PDB structure using the [TeamTomo ttsim3d](https://github.com/teamtomo/ttsim3d) Python package.
 
 ### Output result files
 
@@ -166,10 +168,11 @@ computational_config:
 ## Running the match template program
 
 Once you've configured a YAML file, running the match template program is fairly simple.
-We have an example script, [`src/programs/run_match_template.py`](https://github.com/Lucaslab-Berkeley/Leopard-EM/blob/main/programs/match_template/run_match_template.py), which processes a single micrograph against a single reference template.
-Again, you will need to simulate a 3D electron scattering potential from a PDB file (for example with the [ttsim3d](https://github.com/teamtomo/ttsim3d) package) before running the script.
+We have an example script, [`Leopard-EM/programs/run_match_template.py`](https://github.com/Lucaslab-Berkeley/Leopard-EM/blob/main/programs/match_template/run_match_template.py), which processes a single micrograph against a single reference template.
+In addition to the YAML configuration path, there are the additional variables `DATAFRAME_OUTPUT_PATH` and `ORIENTATION_BATCH_SIZE`.
+The latter variable should be adjusted based on available GPU memory while the former defines where an output csv file containing located particles should be saved.
 
-We have not specified any arguments in the line `df = mt_manager.results_to_dataframe()`.
+We have not specified any arguments in the line `df = mt_manager.results_to_dataframe()` by default.
 You can have more control over the peak extraction by specifying a `locate_peak_kwargs` dictionary which can control the desired number of false positives in the search or pick particles given a pre-defined z-score cutoff.
 
 ```python
@@ -181,15 +184,13 @@ df = mt_manager.results_to_dataframe(locate_peaks_kwargs={"false_positives": 1.0
 df = mt_manager.results_to_dataframe(locate_peaks_kwargs={"z_score_cutoff": 7.8})
 ```
 
-Currently, Leopard-EM uses a false-positive rate of 1 per micrograph to differentiate between true particles and background.
-
-
+Currently, Leopard-EM uses a false-positive rate of 1 per micrograph by default to differentiate between true particles and background.
 
 ### Match template output files
 
 The provided program script will output the statistics maps over the image for the search as well as a Pandas DataFrame with compacted information on found particles.
 These data can be passed onto downstream analysis, for example the refine template program.
-More detail about these data is on the [data formats page](../data_formats.md).
+More detail about these data and their formats is on the [Leopard-EM data formats page](../data_formats.md).
 
 
 ## Mathematical description
