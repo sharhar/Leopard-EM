@@ -1,6 +1,3 @@
-import builtins
-from contextlib import contextmanager
-
 import vkdispatch as vd
 import vkdispatch.codegen as vc
 
@@ -138,20 +135,6 @@ def fftshift(output: vc.Buff[vc.f32], input_buff: vc.Buff[vc.f32]):
 
     output[ind] = input_buff[image_ind]
 
-
-@contextmanager
-def suppress_print():
-    """
-    Context manager to suppress print statements in vkdispatch shaders.
-    """
-
-    original_print = builtins.print
-    builtins.print = lambda *args, **kwargs: None
-    try:
-        yield
-    finally:
-        builtins.print = original_print
-
 def get_template_sums(templates: vd.Buffer):
     """
     This function calculates the sums of the templates in the batch. It does this by
@@ -224,11 +207,7 @@ def get_template_sums(templates: vd.Buffer):
 
         return result
 
-    # I accidentally left some print statements in the reduction code in vkdispatch
-    # so for now we will suppress the print statements when calling this function,
-    # and I will fix this in the next release.
-    with suppress_print():
-        sums = calculate_sums(templates)
+    sums = calculate_sums(templates)
 
     return sums
 
@@ -277,7 +256,6 @@ def normalize_templates_shader(
     variance[:] = variance / relative_size[2]
 
     buff[ind] = (buff[ind] - edge_mean) / vc.sqrt(variance)
-
 
 def normalize_templates(
         templates_buffer: vd.Buffer,
@@ -343,7 +321,8 @@ def embed_templates(output: vc.Buff[vc.c64], input_buff: vc.Buff[vc.c64]):
 def do_padded_cross_correlation(
         template_buffer: vd.Buffer,
         correlation_buffer: vd.RFFTBuffer,
-        image_dft_buffer: vd.RFFTBuffer):
+        image_dft_buffer: vd.RFFTBuffer,
+        run_slow_version: bool = False):
     """
     This function performs the cross-correlation of the image with the templates. It uses
     fused convolution kernels and native zero padding to accelerate the cross-correlation.
@@ -356,7 +335,18 @@ def do_padded_cross_correlation(
         The buffer to store the correlation result in.
     image_dft_buffer : vd.RFFTBuffer
         The buffer containing the DFT of the image.
+    run_slow_version : bool
+        If True, the function will run a slower version of the cross-correlation
+        that does not use fused convolution kernels and native zero padding. This is
+        useful for debugging and testing purposes.
     """
+
+    if run_slow_version:
+        do_padded_cross_correlation_slow(
+            template_buffer,
+            correlation_buffer,
+            image_dft_buffer)
+        return
 
     embed_templates(correlation_buffer, template_buffer)
 
@@ -471,12 +461,50 @@ def do_padded_cross_correlation(
     # Finnally, we do an IFFT on the first axis to get our cross-correlation
     vd.fft.irfft(correlation_buffer)
 
+def do_padded_cross_correlation_slow(
+        template_buffer: vd.Buffer,
+        correlation_buffer: vd.RFFTBuffer,
+        image_dft_buffer: vd.RFFTBuffer):
+    """
+    This function performs the cross-correlation of the image with the templates, however,
+    it purposely does not use fused convolution kernels and native zero padding. 
+
+    Parameters
+    ----------
+    template_buffer : vd.Buffer
+        The buffer containing the templates.
+    correlation_buffer : vd.RFFTBuffer
+        The buffer to store the correlation result in.
+    image_dft_buffer : vd.RFFTBuffer
+        The buffer containing the DFT of the image.
+    """
+
+    @vd.shader("buff.size")
+    def clear_buffer(buff: vc.Buff[vc.c64]):
+        buff[vc.global_invocation().x] = "vec2(0)"
+
+    clear_buffer(correlation_buffer)
+
+    # Now we pad the templates to the size of the image
+    embed_templates(correlation_buffer, template_buffer)
+
+    @vd.shader("buff.size")
+    def apply_kernel(buff: vc.Buff[vc.c64], kernel: vc.Buff[vc.c64]):
+        ind = vc.global_invocation().x.copy()
+        kernel_size = image_dft_buffer.shape[0] * image_dft_buffer.shape[1]
+        buff[ind] = vc.mult_conj_c64(buff[ind], kernel[ind % kernel_size])
+
+    vd.fft.rfft2(correlation_buffer)
+    apply_kernel(correlation_buffer, image_dft_buffer)
+    vd.fft.irfft2(correlation_buffer)
+
 def accumulate_per_pixel(
         accumulation_buffer: vd.Buffer,
         correlation_signal: vd.RFFTBuffer,
         index_var: vc.Var[vc.i32],):
     """
-    This function accumulates the correlation signal per pixel in the accumulation buffer.
+    This function scans all the cross correlations from the different projections and
+    updates the MIP, best index, sum, and sum of squares in the accumulation buffer.
 
     Parameters
     ----------
@@ -507,7 +535,7 @@ def accumulate_per_pixel(
             The variable to store the index of the correlation signal.
         """
 
-        ind = vc.global_invocation().x.copy("ind")
+        ind = vc.global_invocation().x.copy()
         ind_padded = vc.new_int(ind + 2 * (ind / correlation_signal.shape[1]))
 
         curr_mip = back_buffer[ind_padded].copy("curr_mip")

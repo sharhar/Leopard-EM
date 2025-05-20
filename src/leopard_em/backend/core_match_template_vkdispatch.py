@@ -302,15 +302,14 @@ def _core_match_template_vkdispatch_single_gpu(
     ##################################
 
     for i in orientation_batch_iterator:
-        euler_angles_batch = euler_angles_cpu[
-            i * orientation_batch_size : (i + 1) * orientation_batch_size
-        ]
+        start_idx = i * orientation_batch_size
+        end_idx = (i + 1) * orientation_batch_size
 
+        euler_angles_batch = euler_angles_cpu[start_idx:end_idx]
         rotation_matricies = euler_angles_to_rotation_matricies(euler_angles_batch)
 
         cmd_stream.set_var("rotation_matrix", rotation_matricies)
-        cmd_stream.set_var("index", list(
-            range(i * orientation_batch_size, (i + 1) * orientation_batch_size)))
+        cmd_stream.set_var("index", list(range(start_idx, end_idx)))
         cmd_stream.submit(rotation_matricies.shape[0])
 
     accumulation = accumulation_buffer.read(0)
