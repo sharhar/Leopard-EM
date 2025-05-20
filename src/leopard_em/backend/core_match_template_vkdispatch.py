@@ -116,7 +116,8 @@ def _core_match_template_vkdispatch_single_gpu(
             fftshift,
             get_template_sums,
             normalize_templates,
-            pad_templates,
+            #pad_templates,
+            do_padded_cross_correlation,
             accumulate_per_pixel,
         )
     except ImportError as exp:
@@ -220,34 +221,17 @@ def _core_match_template_vkdispatch_single_gpu(
 
     vd.fft.irfft2(template_buffer)
 
-    @vd.shader("buff.size")
-    def clear_buffer(buff: vc.Buff[vc.c64]):
-        buff[vc.global_invocation().x] = "vec2(0)"
-    
     fftshift(template_buffer2, template_buffer)
 
     # Now, we normalize the templates
     sums = get_template_sums(template_buffer2)
     normalize_templates(template_buffer2, sums, projection_shape_real, image_shape_real)
 
-    clear_buffer(correlation_buffer)
-
-    # Now we pad the templates to the size of the image
-    pad_templates(correlation_buffer, template_buffer2)
-    
-    # Do fused convolution of padded templates with reference image
-    @vd.map_registers([vc.c64])
-    def kernel_mapping(kernel_buffer: vc.Buffer[vc.c64]):
-        img_val = vc.mapping_registers()[0]
-        read_register = vc.mapping_registers()[1]
-
-        read_register[:] = kernel_buffer[
-            vc.mapping_index() % (image_dft_buffer.shape[0] * image_dft_buffer.shape[1])
-        ]
-        
-        img_val[:] = vc.mult_conj_c64(read_register, img_val)
-
-    vd.fft.convolve2DR(correlation_buffer, image_dft_buffer, kernel_map=kernel_mapping)
+    do_padded_cross_correlation(
+        template_buffer2,
+        correlation_buffer,
+        image_dft_buffer
+    )
 
     accumulate_per_pixel(
         accumulation_buffer,

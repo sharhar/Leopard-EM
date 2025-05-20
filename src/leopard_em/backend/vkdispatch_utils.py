@@ -313,11 +313,9 @@ def normalize_templates(
         relative_size_array)
 
 @vd.shader("input.size")
-def pad_templates(output: vc.Buff[vc.c64], input: vc.Buff[vc.c64]):
+def embed_templates(output: vc.Buff[vc.c64], input: vc.Buff[vc.c64]):
     """
-    This function pads the input buffer with zeros to match the size of the output buffer.
-    The input buffer is assumed to be in the small space and the output buffer is
-    assumed to be in the large space.
+    This function embeds the small templates into the large correlation buffer.
 
     Parameters
     ----------
@@ -339,6 +337,115 @@ def pad_templates(output: vc.Buff[vc.c64], input: vc.Buff[vc.c64]):
     new_ind[:] = new_ind + ind_2 * output.shape.y * output.shape.z
 
     output[new_ind] = input[ind]
+
+def do_padded_cross_correlation(
+        template_buffer: vd.Buffer,
+        correlation_buffer: vd.RFFTBuffer,
+        image_dft_buffer: vd.RFFTBuffer):
+    """
+    This function performs the cross-correlation of the image with the templates. It uses
+    fused convolution kernels and native zero padding to accelerate the cross-correlation.
+
+    Parameters
+    ----------
+    template_buffer : vd.Buffer
+        The buffer containing the templates.
+    correlation_buffer : vd.RFFTBuffer
+        The buffer to store the correlation result in.
+    image_dft_buffer : vd.RFFTBuffer
+        The buffer containing the DFT of the image.
+    """
+
+    embed_templates(correlation_buffer, template_buffer)
+
+    @vd.map_registers([vc.c64])
+    def initial_input_mapping(input_buffer: vc.Buffer[vc.c64]):
+        """
+        This is the mapping function that describes how to read the initial correlation buffer.
+        It checks to make sure that the index is within the bounds of the template embded in the
+        correlation buffer. If it isn't, we just set the value to zero to avoid the memory access.
+
+        We also have to translate the mapping index to the actual index in the correlation buffer to
+        account for the fact that we are only performing FFTs on the rows with non-zero values.
+        """
+        vc.if_statement(vc.mapping_index() % (correlation_buffer.shape[2] * 2) < template_buffer.shape[1])
+
+        in_layer_index = vc.mapping_index() % (template_buffer.shape[1] * correlation_buffer.shape[2] * 2)
+        out_layer_index = vc.mapping_index() / (template_buffer.shape[1] * correlation_buffer.shape[2] * 2)
+
+        actual_index = in_layer_index / 2 + out_layer_index * correlation_buffer.shape[1] * correlation_buffer.shape[2]
+
+        vc.mapping_registers()[0].x = input_buffer[actual_index][vc.mapping_index() % 2]
+        vc.mapping_registers()[0].y = 0
+        vc.else_statement()
+        vc.mapping_registers()[0][:] = "vec2(0)"
+        vc.end()
+
+    @vd.map_registers([vc.c64])
+    def initial_output_mapping(output_buffer: vc.Buffer[vc.c64]):
+        """
+        We also need this output mapping to make sure the FFT output goes to the right layer
+        in the correlation buffer.
+        """
+        in_layer_index = vc.mapping_index() % (template_buffer.shape[1] * correlation_buffer.shape[2])
+        out_layer_index = vc.mapping_index() / (template_buffer.shape[1] * correlation_buffer.shape[2])
+
+        actual_index = in_layer_index + out_layer_index * correlation_buffer.shape[1] * correlation_buffer.shape[2]
+
+        output_buffer[actual_index] = vc.mapping_registers()[0]
+
+    # Do the first FFT on the correlation buffer accross the first axis
+    vd.fft.fft(
+        correlation_buffer,
+        correlation_buffer,
+        buffer_shape=(correlation_buffer.shape[0], template_buffer.shape[1], correlation_buffer.real_shape[2]),
+        r2c=True,
+        input_map=initial_input_mapping,
+        output_map=initial_output_mapping)
+
+    @vd.map_registers([vc.c64])
+    def kernel_mapping(kernel_buffer: vc.Buffer[vc.c64]):
+        """
+        This is the mapping for the kernel memory access. It just takes the
+        modulo of the mapping index to get the index in the kernel buffer since
+        we only have one kernel for all the templates.
+        """
+
+        img_val = vc.mapping_registers()[0]
+        read_register = vc.mapping_registers()[1]
+
+        read_register[:] = kernel_buffer[
+            vc.mapping_index() % (image_dft_buffer.shape[0] * image_dft_buffer.shape[1])
+        ]
+        
+        img_val[:] = vc.mult_conj_c64(read_register, img_val)
+
+    @vd.map_registers([vc.c64])
+    def input_mapping(input_buffer: vc.Buffer[vc.c64]):
+        """
+        This is the mapping for the input memory access of the convolution. It makes sure 
+        to skip the padding and just set it to zero.
+        """
+        in_layer_index = vc.mapping_index() % (correlation_buffer.shape[1] * correlation_buffer.shape[2])
+
+        vc.if_statement(in_layer_index / correlation_buffer.shape[2] < template_buffer.shape[1])
+        vc.mapping_registers()[0][:] = input_buffer[vc.mapping_index()]
+        vc.else_statement()
+        vc.mapping_registers()[0][:] = "vec2(0)"
+        vc.end()
+    
+    # Do the fused convolution on the correlation buffer's second axis
+    vd.fft.convolve(
+        correlation_buffer,
+        correlation_buffer,
+        image_dft_buffer,
+        kernel_map=kernel_mapping,
+        input_map=input_mapping,
+        axis=1
+    )
+
+    # Finnally, we do an IFFT on the first axis to get our cross-correlation
+    vd.fft.irfft(correlation_buffer)
 
 def accumulate_per_pixel(
         accumulation_buffer: vd.Buffer,
@@ -362,18 +469,19 @@ def accumulate_per_pixel(
         accum_buff: vc.Buff[vc.f32],
         back_buffer: vc.Buff[vc.f32],
         index: vc.Var[vc.i32]):
+        """
+        This is the shader that accumulates the correlation signal per pixel in the
+        accumulation buffer.
 
-    # with vc.builder_context(enable_exec_bounds=False) as builder:
-    #     signature = vd.ShaderSignature.from_type_annotations(
-    #         builder,
-    #         [vc.Buff[vc.f32], vc.Buff[vc.f32], vc.Var[vc.i32]]
-    #     )
-        
-    #     accum_buff = signature.get_variables()[0]
-        
-    #     back_buffer = signature.get_variables()[1]
-
-    #     index: vc.ShaderVariable = signature.get_variables()[2]
+        Parameters
+        ----------
+        accum_buff : vc.Buff[vc.f32]
+            The buffer to accumulate the correlation signal in.
+        back_buffer : vc.Buff[vc.f32]
+            The buffer containing the correlation signal.
+        index : vc.Var[vc.i32]
+            The variable to store the index of the correlation signal.
+        """
 
         ind = vc.global_invocation().x.copy("ind")
         ind_padded = vc.new_int(ind + 2 * (ind / correlation_signal.shape[1]))
