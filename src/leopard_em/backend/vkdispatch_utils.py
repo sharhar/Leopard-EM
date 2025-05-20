@@ -61,19 +61,21 @@ def extract_fft_slices(
         my_pos = vc.new_vec4(0, 0, 0, 1)
         my_pos.x = ind % template_buffer.shape[2]
         my_pos.y = ind / template_buffer.shape[2]
-        
-        # my_pos.x += img_shape.y / 2
-        # my_pos.x[:] = vc.mod(my_pos.x, img_shape.y)
-        # my_pos.x -= img_shape.y / 2
 
         my_pos.y += img_shape.y / 2
         my_pos.y[:] = vc.mod(my_pos.y, img_shape.y)
         my_pos.y -= img_shape.y / 2
-        
+
         # rotate the position to 3D template space
         my_pos[:] = rotation * my_pos
 
-        vc.if_any(my_pos.x < -256, my_pos.x > 256, my_pos.y < -256, my_pos.y > 256, my_pos.z < -256, my_pos.z > 256)
+        vc.if_any(
+            my_pos.x < -256,
+            my_pos.x > 256,
+            my_pos.y < -256,
+            my_pos.y > 256,
+            my_pos.z < -256,
+            my_pos.z > 256)
         for i in range(projection_filters.shape[0]):
             index = ind + i * template_buffer.shape[1] * template_buffer.shape[2]
             buff[index].x = 0
@@ -97,8 +99,8 @@ def extract_fft_slices(
         rotation
     )
 
-@vd.shader(exec_size=lambda args: args.input.size * 2)
-def fftshift(output: vc.Buff[vc.f32], input: vc.Buff[vc.f32]):
+@vd.shader(exec_size=lambda args: args.input_buff.size * 2)
+def fftshift(output: vc.Buff[vc.f32], input_buff: vc.Buff[vc.f32]):
     """
     This function performs an FFT shift on the input buffer and stores the result
     in the output buffer.
@@ -107,34 +109,34 @@ def fftshift(output: vc.Buff[vc.f32], input: vc.Buff[vc.f32]):
     ----------
     output : vc.Buff[vc.f32]
         The buffer to store the FFT shift result in.
-    input : vc.Buff[vc.f32]
+    input_buff : vc.Buff[vc.f32]
         The buffer to perform the FFT shift on.
     """
 
     ind = vc.global_invocation().x.cast_to(vd.int32).copy()
 
     image_ind = vc.new_int()
-    image_ind[:] = ind % (input.shape.y * input.shape.z * 2)
+    image_ind[:] = ind % (input_buff.shape.y * input_buff.shape.z * 2)
 
-    out_x = (image_ind / (2 * input.shape.z)).copy()
-    out_y = (image_ind % (2 * input.shape.z)).copy()
+    out_x = (image_ind / (2 * input_buff.shape.z)).copy()
+    out_y = (image_ind % (2 * input_buff.shape.z)).copy()
 
-    vc.if_statement(out_y >= 2 * input.shape.z - 2)
+    vc.if_statement(out_y >= 2 * input_buff.shape.z - 2)
     output[ind].x = 0
     output[ind].y = 0
     vc.return_statement()
     vc.end()
 
-    image_ind[:] = ind / (input.shape.y * input.shape.z * 2)
+    image_ind[:] = ind / (input_buff.shape.y * input_buff.shape.z * 2)
 
-    image_ind[:] = image_ind * (input.shape.y * input.shape.z * 2)
+    image_ind[:] = image_ind * (input_buff.shape.y * input_buff.shape.z * 2)
 
-    in_x = ((out_x + input.shape.y / 2) % output.shape.y).copy()
-    in_y = ((out_y + input.shape.y / 2) % output.shape.y).copy()
+    in_x = ((out_x + input_buff.shape.y / 2) % output.shape.y).copy()
+    in_y = ((out_y + input_buff.shape.y / 2) % output.shape.y).copy()
 
-    image_ind += in_x * 2 * input.shape.z + in_y
+    image_ind += in_x * 2 * input_buff.shape.z + in_y
 
-    output[ind] = input[image_ind]
+    output[ind] = input_buff[image_ind]
 
 
 @contextmanager
@@ -258,17 +260,17 @@ def normalize_templates_shader(
 
     template_sums = sums[template_index].copy()
 
-    N = vc.new_int(buff.shape.y * buff.shape.y)
-    mean = vc.new_float(template_sums.x / N)
+    num = vc.new_int(buff.shape.y * buff.shape.y)
+    mean = vc.new_float(template_sums.x / num)
     variance = vc.new_float(template_sums.y)
     edge_mean = vc.new_float(template_sums.z / (4 * buff.shape.y - 4))
 
     # This block calculates the "mean" and "variance" values such that they will
     # equal the same values in the "normalize_template_projection" function after 
     # we subtract the edge mean.
-    variance[:] = variance - 2 * N * edge_mean * mean
+    variance[:] = variance - 2 * num * edge_mean * mean
     mean[:] = (mean - edge_mean) * relative_size[0] * relative_size[0]
-    variance[:] = variance + mean * mean * (1 - 2 * N / (relative_size[0] * relative_size[0]))
+    variance[:] = variance + mean * mean * (1 - 2 * num / (relative_size[0] * relative_size[0]))
 
     # These lines then match the same lines of code in the "normalize_template_projection" function
     variance[:] = variance + relative_size[1] * mean * mean
@@ -312,8 +314,8 @@ def normalize_templates(
         sums_buffer,
         relative_size_array)
 
-@vd.shader("input.size")
-def embed_templates(output: vc.Buff[vc.c64], input: vc.Buff[vc.c64]):
+@vd.shader("input_buff.size")
+def embed_templates(output: vc.Buff[vc.c64], input_buff: vc.Buff[vc.c64]):
     """
     This function embeds the small templates into the large correlation buffer.
 
@@ -327,16 +329,16 @@ def embed_templates(output: vc.Buff[vc.c64], input: vc.Buff[vc.c64]):
 
     ind = vc.global_invocation().x.copy()
 
-    ind_0 = ind % input.shape.z
-    ind_1 = (ind / input.shape.z) % input.shape.y
-    ind_2 = ind / (input.shape.y * input.shape.z)
+    ind_0 = ind % input_buff.shape.z
+    ind_1 = (ind / input_buff.shape.z) % input_buff.shape.y
+    ind_2 = ind / (input_buff.shape.y * input_buff.shape.z)
 
     new_ind = vc.new_uint(0)
     new_ind[:] = new_ind + ind_0
     new_ind[:] = new_ind + ind_1 * output.shape.z
     new_ind[:] = new_ind + ind_2 * output.shape.y * output.shape.z
 
-    output[new_ind] = input[ind]
+    output[new_ind] = input_buff[ind]
 
 def do_padded_cross_correlation(
         template_buffer: vd.Buffer,
@@ -365,15 +367,24 @@ def do_padded_cross_correlation(
         It checks to make sure that the index is within the bounds of the template embded in the
         correlation buffer. If it isn't, we just set the value to zero to avoid the memory access.
 
-        We also have to translate the mapping index to the actual index in the correlation buffer to
-        account for the fact that we are only performing FFTs on the rows with non-zero values.
+        We also have to translate the mapping index to the actual index in the correlation buffer
+        to account for the fact that we are only performing FFTs on the rows with non-zero values.
         """
-        vc.if_statement(vc.mapping_index() % (correlation_buffer.shape[2] * 2) < template_buffer.shape[1])
+        vc.if_statement(vc.mapping_index() % (
+            correlation_buffer.shape[2] * 2) < template_buffer.shape[1]
+        )
 
-        in_layer_index = vc.mapping_index() % (template_buffer.shape[1] * correlation_buffer.shape[2] * 2)
-        out_layer_index = vc.mapping_index() / (template_buffer.shape[1] * correlation_buffer.shape[2] * 2)
+        in_layer_index = vc.mapping_index() % (
+            template_buffer.shape[1] * correlation_buffer.shape[2] * 2
+        )
 
-        actual_index = in_layer_index / 2 + out_layer_index * correlation_buffer.shape[1] * correlation_buffer.shape[2]
+        out_layer_index = vc.mapping_index() / (
+            template_buffer.shape[1] * correlation_buffer.shape[2] * 2
+        )
+
+        actual_index = in_layer_index / 2 + out_layer_index * (
+            correlation_buffer.shape[1] * correlation_buffer.shape[2]
+        )
 
         vc.mapping_registers()[0].x = input_buffer[actual_index][vc.mapping_index() % 2]
         vc.mapping_registers()[0].y = 0
@@ -387,10 +398,17 @@ def do_padded_cross_correlation(
         We also need this output mapping to make sure the FFT output goes to the right layer
         in the correlation buffer.
         """
-        in_layer_index = vc.mapping_index() % (template_buffer.shape[1] * correlation_buffer.shape[2])
-        out_layer_index = vc.mapping_index() / (template_buffer.shape[1] * correlation_buffer.shape[2])
+        in_layer_index = vc.mapping_index() % (
+            template_buffer.shape[1] * correlation_buffer.shape[2]
+        )
 
-        actual_index = in_layer_index + out_layer_index * correlation_buffer.shape[1] * correlation_buffer.shape[2]
+        out_layer_index = vc.mapping_index() / (
+            template_buffer.shape[1] * correlation_buffer.shape[2]
+        )
+
+        actual_index = in_layer_index + out_layer_index * (
+            correlation_buffer.shape[1] * correlation_buffer.shape[2]
+        )
 
         output_buffer[actual_index] = vc.mapping_registers()[0]
 
@@ -398,7 +416,11 @@ def do_padded_cross_correlation(
     vd.fft.fft(
         correlation_buffer,
         correlation_buffer,
-        buffer_shape=(correlation_buffer.shape[0], template_buffer.shape[1], correlation_buffer.real_shape[2]),
+        buffer_shape=(
+            correlation_buffer.shape[0],
+            template_buffer.shape[1],
+            correlation_buffer.real_shape[2]
+        ),
         r2c=True,
         input_map=initial_input_mapping,
         output_map=initial_output_mapping)
@@ -417,7 +439,7 @@ def do_padded_cross_correlation(
         read_register[:] = kernel_buffer[
             vc.mapping_index() % (image_dft_buffer.shape[0] * image_dft_buffer.shape[1])
         ]
-        
+
         img_val[:] = vc.mult_conj_c64(read_register, img_val)
 
     @vd.map_registers([vc.c64])
@@ -426,14 +448,16 @@ def do_padded_cross_correlation(
         This is the mapping for the input memory access of the convolution. It makes sure 
         to skip the padding and just set it to zero.
         """
-        in_layer_index = vc.mapping_index() % (correlation_buffer.shape[1] * correlation_buffer.shape[2])
+        in_layer_index = vc.mapping_index() % (
+            correlation_buffer.shape[1] * correlation_buffer.shape[2]
+        )
 
         vc.if_statement(in_layer_index / correlation_buffer.shape[2] < template_buffer.shape[1])
         vc.mapping_registers()[0][:] = input_buffer[vc.mapping_index()]
         vc.else_statement()
         vc.mapping_registers()[0][:] = "vec2(0)"
         vc.end()
-    
+
     # Do the fused convolution on the correlation buffer's second axis
     vd.fft.convolve(
         correlation_buffer,
@@ -487,7 +511,7 @@ def accumulate_per_pixel(
         ind_padded = vc.new_int(ind + 2 * (ind / correlation_signal.shape[1]))
 
         curr_mip = back_buffer[ind_padded].copy("curr_mip")
-        
+
         curr_index = (correlation_signal.shape[0] * index).copy("curr_index")
         sum_cross_register = accum_buff[4 * ind + 2].copy("sum_cross_register")
         sum2_cross_register = accum_buff[4 * ind + 3].copy("sum2_cross_register")
@@ -511,17 +535,14 @@ def accumulate_per_pixel(
 
         accum_buff[4 * ind + 2] = sum_cross_register
         accum_buff[4 * ind + 3] = sum2_cross_register
-        
+
         vc.if_statement(best_mip > accum_buff[4 * ind])
         accum_buff[4 * ind] = best_mip
         accum_buff[4 * ind + 1] = best_curr_index
         vc.end()
 
-        #shader_object = vd.ShaderObject(builder.build("accumulation_shader"), signature)
-
     accumulation_shader(
         accumulation_buffer,
         correlation_signal,
         index_var,
-        #exec_size=(correlation_signal.shape[1] * correlation_signal.shape[1], 1, 1),
     )

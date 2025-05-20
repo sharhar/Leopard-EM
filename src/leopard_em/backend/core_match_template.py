@@ -140,14 +140,17 @@ def core_match_template(
     )
 
     result_dict = run_multiprocess_jobs(
-        target=_core_match_template_vkdispatch_single_gpu if USE_VKDISPATCH else _core_match_template_single_gpu,
+        target=(
+            _core_match_template_vkdispatch_single_gpu
+            if USE_VKDISPATCH else
+            _core_match_template_single_gpu
+        ),
         kwargs_list=kwargs_per_device,
     )
 
     ##################################################
     ### Initialize and start multiprocessing queue ###
     ##################################################
-    
 
     # Get the aggregated results
     partial_results = [result_dict[i] for i in range(len(kwargs_per_device))]
@@ -474,7 +477,7 @@ def _do_bached_orientation_cross_correlate(
     )
 
     fourier_slice = torch.fft.ifftshift(fourier_slice, dim=(-2,))
-        
+
     fourier_slice[..., 0, 0] = 0 + 0j  # zero out the DC component (mean zero)
     fourier_slice *= -1  # flip contrast
 
@@ -498,13 +501,6 @@ def _do_bached_orientation_cross_correlate(
     projections_dft = image_dft[None, None, None, ...] * projections_dft.conj()
     cross_correlation = torch.fft.irfftn(projections_dft, dim=(-2, -1))
 
-    fourier_slice_cpu = cross_correlation.cpu().numpy()
-
-    for ii, corr in enumerate(fourier_slice_cpu[0]):
-        np.save(f"test_data/corr_ref_{device_id}_{ii}.npy", corr[1])
-
-    exit()
-    
     # shape is (n_Cs n_defoc n_orientations, H, W)
     return cross_correlation
 

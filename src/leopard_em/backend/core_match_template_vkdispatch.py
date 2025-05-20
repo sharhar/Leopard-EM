@@ -1,10 +1,23 @@
 import torch
 import tqdm
-import time
-
 import numpy as np
 
 def euler_angles_to_rotation_matricies(angles: np.ndarray) -> np.ndarray:
+    """
+    Converts Euler angles in ZYZ convention to rotation matrices.
+    The angles are assumed to be in degrees.
+
+    Parameters
+    ----------
+    angles : np.ndarray
+        The Euler angles in ZYZ convention. Shape (n, 3) where n is the number of angles.
+
+    Returns
+    -------
+    np.ndarray
+        The rotation matrices corresponding to the Euler angles. Shape (n, 4, 4).
+    """
+
     m = np.zeros(shape=(4, 4, angles.shape[0]), dtype=np.float32)
 
     cos_phi   = np.cos(np.deg2rad(angles[:, 0]))
@@ -16,17 +29,14 @@ def euler_angles_to_rotation_matricies(angles: np.ndarray) -> np.ndarray:
     m[0][0]   = cos_phi * cos_theta * cos_psi - sin_phi * sin_psi
     m[1][0]   = sin_phi * cos_theta * cos_psi + cos_phi * sin_psi
     m[2][0]   = -sin_theta * cos_psi
-    #m[3][0]   = offsets[0]
 
     m[0][1]   = -cos_phi * cos_theta * sin_psi - sin_phi * cos_psi
     m[1][1]   = -sin_phi * cos_theta * sin_psi + cos_phi * cos_psi
     m[2][1]   = sin_theta * sin_psi
-    #m[3][1]   = offsets[1]    
-    
+
     m[0][2]   = sin_theta * cos_phi
     m[1][2]   = sin_theta * sin_phi
     m[2][2]   = cos_theta
-    #m[3][2]   = offsets[2]
 
     return m.T
 
@@ -34,7 +44,35 @@ def decompose_best_indicies(
         best_indicies: np.ndarray,
         euler_angles: np.ndarray,
         defocus_values: np.ndarray,
-        pixel_values: np.ndarray,):
+        pixel_values: np.ndarray):
+    """
+    Decomposes the best indicies into the corresponding Euler angles,
+    defocus values, and pixel sizes.
+
+    Parameters
+    ----------
+    best_indicies : np.ndarray
+        The best indicies from the cross-correlation.
+    euler_angles : np.ndarray
+        The Euler angles used for the cross-correlation.
+    defocus_values : np.ndarray
+        The defocus values used for the cross-correlation.
+    pixel_values : np.ndarray
+        The pixel sizes used for the cross-correlation.
+    
+    Returns
+    -------
+    best_phi : np.ndarray
+        The best phi angles.
+    best_theta : np.ndarray
+        The best theta angles.
+    best_psi : np.ndarray
+        The best psi angles.
+    best_defocus : np.ndarray
+        The best defocus values.
+    best_pixel_size : np.ndarray
+        The best pixel sizes.
+    """
 
     total_projections = defocus_values.shape[0] * pixel_values.shape[0]
 
@@ -109,14 +147,12 @@ def _core_match_template_vkdispatch_single_gpu(
 
     try:
         import vkdispatch as vd
-        import vkdispatch.codegen as vc
 
         from .vkdispatch_utils import (
             extract_fft_slices,
             fftshift,
             get_template_sums,
             normalize_templates,
-            #pad_templates,
             do_padded_cross_correlation,
             accumulate_per_pixel,
         )
@@ -125,9 +161,9 @@ def _core_match_template_vkdispatch_single_gpu(
             "The 'vkdispatch' package must be installed to use the vkdispatch backend. "
             "Please install it via pip or from source: https://github.com/sharhar/vkdispatch"
         ) from exp
-    
+
     vd.initialize(debug_mode=True)
-    vd.make_context(devices=[device_id]) # select the device we want to use 
+    vd.make_context(devices=[device_id]) # select the device we want to use
 
     ########################################################################
     ### Calculate full density volume FFT (this is faster in vkdispatch) ###
@@ -161,18 +197,18 @@ def _core_match_template_vkdispatch_single_gpu(
     ########################################
     ### Upload Tensor data to vkdispatch ###
     ########################################
-    
+
     image_dft_buffer = vd.RFFTBuffer((image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2))
     image_dft_buffer.write_fourier(image_dft_cpu)
-    
+
     projective_filters_buffer = vd.asbuffer(projective_filters_cpu)
 
     template_buffer = vd.RFFTBuffer((projective_filters_cpu.shape[0], density_volume_fft_cpu.shape[0], density_volume_fft_cpu.shape[0]))
     template_buffer.write(np.zeros(shape=template_buffer.shape, dtype=np.complex64))
-    
+
     template_buffer2 = vd.RFFTBuffer((projective_filters_cpu.shape[0], density_volume_fft_cpu.shape[0], density_volume_fft_cpu.shape[0]))
     template_buffer2.write(np.zeros(shape=template_buffer2.shape, dtype=np.complex64))
-    
+
     correlation_buffer = vd.RFFTBuffer((projective_filters_cpu.shape[0], image_dft_cpu.shape[0], (image_dft_cpu.shape[1] - 1) * 2))
     correlation_buffer.write(np.zeros(shape=correlation_buffer.shape, dtype=np.complex64))
 
@@ -183,7 +219,7 @@ def _core_match_template_vkdispatch_single_gpu(
     accumulation_initial_values[:, :, 1] = -1
 
     accumulation_buffer.write(accumulation_initial_values)
-    
+
     template_image = vd.Image3D(density_volume_fft_cpu.shape, vd.float32, 2)
     template_image.write(density_volume_fft_cpu)
 
@@ -279,5 +315,3 @@ def _core_match_template_vkdispatch_single_gpu(
     # Place the results in the shared multi-process manager dictionary so accessible
     # by the main process.
     result_dict[device_id] = result
-
-
