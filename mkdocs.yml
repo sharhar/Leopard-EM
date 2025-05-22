@@ -5,10 +5,17 @@ plugins:
   - search
   - autorefs
   - mkdocs-jupyter
+  - inline-select-svg
   - mkdocs-autoapi:
       autoapi_dir: src
-  - mkdocstrings
-  - inline-select-svg
+  - mkdocstrings:
+      enabled: !ENV [ENABLE_MKDOCSTRINGS, true]
+      handlers:
+        python:
+          paths:
+            - src
+          options:
+            docstring_style: numpy
 markdown_extensions:
   - admonition
   - pymdownx.details
