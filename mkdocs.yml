@@ -5,6 +5,9 @@ plugins:
   - search
   - autorefs
   - mkdocs-jupyter
+  - mkdocs-autoapi:
+      autoapi_dir: src
+  - mkdocstrings
   - inline-select-svg
 markdown_extensions:
   - admonition
