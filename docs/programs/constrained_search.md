@@ -22,29 +22,31 @@ The first field in the configuration file is the path to the simulated 3D map of
 template_volume_path: /some/path/to/template.mrc
 ```
 
-### Top-level center vector
+### Center vector between the structures
 
 The center vector is the vector that points from the reference particle to the constrained particle when all Euler angles are 0 (default orientation).
 We include the script [get_center_vector.py](https://raw.githubusercontent.com/Lucaslab-Berkeley/Leopard-EM/refs/heads/main/programs/constrained_search/utils/get_center_vector.py) to calculate this based on two aligned (relative to each other) PDB files.
 
+The following example is specific to the constrained 40S ribosome search.
+
 ```yaml
-center_vector: [53.658134, 82.582367, 47.170788]
+center_vector: [53.65, 82.58, 47.17]
 ```
 
 ### Particle stacks for the reference and constrained particle
 
 You must provide particle stacks for the constrained particle as well as the reference particle.
 The euler angles and locations are taken from the reference particle stack, and the mean and variance are taken from the constrained particle stack input, allowing us to accurately calculate a z-score.
-The extracted box size determines how many pixels will be searched over and is calculated as (extracted_size - original_size +1).
-Since we want as few cross-correlations as possible, the additional extracted pixels should be kept as low as possible while still allowing for variability in the (x, y) position.
+The extracted box size determines how many pixels will be searched over and is calculated as \( ( \texttt{extracted_size} - \texttt{original_size} + 1 ) \).
+Since we want as few cross-correlations as possible, the additional extracted pixels should be kept as low as possible while still allowing for some variability in the (x, y) position.
 
 ```yaml
-particle_stack_reference: # This is from the reference particles
-  df_path: /some/path/to/particles.csv  # Needs to be readable by pandas
+particle_stack_reference:  # This is from the reference particles
+  df_path: /some/path/to/particles.csv
   extracted_box_size: [520, 520]
   original_template_size: [512, 512]
-particle_stack_constrained: # This is from the constrained particles
-  df_path: /some/path/to/particles.csv  # Needs to be readable by pandas
+particle_stack_constrained:  # This is from the constrained particles
+  df_path: /some/path/to/particles.csv
   extracted_box_size: [520, 520]
   original_template_size: [512, 512]
 ```

@@ -11,7 +11,8 @@ A defocus refinement is also included in the `refine_template` program  whose re
 
 !!! note "Refine template does not find additional particles"
 
-    Refine template uses pre-identified particle locations and orientations from the `match_template` program to refine particle parameters. This will increase the 2DTM SNR values of these pre-selected particles, but this will not find any additional peaks by bringing them above the cutoff threshold.
+    Refine template uses pre-identified particle locations and orientations from the `match_template` program to refine particle parameters.
+    This will increase the 2DTM SNR values of these already identified particles, but this will *not* find any additional peaks by bringing them above the cutoff threshold.
 
 ## Configuration options
 
@@ -44,7 +45,7 @@ Set the `original_template_size` field to the same shape as the simulated volume
 
 We use `extracted_box_size` to allow for some padding around the particle which permits some flexibility in particle location during the refinement step.
 Note that the extracted box shape *must* be larger than the original template size and an even integer.
-Values around 8-32 pixels larger than the original template size are advised, and going much larger will slow down computation without providing any sensitivity benefit.
+Values around 4-24 pixels larger than the original template size are advised, and going larger can start to slow down computation without providing any sensitivity benefit.
 
 The particle stack block should look something like the following.
 
@@ -63,7 +64,7 @@ The `defocus_refinement_config` block defines what defocus values are searched o
 !!! note "Accuracy of defocus refinement"
 
     Obtaining highly-accurate per-particle defocus values is dependent on accurate orientation estimations and the quality of experimental data.
-    You may find different parameters work better depending on the sample and reference template structure.
+    You may find different search parameters work better depending on the sample and reference template structure.
 
 The following configuration will search 100 Angstroms above and below the best particle defocus value in 20 Angstrom increments.
 
@@ -75,7 +76,7 @@ defocus_refinement_config:
   defocus_step: 20.0   # in Angstroms
 ```
 
-Defocus refinement can be turned off by setting `enabled: false` but is enabled by default.
+Defocus refinement can be turned off by setting `enabled: false`, but is enabled by default.
 
 ### Sampling orientation space locally
 
@@ -94,20 +95,20 @@ orientation_refinement_config:
 ```
 
 A good way of choosing these parameters is setting the coarse angular step size to the step size used in `match_template` while the fine angular step size is a free parameter to choose based on desired accuracy.
-Also, like the defocus refinement search, orientation refinement can be disabled by setting `enabled: false` but is enabled by default.
+Also, like the defocus refinement search, orientation refinement can be disabled by setting `enabled: false`, but it is enabled by default.
 
 ### Varying pixel size during refinement
 
 Since 2DTM is sensitive to accurate pixel sizes, we include a final search space configuration block called `pixel_size_refinement_config`.
 Like orientation and defocus refinement, this searches over a uniform grid of pixel sizes relative to the original pixel size (defined in the particle stack csv).
-However, pixel size refinement is turned off by default but can be enabled by setting `enabled: true`.
+However, pixel size refinement is turned off by default and can be enabled by setting `enabled: true`.
 
 !!! warning "Pixel size refinement vs the `optimize_template` program"
 
     Pixel size refinement happens on a per-particle basis in the `refine_template` program whereas the `optimize_template` program finds the "best" global pixel size for a reference structure across all particles.
     If you are doubtful of a deposited model's pixel size accuracy (or the relative pixel size of your micrograph), run the `optimize_template` program rather than using template refinement to identify the correct pixel size.
 
-The following is the default pixel size refinement configuration
+The following is the default pixel size refinement configuration.
 
 ```yaml
 pixel_size_refinement_config:
@@ -139,8 +140,8 @@ computational_config:
 
 Once you've configured a YAML file, running the refine template program is fairly simple.
 We have an example script, [`Leopard-EM/programs/run_refine_template.py`](https://github.com/Lucaslab-Berkeley/Leopard-EM/blob/main/programs/refine_template/run_refine_template.py), which processes single particle stack against a single reference template.
-In addition to the YAML configuration path, there are the additional variables `DATAFRAME_OUTPUT_PATH` and `PARTICLE_BATCH_SIZE`.
-The latter variable is used to process multiple particles at once since it generally leads to better hardware utilization.
+In addition to the YAML configuration path, there are the additional variables `DATAFRAME_OUTPUT_PATH` and `PARTICLE_BATCH_SIZE` near the top of the Python script.
+The latter variable is used to process multiple particles at once since we want to maximize hardware utilization.
 But this parameter also needs to balance available GPU memory.
 
 The former variable, `DATAFRAME_OUTPUT_PATH`, will write a new particle stack csv file with new columns corresponding to the refined position, orientation, defocus, and pixel size on a per-particle basis.

@@ -5,12 +5,13 @@ description: Description of the match template program and its configuration
 
 # The match template program
 
-The match template program takes in a micrograph and a simulated reference structure along with search parameters to find locations in the image which agree with expected 2D projections of this reference structure.
-Notably, the match template program simultaneously find the orientations of these particles as well as the depth of the particle within the sample.
+The match template program takes in a micrograph and a simulated reference structure along with search parameters to find locations in the micrograph which agree with expected 2D projections of this reference structure.
+Notably, the match template program simultaneously finds the location and orientations of these particles as well as the depth of the particle within the sample.
 
 !!! info "GPU usage with match template"
 
-    The match template program is GPU-intensive, and there is the `ORIENTATION_BATCH_SIZE` parameter within the `run_match_template.py` script should be decreased if you experience a CUDA out of memory error.
+    The match template program is GPU-intensive, and there is the `ORIENTATION_BATCH_SIZE` parameter within the `run_match_template.py` script to help manage GPU resources.
+    If you encounter a CUDA out of memory error try decreasing the `ORIENTATION_BATCH_SIZE` parameter.
 
 ## Configuration options
 
@@ -20,8 +21,9 @@ This file is separated into multiple "blocks" each configuring distinct portions
 
 ### Top-level micrograph and template paths
 
-The first two fields in the configuration are define where the simulated 3D reference template and 2D micrograph are located, respectfully.
+The first two fields in the configuration are define where the simulated 3D reference template and 2D micrograph files are located.
 These are both saved in the mrc file format, and the paths need to be updated to match your system and experiment.
+Configurations are made on a per-micrograph basis, that is, a new configuration file should be made for each micrograph in your dataset.
 
 ```yaml
 template_volume_path: /some/path/to/template.mrc
@@ -36,7 +38,8 @@ micrograph_path:      /some/path/to/micrograph.mrc
 ### Output result files
 
 The next block is the `match_template_result` configuration which defines where to save match template results to disk
-Note that these paths need to be writable by the user executing the program, and the `match_template_result` needs to be set to `true` if you are overwriting pre-existing result files.
+Note that these paths need to be writable by the user executing the program, and the `match_template_result.allow_file_overwrite` field needs to be set to `true` if you are overwriting pre-existing result files.
+Otherwise the match template program will not proceed if the files already exist.
 
 ```yaml
 match_template_result:
@@ -78,8 +81,8 @@ optics_group:
 
 ### Defocus search space configuration
 
-Defining the defocus search space is configured using the `defocus_search_config` block which defines the minimum, maximum, and step size of defocus values searched over in units of Angstroms.
-For example, to search defocus values ranging across -120 to +120 nm relative to the fitted CTF defocus values, use the following configuration.
+Defining the defocus search space is configured using the `defocus_search_config` block which defines the exact relative defocus values searched over in units of Angstroms.
+For example, to search defocus values ranging across -120 to +120 nm relative to the fitted CTF defocus values in `optics_group`, use the following configuration.
 
 ```yaml
 defocus_search_config:
@@ -103,7 +106,7 @@ There is also `healpix` option which uses a [HEALPix](https://healpix.jpl.nasa.g
 The other two fields define how finely orientation space is sampled with lower angular values corresponding to a larger number of samples.
 The `psi_step` field controls how many degrees are between two consecutive **in-plane** rotations while `theta_step` corresponds to the step size for **out-of-plane** rotations.
 
-??? info "Angular sampling parameters"
+??? info "A note on default angular sampling parameters"
 
     We have empirically found an angular sampling of `psi_step: 1.5` and `theta_step: 2.5` works well for maximizing 60S ribosomal subunit detections *in situ*. These values do not come from some underlying theory. Increasing angular sampling from these parameters in the 60S case does not lead to more particle detections, but it does raise the computational cost and 2DTM noise floor. Decreasing angular sampling leads to particle "misses" which is undesirable.
 
@@ -124,17 +127,22 @@ Pre-processing filters are applied to both the image and template in Fourier spa
 Below, we briefly discuss the parameter choices for the whitening and band-pass filters, the two most commonly used 2DTM filters. There are two additional pre-processing filters, phase-randomization & arbitrary curve, whose configuration is discussed [here](../examples/basic_configuration.ipynb).
 In most cases, the default values should suffice, but nevertheless the knobs to tweak how calculations are performed are included for completeness' sake.
 
+#### Whitening filter
+
 The whitening filter, with parameters defined under `preprocessing_filters.whitening_filter`, flattens the 1D power spectrum of the image so each frequency component contributes equally to the cross-corelation; the same filter is applied to template projections.
 The whitening filter is enabled by default and necessary to compensate for the the strong low-frequency components of *in situ* cryo-EM images,[^1] but the filter can be disabled by changing `enabled: true` to `enabled: false`.
-Changing the `do_power_spectrum` to `false` will calculate the whitening filter based on the amplitude spectrum instead of the power spectrum.
-The `whitening_filter.max_freq` field defines the maximum frequency considered (in terms of Nyquist) when calculating the whitening filter; the default of `0.5` should perform well in most cases.
+Changing the `do_power_spectrum` to `false` will calculate the whitening filter based on the amplitude spectrum instead of the power spectrum, but we don't observe a major difference when swapping this parameter.
+
+The `whitening_filter.max_freq` field defines the maximum spatial frequency considered (in terms of Nyquist) when calculating the whitening filter; the default of `0.5` should perform well in most cases.
 Similarly, keeping the default `num_freq_bins: null` will choose the number of frequency bins automatically based on input image shape.
 Values between 500-2,000 are generally good for typical cryo-EM images with ~4,000 pixels along each dimension.
+
+#### Bandpass filter
 
 Bandpass filtering is disabled by default but can be turned on by changing `enabled: false` to `enabled: true`.
 Note that the `high_freq_cutoff` and `low_freq_cutoff` fields are both defined in terms of the Nyquist frequency with values of `null` corresponding to no cutoff.
 For example, `high_freq_cutoff: 0.5` and `low_freq_cutoff: null` would correspond to a low-pass filter to the Nyquist frequency of the image.
-Filtering to a specific resolution in terms of Angstroms means doing some basic math to populate these fields.
+Filtering to a specific resolution in terms of Angstroms means doing some math before populating the fields.
 
 ```yaml
 preprocessing_filters:
@@ -165,15 +173,21 @@ computational_config:
   num_cpus: 1  # Currently unused
 ```
 
+!!! warning "RuntimeError: CUDA error: invalid device ordinal"
+
+    If you encounter the error `RuntimeError: CUDA error: invalid device ordinal`, then you've probably listed more GPU devices than are on your machine!
+    Check how many GPUs you have (for example with `nvidia-smi`) and update the `gpu_ids` field accordingly.
+
 ## Running the match template program
 
 Once you've configured a YAML file, running the match template program is fairly simple.
 We have an example script, [`Leopard-EM/programs/run_match_template.py`](https://github.com/Lucaslab-Berkeley/Leopard-EM/blob/main/programs/match_template/run_match_template.py), which processes a single micrograph against a single reference template.
-In addition to the YAML configuration path, there are the additional variables `DATAFRAME_OUTPUT_PATH` and `ORIENTATION_BATCH_SIZE`.
+In addition to the YAML configuration path, there are the additional constant variables `DATAFRAME_OUTPUT_PATH` and `ORIENTATION_BATCH_SIZE` listed near the top of the Python script.
 The latter variable should be adjusted based on available GPU memory while the former defines where an output csv file containing located particles should be saved.
 
-We have not specified any arguments in the line `df = mt_manager.results_to_dataframe()` by default.
+We have not specified any arguments in the line 54 of this script: `df = mt_manager.results_to_dataframe()`.
 You can have more control over the peak extraction by specifying a `locate_peak_kwargs` dictionary which can control the desired number of false positives in the search or pick particles given a pre-defined z-score cutoff.
+For example,
 
 ```python
 # Select peaks bases on a number of false positives
@@ -195,7 +209,7 @@ More detail about these data and their formats is on the [Leopard-EM data format
 
 ## Mathematical description
 
-Described succinctly using mathematics, the match template constructs the orientational search space, \( \mathbf{R} = \{ R_1, R_2, \dots, R_n\} \), and relative defocus search space, \( \mathbf{Q} = \{ \Delta f_1, \Delta f_2, \dots, \Delta f_m\} \), to generate the CTF-convolved projections searched over:
+Described succinctly using mathematics, the match template constructs the orientational search space, \( \mathbf{R} = \{ R_1, R_2, \dots, R_n\} \), and relative defocus search space, \( \mathbf{Q} = \{ \Delta f_1, \Delta f_2, \dots, \Delta f_m\} \), to generate the CTF-convolved projections of a reference template:
 
 $$
 \mathbf{P} = \mathbf{Q} \times \mathbf{R} = \{ p_{11}, \dots, p_{n1}, \dots, p_{nm} \}

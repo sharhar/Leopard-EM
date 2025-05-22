@@ -70,11 +70,11 @@ See the [Contributing](#contributing) page for detailed guidelines on contributi
 
 ## Basic Usage
 
-### Built-in programss
+### Built-in programs
 
 Leopard-EM is runnable through a set of pre-built Python scripts and easily modifiable YAML configurations.
 There are currently five main programs (located under [`programs/` folder](https://github.com/Lucaslab-Berkeley/Leopard-EM/tree/main/programs)) each with their own configuration files.
-Detailed documentation for each program can be found on the [Program Documentation Overview](programs/overview.md), but the five man programs are as follows:
+Detailed documentation for each program can be found on the [Program Documentation Overview](programs/overview.md), but the five main programs are as follows:
 
 1. `match_template` - Runs a whole orientation search for a given reference structure on a single micrograph.
 2. `refine_template` - Takes particles identified from match_template and refines their location, orientation, and defocus parameters.

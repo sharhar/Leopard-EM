@@ -5,7 +5,7 @@ description: Description of the optimize template program
 
 # The optimize template program
 
-The optimize template program takes in a particle stack of known particle locations and orientations and adjusts the pixel size of the template to maximize the SNR.
+The optimize template program takes in a particle stack of known particle locations and orientations and adjusts the pixel size of the template to maximize the 2DTM SNR values.
 The SNRs from 2DTM are extremely sensitive to the pixel size used to simulate the map.
 As a result, we suggest running optimize template early on in data processing to maximize the SNRs.
 
@@ -57,6 +57,7 @@ simulator:
 
 The program works in two stages, a coarse and a fine pixel size search.
 We first do a coarse search with a larger range and step size, and then use the best pixel size from that search to do localized, fine-grain search.
+Note that the min/max values are relative to the pixel size in the simulator configuration.
 
 ```yaml
 pixel_size_coarse_search:
