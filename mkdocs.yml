@@ -16,6 +16,9 @@ plugins:
             - src
           options:
             docstring_style: numpy
+  - gallery:
+      examples_dirs: docs/examples
+      gallery_dirs: docs/generated/gallery
 markdown_extensions:
   - admonition
   - pymdownx.details
@@ -26,6 +29,7 @@ extra_javascript:
   - https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.4/MathJax.js?config=TeX-AMS-MML_HTMLorMML
 nav:
   - Home: index.md
+  - generated/gallery
   - Programs:
     - Overview:                   programs/overview.md
     - Match Template details:     programs/match_template.md

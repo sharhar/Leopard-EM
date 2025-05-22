@@ -82,6 +82,7 @@ docs = [
     "mkdocs-autorefs",
     "mkdocs-autoapi",
     "mkdocstrings[python]",
+    "mkdocs-gallery",
 ]
 
 [project.urls]
