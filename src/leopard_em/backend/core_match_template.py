@@ -116,6 +116,20 @@ def core_match_template(
             - "total_orientations": Total number of orientations searched.
             - "total_defocus": Total number of defocus values searched.
     """
+
+    ###########################################################
+    ### Check that vkdispatch is installed if it is enabled ###
+    ###########################################################
+
+    try:
+        if enable_vkdispatch_experimental:
+            import vkdispatch as _ # noqa: F401
+    except ImportError as exp:
+        raise ImportError(
+            "The 'vkdispatch' must be installed to use the enable_vkdispatch_experimental flag."
+            "Please install it as such: pip3 install leopard-em[vkdispatch]"
+        ) from exp
+
     ##############################################################
     ### Pre-multiply the whitening filter with the CTF filters ###
     ##############################################################

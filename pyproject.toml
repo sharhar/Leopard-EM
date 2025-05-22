@@ -81,6 +81,10 @@ docs = [
     "mkdocs-inline-select-svg-plugin",
     "mkdocs-autorefs"
 ]
+# Optional experimental vkdispatch backend
+vkdispatch = [
+    "vkdispatch==0.0.24"
+]
 
 [project.urls]
 homepage = "https://github.com/Lucaslab-Berkeley/Leopard-EM"

@@ -142,7 +142,7 @@ def _core_match_template_vkdispatch_single_gpu(
     ### Initialize vkdispatch ###
     #############################
 
-        # We import vkdispatch here to avoid requiring it unless the user opts to use it.
+    # We import vkdispatch here to avoid requiring it unless the user opts to use it.
     # This ensures the code remains functional without vkdispatch unless explicitly needed.
 
     try:
@@ -158,8 +158,8 @@ def _core_match_template_vkdispatch_single_gpu(
         )
     except ImportError as exp:
         raise ImportError(
-            "The 'vkdispatch' package must be installed to use the vkdispatch backend. "
-            "Please install it via pip or from source: https://github.com/sharhar/vkdispatch"
+            "The 'vkdispatch' must be installed to use the enable_vkdispatch_experimental flag. "
+            "Please install it as such: pip3 install leopard-em[vkdispatch]"
         ) from exp
 
     vd.initialize(debug_mode=True)
@@ -236,11 +236,11 @@ def _core_match_template_vkdispatch_single_gpu(
         vd.float32
     )
 
-    accumulation_initial_values = np.zeros(shape=best_values_buffer.shape, dtype=np.float32)
-    accumulation_initial_values[:, :, 0] = -float("inf")
-    accumulation_initial_values[:, :, 1] = -1
+    best_initial_values = np.zeros(shape=best_values_buffer.shape, dtype=np.float32)
+    best_initial_values[:, :, 0] = -float("inf")
+    best_initial_values[:, :, 1] = -1
 
-    best_values_buffer.write(accumulation_initial_values)
+    best_values_buffer.write(best_initial_values)
 
     sum_buffer = vd.asbuffer(np.zeros(
         shape=(correlation_buffer.shape[1], correlation_buffer.shape[1], 2),

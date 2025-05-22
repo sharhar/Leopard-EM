@@ -2,11 +2,11 @@ import numpy as np
 
 import mrcfile
 
-with mrcfile.open("/home/shaharsandhaus/Leopard-EM/15426374/xenon_216_000_0_output_scaled_mip.mrc", mode="r") as mrc:
+with mrcfile.open("/home/shaharsandhaus/Leopard-EM/15426374/xenon_216_000_0_output_mip.mrc", mode="r") as mrc:
     # Read the data from the MRC file
     data = mrc.data
 
-with mrcfile.open("/home/shaharsandhaus/Leopard-EM/15426374/results/xenon_216_000_0_output_scaled_mip.mrc", mode="r") as mrc:
+with mrcfile.open("/home/shaharsandhaus/Leopard-EM/15426374/results2/xenon_216_000_0_output_mip.mrc", mode="r") as mrc:
     # Read the data from the MRC file
     data2 = mrc.data
 
