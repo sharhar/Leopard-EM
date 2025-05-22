@@ -24,7 +24,6 @@ from leopard_em.backend.core_match_template_vkdispatch import (
     _core_match_template_vkdispatch_single_gpu
 )
 
-USE_VKDISPATCH = True
 COMPILE_BACKEND = "inductor"
 DEFAULT_STATISTIC_DTYPE = torch.float32
 
@@ -58,6 +57,7 @@ def core_match_template(
     pixel_values: torch.Tensor,
     euler_angles: torch.Tensor,
     device: torch.device | list[torch.device],
+    enable_vkdispatch_experimental: bool,
     orientation_batch_size: int = 1,
 ) -> dict[str, torch.Tensor]:
     """Core function for performing the whole-orientation search.
@@ -92,6 +92,8 @@ def core_match_template(
         (pixel_size_batch,).
     device : torch.device | list[torch.device]
         Device or devices to split computation across.
+    enable_vkdispatch_experimental : bool
+        Whether to use the experimenal vkdispatch backend for the computation.
     orientation_batch_size : int, optional
         Number of projections to calculate at once, on each device
 
@@ -141,7 +143,7 @@ def core_match_template(
     result_dict = run_multiprocess_jobs(
         target=(
             _core_match_template_vkdispatch_single_gpu
-            if USE_VKDISPATCH else
+            if enable_vkdispatch_experimental else
             _core_match_template_single_gpu
         ),
         kwargs_list=kwargs_per_device,

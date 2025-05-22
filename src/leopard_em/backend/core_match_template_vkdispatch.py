@@ -231,16 +231,21 @@ def _core_match_template_vkdispatch_single_gpu(
 
     correlation_buffer.write(np.zeros(shape=correlation_buffer.shape, dtype=np.complex64))
 
-    accumulation_buffer = vd.Buffer(
-        (correlation_buffer.shape[1], correlation_buffer.shape[1], 4),
+    best_values_buffer = vd.Buffer(
+        (correlation_buffer.shape[1], correlation_buffer.shape[1], 2),
         vd.float32
     )
 
-    accumulation_initial_values = np.zeros(shape=accumulation_buffer.shape, dtype=np.float32)
+    accumulation_initial_values = np.zeros(shape=best_values_buffer.shape, dtype=np.float32)
     accumulation_initial_values[:, :, 0] = -float("inf")
     accumulation_initial_values[:, :, 1] = -1
 
-    accumulation_buffer.write(accumulation_initial_values)
+    best_values_buffer.write(accumulation_initial_values)
+
+    sum_buffer = vd.asbuffer(np.zeros(
+        shape=(correlation_buffer.shape[1], correlation_buffer.shape[1], 2),
+        dtype=np.complex64)
+    )
 
     template_image = vd.Image3D(density_volume_fft_cpu.shape, vd.float32, 2)
     template_image.write(density_volume_fft_cpu)
@@ -292,7 +297,8 @@ def _core_match_template_vkdispatch_single_gpu(
     )
 
     accumulate_per_pixel(
-        accumulation_buffer,
+        best_values_buffer,
+        sum_buffer,
         correlation_buffer,
         cmd_stream.bind_var("index")
     )
@@ -312,7 +318,7 @@ def _core_match_template_vkdispatch_single_gpu(
         cmd_stream.set_var("index", list(range(start_idx, end_idx)))
         cmd_stream.submit(rotation_matricies.shape[0])
 
-    accumulation = accumulation_buffer.read(0)
+    accumulation = best_values_buffer.read(0)
 
     best_phi, best_theta, best_psi, best_defocus, best_pixel_size = decompose_best_indicies(
         accumulation[:, :, 1].astype(np.int32),
@@ -321,6 +327,8 @@ def _core_match_template_vkdispatch_single_gpu(
         pixel_values_cpu,
     )
 
+    sums_result = sum_buffer.read(0)
+
     result = {
         "mip": accumulation[:, :, 0],
         "best_phi": best_phi,
@@ -328,8 +336,8 @@ def _core_match_template_vkdispatch_single_gpu(
         "best_psi": best_psi,
         "best_defocus": best_defocus,
         "best_pixel_size": best_pixel_size,
-        "correlation_sum": accumulation[:, :, 2],
-        "correlation_squared_sum": accumulation[:, :,3],
+        "correlation_sum": sums_result[:, :, 0].real, # accumulation[:, :, 2],
+        "correlation_squared_sum": sums_result[:, :, 1].real,
         "total_projections": total_projections,
     }
 

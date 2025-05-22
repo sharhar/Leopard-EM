@@ -1,5 +1,22 @@
 import numpy as np
 
+import mrcfile
+
+with mrcfile.open("/home/shaharsandhaus/Leopard-EM/15426374/xenon_216_000_0_output_scaled_mip.mrc", mode="r") as mrc:
+    # Read the data from the MRC file
+    data = mrc.data
+
+with mrcfile.open("/home/shaharsandhaus/Leopard-EM/15426374/results/xenon_216_000_0_output_scaled_mip.mrc", mode="r") as mrc:
+    # Read the data from the MRC file
+    data2 = mrc.data
+
+print(f"data shape: {data.shape}")
+print(f"data2 shape: {data2.shape}")
+
+np.save("diff.npy", np.abs(data-data2))
+
+exit()
+
 def perimeter_sum(array):
     if array.ndim != 2:
         raise ValueError("Input array must be 2D")

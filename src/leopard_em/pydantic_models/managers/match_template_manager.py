@@ -6,7 +6,7 @@ from typing import Any, ClassVar, Literal, Optional
 import mrcfile
 import pandas as pd
 import torch
-from pydantic import ConfigDict, field_validator
+from pydantic import ConfigDict, field_validator, Field
 
 from leopard_em.backend.core_match_template import core_match_template
 from leopard_em.pydantic_models.config import (
@@ -26,6 +26,10 @@ from leopard_em.pydantic_models.utils import (
 )
 from leopard_em.utils.data_io import load_mrc_image, load_mrc_volume
 
+EnableVkdispatchExperimentalFlag = Field(
+    default=False,
+    description="Enable experimental vkdispatch backend.",
+)
 
 # pylint: disable=no-self-argument
 class MatchTemplateManager(BaseModel2DTM):
@@ -95,6 +99,7 @@ class MatchTemplateManager(BaseModel2DTM):
     preprocessing_filters: PreprocessingFilters
     match_template_result: MatchTemplateResult
     computational_config: ComputationalConfig
+    enable_vkdispatch_experimental: bool = EnableVkdispatchExperimentalFlag
 
     # Non-serialized large array-like attributes
     micrograph: ExcludedTensor
@@ -207,6 +212,7 @@ class MatchTemplateManager(BaseModel2DTM):
             "defocus_values": defocus_values,
             "pixel_values": pixel_size_offsets,
             "device": self.computational_config.gpu_devices,
+            "enable_vkdispatch_experimental": self.enable_vkdispatch_experimental,
         }
 
     def run_match_template(

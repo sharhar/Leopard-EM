@@ -498,8 +498,18 @@ def do_padded_cross_correlation_slow(
     apply_kernel(correlation_buffer, image_dft_buffer)
     vd.fft.irfft2(correlation_buffer)
 
+def ds_add(dsa: vc.Const[vc.v2], dsb: vc.Const[vc.v2]) -> vc.v2:
+    t1 = (dsa.x + dsb.x).copy()
+    e = (t1 - dsa.x).copy()
+    t2 = (((dsb.x - e) + (dsa.x - (t1 - e))) + dsa.y + dsb.y).copy()
+
+    dsc_x = (t1 + t2).copy()
+
+    return vc.new_vec2(dsc_x, t2 - (dsc_x - t1))
+
 def accumulate_per_pixel(
-        accumulation_buffer: vd.Buffer,
+        best_values_buffer: vd.Buffer,
+        sum_buffer: vd.Buffer,
         correlation_signal: vd.RFFTBuffer,
         index_var: vc.Var[vc.i32],):
     """
@@ -508,17 +518,20 @@ def accumulate_per_pixel(
 
     Parameters
     ----------
-    accumulation_buffer : vd.Buffer
-        The buffer to accumulate the correlation signal in.
+    best_values_buffer : vd.Buffer
+        The buffer to store the best values in.
+    sum_buffer : vd.Buffer
+        The buffer to store the sums in.
     correlation_signal : vd.RFFTBuffer
         The buffer containing the correlation signal.
     index_var : BoundVariable
         The variable to store the index of the correlation signal.
     """
 
-    @vd.shader("accum_buff.size // 4")
+    @vd.shader("best_buff.size // 2")
     def accumulation_shader(
-        accum_buff: vc.Buff[vc.f32],
+        best_buff: vc.Buff[vc.f32],
+        sum_buff: vc.Buff[vc.v2],
         back_buffer: vc.Buff[vc.f32],
         index: vc.Var[vc.i32]):
         """
@@ -527,8 +540,9 @@ def accumulate_per_pixel(
 
         Parameters
         ----------
-        accum_buff : vc.Buff[vc.f32]
             The buffer to accumulate the correlation signal in.
+        sum_buff : vc.Buff[vc.v2]
+            The buffer to store the sums in.
         back_buffer : vc.Buff[vc.f32]
             The buffer containing the correlation signal.
         index : vc.Var[vc.i32]
@@ -541,38 +555,42 @@ def accumulate_per_pixel(
         curr_mip = back_buffer[ind_padded].copy("curr_mip")
 
         curr_index = (correlation_signal.shape[0] * index).copy("curr_index")
-        sum_cross_register = accum_buff[4 * ind + 2].copy("sum_cross_register")
-        sum2_cross_register = accum_buff[4 * ind + 3].copy("sum2_cross_register")
+        sum_cross_register = vc.new_vec2(0) #accum_buff[4 * ind + 2].copy("sum_cross_register")
+        sum2_cross_register = vc.new_vec2(0) #accum_buff[4 * ind + 3].copy("sum2_cross_register")
 
         best_mip = vc.new_float(curr_mip, var_name="best_mip")
         best_curr_index = vc.new_int(curr_index, var_name="best_curr_index")
 
-        sum_cross_register[:] = sum_cross_register + curr_mip
-        sum2_cross_register[:] = sum2_cross_register + curr_mip * curr_mip
+        sum_cross_register.y = sum_cross_register.y + curr_mip
+        sum2_cross_register.y = sum2_cross_register.y + curr_mip * curr_mip
 
         for i in range(1, correlation_signal.shape[0]):
             curr_mip[:] = back_buffer[ind_padded + i * (
                 correlation_signal.shape[1] * correlation_signal.shape[2] * 2
             )]
 
-            sum_cross_register[:] = sum_cross_register + curr_mip
-            sum2_cross_register[:] = sum2_cross_register + curr_mip * curr_mip
+            sum_cross_register.y = sum_cross_register.y + curr_mip
+            sum2_cross_register.y = sum2_cross_register.y + curr_mip * curr_mip
 
             vc.if_statement(curr_mip > best_mip)
             best_mip[:] = curr_mip
             best_curr_index[:] = correlation_signal.shape[0] * index + i
             vc.end()
 
-        accum_buff[4 * ind + 2] = sum_cross_register
-        accum_buff[4 * ind + 3] = sum2_cross_register
+        #accum_buff[4 * ind + 2] = sum_cross_register
+        #accum_buff[4 * ind + 3] = sum2_cross_register
 
-        vc.if_statement(best_mip > accum_buff[4 * ind])
-        accum_buff[4 * ind] = best_mip
-        accum_buff[4 * ind + 1] = best_curr_index
+        sum_buff[2 * ind] = ds_add(sum_buff[2 * ind], sum_cross_register)
+        sum_buff[2 * ind + 1] = ds_add(sum_buff[2 * ind + 1], sum2_cross_register)
+
+        vc.if_statement(best_mip > best_buff[2 * ind])
+        best_buff[2 * ind] = best_mip
+        best_buff[2 * ind + 1] = best_curr_index
         vc.end()
 
     accumulation_shader(
-        accumulation_buffer,
+        best_values_buffer,
+        sum_buffer,
         correlation_signal,
         index_var,
     )
