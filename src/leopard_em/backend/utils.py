@@ -82,7 +82,7 @@ def normalize_template_projection(
     variance = torch.sum((projections - mean) ** 2, dim=(-2, -1), keepdim=True)
     # Add the second term of the variance calculation
     variance += (
-        (large_shape[0] - small_shape[0]) * (large_shape[0] - small_shape[0]) * mean**2
+        (large_shape[0] - small_shape[0]) * (large_shape[1] - small_shape[1]) * mean**2
     )
     variance /= large_shape[0] * large_shape[1]
 
@@ -215,16 +215,19 @@ def run_multiprocess_jobs(
 
     Example
     -------
-    def worker(result_dict, idx, param1, param2):
-        # perform work
+    ```
+    def worker_fn(result_dict, idx, param1, param2):
         result_dict[idx] = param1 + param2
+
 
     kwargs_per_process = [
         {"param1": 1, "param2": 2},
         {"param1": 3, "param2": 4},
     ]
-    results = run_multiprocess_jobs(worker, kwargs_per_process)
-    # results will be something like: {0: 3, 1: 7}
+    results = run_multiprocess_jobs(worker_fn, kwargs_per_process)
+    print(results)
+    # {0: 3, 1: 7}
+    ```
     """
     if extra_kwargs is None:
         extra_kwargs = {}
