@@ -100,75 +100,83 @@ The following Python script will run a basic match template program using only t
 See the programs documentation page for more details on running each program.
 
 ```python
-from leopard_em.pydantic_models.managers import MatchTemplateManager
-from leopard_em.pydantic_models.config import MatchTemplateResult
-from leopard_em.pydantic_models.config import OpticsGroup
 from leopard_em.pydantic_models.config import DefocusSearchConfig
 from leopard_em.pydantic_models.config import OrientationSearchConfig
 from leopard_em.pydantic_models.config import ComputationalConfig
+from leopard_em.pydantic_models.config import PreprocessingFilters
+from leopard_em.pydantic_models.data_structures import OpticsGroup
+from leopard_em.pydantic_models.managers import MatchTemplateManager
+from leopard_em.pydantic_models.results import MatchTemplateResult
 
-# Microscope imaging parameters
-my_optics_group = OpticsGroup(
-    label="my_optics_group",
-    pixel_size=1.2,    # In Angstroms
-    voltage=300,       # In kV
-    defocus_u=5100.0,  # In Angstroms
-    defocus_v=4900.0,  # In Angstroms
-    astigmatism_angle=0.0,  # In degrees
-)
 
-# Relative defocus planes to search across
-df_search_config = DefocusSearchConfig(
-    label="defocus_search",
-    min_defocus=1000,   # In Angstroms, relative
-    max_defocus=-1000,  # In Angstroms, relative
-    step_size=200.0,    # In Angstroms
-)
+def setup_match_template_manager():
+    """Helper function to set up MatchTemplateManager Pydantic model."""
+    # Microscope imaging parameters
+    my_optics_group = OpticsGroup(
+        label="my_optics_group",
+        pixel_size=1.2,    # In Angstroms
+        voltage=300,       # In kV
+        defocus_u=5100.0,  # In Angstroms
+        defocus_v=4900.0,  # In Angstroms
+        astigmatism_angle=0.0,  # In degrees
+    )
 
-# Orientation sampling of SO(3) space, using default
-orientation_search_config = OrientationSearchConfig()
+    # Relative defocus planes to search across
+    df_search_config = DefocusSearchConfig(
+        defocus_min=-1000,  # In Angstroms, relative to defocus_{u,v}
+        defocus_max=1000,   # In Angstroms, relative to defocus_{u,v}
+        defocus_step=200.0,    # In Angstroms
+    )
 
-# Where to save the output results
-mt_result = MatchTemplateResult(
-    allow_file_overwrite=True,
-    mip_path="/path/to/output_mip.mrc",
-    scaled_mip_path="/path/to/output_scaled_mip.mrc",
-    correlation_average_path="/path/to/output_correlation_average.mrc",
-    correlation_variance_path="/path/to/output_correlation_variance.mrc",
-    orientation_psi_path="/path/to/output_orientation_psi.mrc",
-    orientation_theta_path="/path/to/output_orientation_theta.mrc",
-    orientation_phi_path="/path/to/output_orientation_phi.mrc",
-    relative_defocus_path="/path/to/output_relative_defocus.mrc",
-    pixel_size_path="/path/to/output_pixel_size.mrc",
-)
+    # Orientation sampling of SO(3) space, using default
+    orientation_search_config = OrientationSearchConfig()
 
-# Which GPUs to run template matching on (here the first 2 GPUs)
-comp_config = ComputationalConfig(gpu_ids=[0, 1])
+    # Where to save the output results
+    mt_result = MatchTemplateResult(
+        allow_file_overwrite=True,
+        mip_path="some/path/to/output_mip.mrc",
+        scaled_mip_path="some/path/to/output_scaled_mip.mrc",
+        correlation_average_path="some/path/to/output_correlation_average.mrc",
+        correlation_variance_path="some/path/to/output_correlation_variance.mrc",
+        orientation_psi_path="some/path/to/output_orientation_psi.mrc",
+        orientation_theta_path="some/path/to/output_orientation_theta.mrc",
+        orientation_phi_path="some/path/to/output_orientation_phi.mrc",
+        relative_defocus_path="some/path/to/output_relative_defocus.mrc",
+    )
 
-mt_manager = MatchTemplateManager(
-    micrograph_path="/path/to/2D_image.mrc",
-    template_volume_path="/path/to/template_volume.mrc",
-    optics_group=my_optics_group,
-    defocus_search_config=df_search_config,
-    orientation_search_config=orientation_search_config,
-    match_template_result=mt_result,
-    computational_config=comp_config,
-    # pixel_size_search_config
-    # preprocessing_filters
-)
+    # What Fourier pre-processing filters to apply to image/template
+    # This uses the default filter parameters which work in most cases
+    pre_filters = PreprocessingFilters()
+
+    # Which GPUs to run template matching on (here the first 2 GPUs)
+    comp_config = ComputationalConfig(gpu_ids=[0, 1])
+
+    # Bring all the other configs together in the manager
+    mt_manager = MatchTemplateManager(
+        micrograph_path="some_path/to/image.mrc",
+        template_volume_path="some_path/to/volume.mrc",
+        optics_group=my_optics_group,
+        defocus_search_config=df_search_config,
+        orientation_search_config=orientation_search_config,
+        match_template_result=mt_result,
+        computational_config=comp_config,
+        preprocessing_filters=pre_filters,
+    )
+
+    return mt_manager
 
 
 def main():
-    # Load and run the match template configuration
-    mt_manager = MatchTemplateManager.from_yaml(YAML_CONFIG_PATH)
+    """Run the match_template program."""
+    mt_manager = setup_match_template_manager()
     mt_manager.run_match_template(
-        orientation_batch_size=ORIENTATION_BATCH_SIZE,
+        orientation_batch_size=1,  # Change this based on GPU memory
         do_result_export=True,  # Saves the statistics immediately upon completion
     )
 
     # Construct and export the dataframe of picked peaks
     df = mt_manager.results_to_dataframe()
-    df.to_csv(DATAFRAME_OUTPUT_PATH, index=True)
+    df.to_csv("my_match_template_results.csv", index=True)
 
 
 if __name__ == "__main__":
