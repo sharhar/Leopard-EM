@@ -68,11 +68,11 @@ def extract_fft_slices(
 
         vc.if_any(
             my_pos.x < -256,
-            my_pos.x > 256,
+            my_pos.x > 255,
             my_pos.y < -256,
-            my_pos.y > 256,
+            my_pos.y > 255,
             my_pos.z < -256,
-            my_pos.z > 256)
+            my_pos.z > 255)
         for i in range(projection_filters.shape[0]):
             index = ind + i * template_buffer.shape[1] * template_buffer.shape[2]
             buff[index].x = 0
@@ -318,6 +318,40 @@ def embed_templates(output: vc.Buff[vc.c64], input_buff: vc.Buff[vc.c64]):
 
     output[new_ind] = input_buff[ind]
 
+def transpose_kernel(
+        correlation_buffer: vd.RFFTBuffer,
+        image_dft_buffer: vd.RFFTBuffer,
+        image_dft_buffer_transposed: vd.RFFTBuffer):
+    
+    @vd.map_registers([vc.c64])
+    def kernel_mapping(kernel_buffer: vc.Buffer[vc.c64], kernel_transposed_buffer: vc.Buffer[vc.c64]):
+        #img_val = vc.mapping_registers()[0]
+        read_register = vc.mapping_registers()[1]
+
+        vc.if_statement(vc.mapping_index() >= correlation_buffer.shape[1] * correlation_buffer.shape[2])
+        vc.return_statement()
+        vc.end()
+
+        in_group_index = vc.local_invocation().y * vc.workgroup_size().x + vc.local_invocation().x
+        out_group_index = vc.workgroup().y * vc.num_workgroups().x + vc.workgroup().x
+
+        true_index = in_group_index + out_group_index * (
+            vc.workgroup_size().x * vc.workgroup_size().y
+        )
+
+        read_register[:] = kernel_buffer[vc.mapping_index()]
+        kernel_transposed_buffer[true_index] = read_register
+
+        #img_val[:] = vc.mult_conj_c64(read_register, img_val)
+    
+    vd.fft.convolve(
+        correlation_buffer,
+        image_dft_buffer,
+        image_dft_buffer_transposed,
+        kernel_map=kernel_mapping,
+        axis=1
+    )
+
 def do_padded_cross_correlation(
         template_buffer: vd.Buffer,
         correlation_buffer: vd.RFFTBuffer,
@@ -426,7 +460,24 @@ def do_padded_cross_correlation(
         img_val = vc.mapping_registers()[0]
         read_register = vc.mapping_registers()[1]
 
-        read_register[:] = kernel_buffer[
+        # in_group_index = vc.local_invocation().y * vc.workgroup_size().x + vc.local_invocation().x
+        # out_group_index = vc.workgroup().y * vc.num_workgroups().x + vc.workgroup().x
+
+        # workgroup_index = in_group_index + out_group_index * (
+        #     vc.workgroup_size().x * vc.workgroup_size().y
+        # )
+
+        # layer_index = vc.mapping_index() / (
+        #     vc.workgroup_size().x * vc.workgroup_size().y *
+        #     vc.num_workgroups().x * vc.num_workgroups().y
+        # )
+
+        # true_index = workgroup_index + layer_index * (
+        #     vc.workgroup_size().x * vc.workgroup_size().y *
+        #     vc.num_workgroups().x * vc.num_workgroups().y
+        # )
+
+        read_register[:] = kernel_buffer[ #true_index]
             vc.mapping_index() % (image_dft_buffer.shape[0] * image_dft_buffer.shape[1])
         ]
 
@@ -555,8 +606,8 @@ def accumulate_per_pixel(
         curr_mip = back_buffer[ind_padded].copy("curr_mip")
 
         curr_index = (correlation_signal.shape[0] * index).copy("curr_index")
-        sum_cross_register = vc.new_vec2(0) #accum_buff[4 * ind + 2].copy("sum_cross_register")
-        sum2_cross_register = vc.new_vec2(0) #accum_buff[4 * ind + 3].copy("sum2_cross_register")
+        sum_cross_register = vc.new_vec2(0)
+        sum2_cross_register = vc.new_vec2(0)
 
         best_mip = vc.new_float(curr_mip, var_name="best_mip")
         best_curr_index = vc.new_int(curr_index, var_name="best_curr_index")
@@ -577,12 +628,9 @@ def accumulate_per_pixel(
             best_curr_index[:] = correlation_signal.shape[0] * index + i
             vc.end()
 
-        #accum_buff[4 * ind + 2] = sum_cross_register
-        #accum_buff[4 * ind + 3] = sum2_cross_register
-
         sum_buff[2 * ind] = ds_add(sum_buff[2 * ind], sum_cross_register)
         sum_buff[2 * ind + 1] = ds_add(sum_buff[2 * ind + 1], sum2_cross_register)
-
+        
         vc.if_statement(best_mip > best_buff[2 * ind])
         best_buff[2 * ind] = best_mip
         best_buff[2 * ind + 1] = best_curr_index

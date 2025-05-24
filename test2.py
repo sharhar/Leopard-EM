@@ -2,18 +2,15 @@ import numpy as np
 
 import mrcfile
 
-with mrcfile.open("/home/shaharsandhaus/Leopard-EM/15426374/xenon_216_000_0_output_mip.mrc", mode="r") as mrc:
-    # Read the data from the MRC file
-    data = mrc.data
+def read_mrc(filename):
+    with mrcfile.open(filename, permissive=True) as mrc:
+        data = mrc.data
+        return data
+    
+ref_dat = read_mrc("data/data2/results_ref/output_scaled_mip.mrc")
+dat = read_mrc("data/data2/results/output_scaled_mip.mrc")
 
-with mrcfile.open("/home/shaharsandhaus/Leopard-EM/15426374/results2/xenon_216_000_0_output_mip.mrc", mode="r") as mrc:
-    # Read the data from the MRC file
-    data2 = mrc.data
-
-print(f"data shape: {data.shape}")
-print(f"data2 shape: {data2.shape}")
-
-np.save("diff.npy", np.abs(data-data2))
+np.save("diff2.npy", ref_dat - dat)
 
 exit()
 
@@ -27,11 +24,11 @@ def perimeter_sum(array):
     return np.sum(top) + np.sum(bottom) + np.sum(left) + np.sum(right) # - array[0, 0] - array[0, -1] - array[-1, 0] - array[-1, -1]
 
 for i in range(4):
-    for j in range(7):
-        data = np.load(f"test_data/corr_ref_{i}_{j}.npy")
-        data2 = np.load(f"test_data/corr_{i}_{j}.npy")
+    for j in range(1):
+        data = np.load(f"samples_conjugate_{i}.npy")
+        data2 = np.load(f"sample_vd_{i}.npy")
 
-        np.save(f"test_data/diff_{i}_{j}.npy", data-data2)
+        np.save(f"diff_{i}_{j}.npy", data-data2)
 
         #print(f"slice_cpu {i} shape: {data.shape}")
         print(f"{i} {j}:") #, np.sum(data), np.sum(data2), np.sum(np.abs(data-data2)))

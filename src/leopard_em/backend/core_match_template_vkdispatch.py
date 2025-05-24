@@ -162,8 +162,12 @@ def _core_match_template_vkdispatch_single_gpu(
             "Please install it as such: pip3 install leopard-em[vkdispatch]"
         ) from exp
 
+    device_index = image_dft.device.index
+
     vd.initialize(debug_mode=True)
-    vd.make_context(devices=[device_id]) # select the device we want to use
+    vd.make_context(devices=[device_index]) # select the device we want to use
+
+    print(f"Using vkdispatch on device {device_index}.")
 
     ########################################################################
     ### Calculate full density volume FFT (this is faster in vkdispatch) ###
@@ -257,11 +261,11 @@ def _core_match_template_vkdispatch_single_gpu(
     num_batches = euler_angles.shape[0] // orientation_batch_size
     orientation_batch_iterator = tqdm.tqdm(
         range(num_batches),
-        desc=f"Progress on device: {device_id}",
+        desc=f"Progress on device: {device_index}",
         leave=True,
         total=num_batches,
         dynamic_ncols=True,
-        position=device_id,
+        position=device_index,
     )
 
     total_projections = euler_angles.shape[0] * defocus_values.shape[0]
