@@ -323,36 +323,52 @@ def transpose_kernel(
         image_dft_buffer: vd.RFFTBuffer,
         image_dft_buffer_transposed: vd.RFFTBuffer):
     
+    """
+    This function transposes a kernel such that reading it during the
+    convolution will be more efficient. We do this by invoking a
+    faux convolution operation, so that we can use a custom kernel mapping
+    function that transposes the kernel as it is read from the buffer.
+
+    Parameters
+    ----------
+    correlation_buffer : vd.RFFTBuffer
+        The buffer containing the correlation data.
+    image_dft_buffer : vd.RFFTBuffer
+        The buffer containing the DFT of the image.
+    image_dft_buffer_transposed : vd.RFFTBuffer
+        The buffer to store the transposed DFT of the image in.
+    """
+    
     @vd.map_registers([vc.c64])
     def kernel_mapping(kernel_buffer: vc.Buffer[vc.c64], kernel_transposed_buffer: vc.Buffer[vc.c64]):
-        #img_val = vc.mapping_registers()[0]
         read_register = vc.mapping_registers()[1]
 
+        # We skip batches other than the first one, since we only have one kernel
         vc.if_statement(vc.mapping_index() >= correlation_buffer.shape[1] * correlation_buffer.shape[2])
         vc.return_statement()
         vc.end()
 
+        # Calculate the invocation within this FFT batch
         in_group_index = vc.local_invocation().y * vc.workgroup_size().x + vc.local_invocation().x
         out_group_index = vc.workgroup().y * vc.num_workgroups().x + vc.workgroup().x
-
         workgroup_index = in_group_index + out_group_index * (
             vc.workgroup_size().x * vc.workgroup_size().y
         )
 
-        layer_index = vc.mapping_index() / (
+        # Calculate the batch index of the FFT
+        batch_index = vc.mapping_index() / (
             vc.workgroup_size().x * vc.workgroup_size().y *
             vc.num_workgroups().x * vc.num_workgroups().y
         )
 
-        true_index = workgroup_index + layer_index * (
+        # Calculate the transposed index
+        transposed_index = workgroup_index + batch_index * (
             vc.workgroup_size().x * vc.workgroup_size().y *
             vc.num_workgroups().x * vc.num_workgroups().y
         )
 
         read_register[:] = kernel_buffer[vc.mapping_index()]
-        kernel_transposed_buffer[true_index] = read_register
-
-        #img_val[:] = vc.mult_conj_c64(read_register, img_val)
+        kernel_transposed_buffer[transposed_index] = read_register
     
     vd.fft.convolve(
         correlation_buffer,
@@ -378,7 +394,7 @@ def do_padded_cross_correlation(
     correlation_buffer : vd.RFFTBuffer
         The buffer to store the correlation result in.
     image_dft_buffer : vd.RFFTBuffer
-        The buffer containing the DFT of the image.
+        The buffer containing the DFT of the transposed image.
     run_slow_version : bool
         If True, the function will run a slower version of the cross-correlation
         that does not use fused convolution kernels and native zero padding. This is
@@ -470,27 +486,26 @@ def do_padded_cross_correlation(
         img_val = vc.mapping_registers()[0]
         read_register = vc.mapping_registers()[1]
 
+        # Calculate the invocation within this FFT batch
         in_group_index = vc.local_invocation().y * vc.workgroup_size().x + vc.local_invocation().x
         out_group_index = vc.workgroup().y * vc.num_workgroups().x + vc.workgroup().x
-
         workgroup_index = in_group_index + out_group_index * (
             vc.workgroup_size().x * vc.workgroup_size().y
         )
 
-        layer_index = (vc.mapping_index() % (image_dft_buffer.shape[0] * image_dft_buffer.shape[1])) / (
+        # Calculate the batch index of the FFT
+        batch_index = (vc.mapping_index() % (image_dft_buffer.shape[0] * image_dft_buffer.shape[1])) / (
             vc.workgroup_size().x * vc.workgroup_size().y *
             vc.num_workgroups().x * vc.num_workgroups().y
         )
 
-        true_index = workgroup_index + layer_index * (
+        # Calculate the transposed index
+        transposed_index = workgroup_index + batch_index * (
             vc.workgroup_size().x * vc.workgroup_size().y *
             vc.num_workgroups().x * vc.num_workgroups().y
         )
 
-        read_register[:] = kernel_buffer[true_index]
-        #    vc.mapping_index() % (image_dft_buffer.shape[0] * image_dft_buffer.shape[1])
-        #]
-
+        read_register[:] = kernel_buffer[transposed_index]
         img_val[:] = vc.mult_conj_c64(read_register, img_val)
 
     @vd.map_registers([vc.c64])

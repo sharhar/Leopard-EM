@@ -264,15 +264,6 @@ def _core_match_template_vkdispatch_single_gpu(
         image_dft_buffer_transposed
     )
 
-    # transposed_data = image_dft_buffer_transposed.read(0)
-
-    # np.save(
-    #     f"transposed_data_{device_id}.npy",
-    #     transposed_data
-    # )
-
-    # exit()
-
     ########################################################
     ### Setup iterator object with tqdm for progress bar ###
     ########################################################
@@ -340,16 +331,6 @@ def _core_match_template_vkdispatch_single_gpu(
         cmd_stream.set_var("rotation_matrix", rotation_matricies)
         cmd_stream.set_var("index", list(range(start_idx, end_idx)))
         cmd_stream.submit(rotation_matricies.shape[0])
-
-        # corrs = correlation_buffer.read(0)
-
-        # for j in range(correlation_buffer.shape[0]):
-        #     np.save(
-        #         f"corr_{device_id}_{j}.npy",
-        #         corrs[j]
-        #     )
-        
-        # exit()
 
     accumulation = best_values_buffer.read(0)
 
