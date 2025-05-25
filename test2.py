@@ -7,12 +7,10 @@ def read_mrc(filename):
         data = mrc.data
         return data
     
-ref_dat = read_mrc("data/data2/results_ref/output_scaled_mip.mrc")
-dat = read_mrc("data/data2/results/output_scaled_mip.mrc")
+# ref_dat = read_mrc("data/data2/results_ref/output_scaled_mip.mrc")
+# dat = read_mrc("data/data2/results/output_scaled_mip.mrc")
 
-np.save("diff2.npy", ref_dat - dat)
-
-exit()
+# np.save("diff2.npy", ref_dat - dat)
 
 def perimeter_sum(array):
     if array.ndim != 2:
@@ -24,9 +22,9 @@ def perimeter_sum(array):
     return np.sum(top) + np.sum(bottom) + np.sum(left) + np.sum(right) # - array[0, 0] - array[0, -1] - array[-1, 0] - array[-1, -1]
 
 for i in range(4):
-    for j in range(1):
-        data = np.load(f"samples_conjugate_{i}.npy")
-        data2 = np.load(f"sample_vd_{i}.npy")
+    for j in range(13):
+        data = np.load(f"corr_ref_{i}_{j}.npy")
+        data2 = np.load(f"corr_{i}_{j}.npy")
 
         np.save(f"diff_{i}_{j}.npy", data-data2)
 

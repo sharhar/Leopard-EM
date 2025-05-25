@@ -335,8 +335,18 @@ def transpose_kernel(
         in_group_index = vc.local_invocation().y * vc.workgroup_size().x + vc.local_invocation().x
         out_group_index = vc.workgroup().y * vc.num_workgroups().x + vc.workgroup().x
 
-        true_index = in_group_index + out_group_index * (
+        workgroup_index = in_group_index + out_group_index * (
             vc.workgroup_size().x * vc.workgroup_size().y
+        )
+
+        layer_index = vc.mapping_index() / (
+            vc.workgroup_size().x * vc.workgroup_size().y *
+            vc.num_workgroups().x * vc.num_workgroups().y
+        )
+
+        true_index = workgroup_index + layer_index * (
+            vc.workgroup_size().x * vc.workgroup_size().y *
+            vc.num_workgroups().x * vc.num_workgroups().y
         )
 
         read_register[:] = kernel_buffer[vc.mapping_index()]
@@ -460,26 +470,26 @@ def do_padded_cross_correlation(
         img_val = vc.mapping_registers()[0]
         read_register = vc.mapping_registers()[1]
 
-        # in_group_index = vc.local_invocation().y * vc.workgroup_size().x + vc.local_invocation().x
-        # out_group_index = vc.workgroup().y * vc.num_workgroups().x + vc.workgroup().x
+        in_group_index = vc.local_invocation().y * vc.workgroup_size().x + vc.local_invocation().x
+        out_group_index = vc.workgroup().y * vc.num_workgroups().x + vc.workgroup().x
 
-        # workgroup_index = in_group_index + out_group_index * (
-        #     vc.workgroup_size().x * vc.workgroup_size().y
-        # )
+        workgroup_index = in_group_index + out_group_index * (
+            vc.workgroup_size().x * vc.workgroup_size().y
+        )
 
-        # layer_index = vc.mapping_index() / (
-        #     vc.workgroup_size().x * vc.workgroup_size().y *
-        #     vc.num_workgroups().x * vc.num_workgroups().y
-        # )
+        layer_index = (vc.mapping_index() % (image_dft_buffer.shape[0] * image_dft_buffer.shape[1])) / (
+            vc.workgroup_size().x * vc.workgroup_size().y *
+            vc.num_workgroups().x * vc.num_workgroups().y
+        )
 
-        # true_index = workgroup_index + layer_index * (
-        #     vc.workgroup_size().x * vc.workgroup_size().y *
-        #     vc.num_workgroups().x * vc.num_workgroups().y
-        # )
+        true_index = workgroup_index + layer_index * (
+            vc.workgroup_size().x * vc.workgroup_size().y *
+            vc.num_workgroups().x * vc.num_workgroups().y
+        )
 
-        read_register[:] = kernel_buffer[ #true_index]
-            vc.mapping_index() % (image_dft_buffer.shape[0] * image_dft_buffer.shape[1])
-        ]
+        read_register[:] = kernel_buffer[true_index]
+        #    vc.mapping_index() % (image_dft_buffer.shape[0] * image_dft_buffer.shape[1])
+        #]
 
         img_val[:] = vc.mult_conj_c64(read_register, img_val)
 

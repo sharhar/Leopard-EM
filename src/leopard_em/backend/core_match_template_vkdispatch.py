@@ -153,6 +153,7 @@ def _core_match_template_vkdispatch_single_gpu(
             fftshift,
             get_template_sums,
             normalize_templates,
+            transpose_kernel,
             do_padded_cross_correlation,
             accumulate_per_pixel,
         )
@@ -166,8 +167,6 @@ def _core_match_template_vkdispatch_single_gpu(
 
     vd.initialize(debug_mode=True)
     vd.make_context(devices=[device_index]) # select the device we want to use
-
-    print(f"Using vkdispatch on device {device_index}.")
 
     ########################################################################
     ### Calculate full density volume FFT (this is faster in vkdispatch) ###
@@ -204,10 +203,15 @@ def _core_match_template_vkdispatch_single_gpu(
 
     image_dft_buffer = vd.RFFTBuffer(
         (image_dft_cpu.shape[0],
-         (image_dft_cpu.shape[1] - 1) * 2)
+        (image_dft_cpu.shape[1] - 1) * 2)
     )
 
     image_dft_buffer.write_fourier(image_dft_cpu)
+
+    image_dft_buffer_transposed = vd.RFFTBuffer(
+        (image_dft_cpu.shape[0],
+        (image_dft_cpu.shape[1] - 1) * 2)
+    )
 
     projective_filters_buffer = vd.asbuffer(projective_filters_cpu)
 
@@ -254,6 +258,21 @@ def _core_match_template_vkdispatch_single_gpu(
     template_image = vd.Image3D(density_volume_fft_cpu.shape, vd.float32, 2)
     template_image.write(density_volume_fft_cpu)
 
+    transpose_kernel(
+        correlation_buffer,
+        image_dft_buffer,
+        image_dft_buffer_transposed
+    )
+
+    # transposed_data = image_dft_buffer_transposed.read(0)
+
+    # np.save(
+    #     f"transposed_data_{device_id}.npy",
+    #     transposed_data
+    # )
+
+    # exit()
+
     ########################################################
     ### Setup iterator object with tqdm for progress bar ###
     ########################################################
@@ -297,7 +316,7 @@ def _core_match_template_vkdispatch_single_gpu(
     do_padded_cross_correlation(
         template_buffer2,
         correlation_buffer,
-        image_dft_buffer
+        image_dft_buffer_transposed
     )
 
     accumulate_per_pixel(
@@ -321,6 +340,16 @@ def _core_match_template_vkdispatch_single_gpu(
         cmd_stream.set_var("rotation_matrix", rotation_matricies)
         cmd_stream.set_var("index", list(range(start_idx, end_idx)))
         cmd_stream.submit(rotation_matricies.shape[0])
+
+        # corrs = correlation_buffer.read(0)
+
+        # for j in range(correlation_buffer.shape[0]):
+        #     np.save(
+        #         f"corr_{device_id}_{j}.npy",
+        #         corrs[j]
+        #     )
+        
+        # exit()
 
     accumulation = best_values_buffer.read(0)
 
