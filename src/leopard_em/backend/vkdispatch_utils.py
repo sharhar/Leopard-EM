@@ -340,11 +340,16 @@ def transpose_kernel(
     """
     
     @vd.map_registers([vc.c64])
-    def kernel_mapping(kernel_buffer: vc.Buffer[vc.c64], kernel_transposed_buffer: vc.Buffer[vc.c64]):
+    def kernel_mapping(
+        kernel_buffer: vc.Buffer[vc.c64],
+        kernel_transposed_buffer: vc.Buffer[vc.c64]):
+
         read_register = vc.mapping_registers()[1]
 
         # We skip batches other than the first one, since we only have one kernel
-        vc.if_statement(vc.mapping_index() >= correlation_buffer.shape[1] * correlation_buffer.shape[2])
+        vc.if_statement(
+            vc.mapping_index() >= correlation_buffer.shape[1] * correlation_buffer.shape[2]
+        )
         vc.return_statement()
         vc.end()
 
@@ -494,7 +499,9 @@ def do_padded_cross_correlation(
         )
 
         # Calculate the batch index of the FFT
-        batch_index = (vc.mapping_index() % (image_dft_buffer.shape[0] * image_dft_buffer.shape[1])) / (
+        batch_index = (
+            vc.mapping_index() % (image_dft_buffer.shape[0] * image_dft_buffer.shape[1])
+        ) / (
             vc.workgroup_size().x * vc.workgroup_size().y *
             vc.num_workgroups().x * vc.num_workgroups().y
         )

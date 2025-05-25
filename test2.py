@@ -7,10 +7,12 @@ def read_mrc(filename):
         data = mrc.data
         return data
     
-# ref_dat = read_mrc("data/data2/results_ref/output_scaled_mip.mrc")
-# dat = read_mrc("data/data2/results/output_scaled_mip.mrc")
+ref_dat = read_mrc("data/data2/results/output_scaled_mip.mrc") #read_mrc("data/data2/results_ref/output_scaled_mip.mrc")
+dat = read_mrc("data/data2/results3/output_scaled_mip.mrc")
 
-# np.save("diff2.npy", ref_dat - dat)
+np.save("diff.npy", ref_dat - dat)
+
+exit()
 
 def perimeter_sum(array):
     if array.ndim != 2:
