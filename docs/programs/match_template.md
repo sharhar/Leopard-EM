@@ -124,7 +124,7 @@ orientation_search_config:
 ### Configuring the pre-processing filters
 
 Pre-processing filters are applied to both the image and template in Fourier space.
-Below, we briefly discuss the parameter choices for the whitening and band-pass filters, the two most commonly used 2DTM filters. There are two additional pre-processing filters, phase-randomization & arbitrary curve, whose configuration is discussed [here](../examples/basic_configuration.ipynb).
+Below, we briefly discuss the parameter choices for the whitening and band-pass filters, the two most commonly used 2DTM filters. There are two additional pre-processing filters, phase-randomization & arbitrary curve, whose configuration is discussed [here](../examples/01_basic_configuration.ipynb).
 In most cases, the default values should suffice, but nevertheless the knobs to tweak how calculations are performed are included for completeness' sake.
 
 #### Whitening filter
