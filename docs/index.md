@@ -6,12 +6,12 @@ description: Overview of the Leopard-EM package for 2DTM in Python
 # Leopard-EM
 
 Welcome to the **L**ocation & ori**E**ntati**O**n of **PAR**ticles found using two-**D**imensional t**E**mplate **M**atching (Leopard-EM) online documentation!
-Leopard-EM is a Python implementation of Two-Dimensional Template Matching (2DTM) which itself is a data analysis method in cryo-EM.
-This package reflects most of the functionality described in Lucas, *et al.* (2021)[^1] with additional user-friendly features for integrating into broader data science workflows.
+Leopard-EM is a Python implementation of Two-Dimensional Template Matching (2DTM) which itself is a data processing method in cryo-EM for locating and orienting particles using a reference structure.
+This package currently reflects the functionality described in Lucas, *et al.* (2021)[^1] with additional programs to maximize the usefulness of 2DTM as well as other user-friendly features for integrating into broader data science workflows.
 
 !!! note "Citing this work"
 
-    If you use Leopard-EM in your research, please cite ((TODO: add manuscript link)).
+    If you use Leopard-EM in your research, please cite (coming soon!).
 
 ## Installation
 
@@ -33,8 +33,8 @@ Please open a [open up a bug report](https://github.com/Lucaslab-Berkeley/Leopar
 
 !!! caution "Tested GPU support"
 
-    Leopard-EM has only been tested against NVIDIA GPUs but should run on most modern (supported by PyTorch) GPU hardware.
-    If you've found a compatibility issue, [create an issue on GitHub](https://github.com/Lucaslab-Berkeley/Leopard-EM/issues/new).
+    Leopard-EM has only been tested against NVIDIA GPUs but should run on most modern GPU hardware (supported by PyTorch).
+    If you've experienced a compatibility issue, [create an issue on GitHub](https://github.com/Lucaslab-Berkeley/Leopard-EM/issues/new).
 
 
 ### Pre-packaged releases
@@ -87,14 +87,14 @@ There are currently five main programs (located under [`programs/` folder](https
 Detailed documentation for each program can be found on the [Program Documentation Overview](programs/overview.md), but the five main programs are as follows:
 
 1. `match_template` - Runs a whole orientation search for a given reference structure on a single micrograph.
-2. `refine_template` - Takes particles identified from match_template and refines their location, orientation, and defocus parameters.
+2. `refine_template` - Takes particles identified from match template and refines their location, orientation, and defocus parameters.
 3. `optimize_template` - Optimizes the pixel size of the micrograph and template structure model using a set of identified particles.
 4. `constrained_search` - Uses the location and orientation of identified particles to constrain the search parameters of a second particle.
 5. `optimize_b_factor.py` - Script to optimize the b-factor added to a model (using 2DTM) for a set of metrics.
 
 <!-- A minimally working Python script for running the match template program is shown below -->
 
-### Match template example
+### Minimal match template example
 
 The following Python script will run a basic match template program using only the built-in Pydantic models.
 See the programs documentation page for more details on running each program.
@@ -185,11 +185,11 @@ if __name__ == "__main__":
 
 ## Documentation and Examples
 
-Under construction
+See the left-hand menu for examples of using the Leopard-EM package and other package documentation.
 
 ## Theory
 
-Under construction
+🚧 Under Construction 🚧
 
 
 ## Contributing
