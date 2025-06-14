@@ -5,17 +5,29 @@ from typing import Annotated, Literal, Optional
 
 import roma
 import torch
-from pydantic import Field
+from pydantic import Field, model_validator
 from torch_so3 import (
     get_local_high_resolution_angles,
     get_roll_angles,
     get_symmetry_ranges,
     get_uniform_euler_angles,
 )
+from typing_extensions import Self
 
 from leopard_em.pydantic_models.custom_types import BaseModel2DTM
 
 EPS = 1e-6
+
+
+class AngleRange(BaseModel2DTM):
+    """Represents a single angular range for orientation search."""
+
+    phi_min: Optional[float] = None
+    phi_max: Optional[float] = None
+    theta_min: Optional[float] = None
+    theta_max: Optional[float] = None
+    psi_min: Optional[float] = None
+    psi_max: Optional[float] = None
 
 
 class OrientationSearchConfig(BaseModel2DTM):
@@ -59,21 +71,75 @@ class OrientationSearchConfig(BaseModel2DTM):
     theta_step : float
         Angular step size for theta in degrees. Must be
         greater than 0.
+    angle_ranges : list[AngleRange]
+        List of angular ranges to search over.
+    base_grid_method : str
+        Method for sampling orientations. Default is 'uniform'.
+        Currently only 'uniform' is supported.
+    symmetry : str
+        Symmetry group of the template. Default is 'C1'.
     """
 
     psi_step: Annotated[float, Field(ge=0.0)] = 1.5
     theta_step: Annotated[float, Field(ge=0.0)] = 2.5
+    # Deprecated fields, keep for backwards compatibility
     phi_min: Optional[float] = None
     phi_max: Optional[float] = None
     theta_min: Optional[float] = None
     theta_max: Optional[float] = None
     psi_min: Optional[float] = None
     psi_max: Optional[float] = None
+
     base_grid_method: Literal["uniform", "healpix", "cartesian"] = "uniform"
     symmetry: str = "C1"
 
+    # New field for multiple ranges
+    angle_ranges: Optional[list[AngleRange]] = None
+
+    @model_validator(mode="after")  # type: ignore[misc]
+    def validate_angle_specification(self) -> Self:
+        """Ensure either single range or multiple ranges are specified, not both."""
+        has_single_range = any(
+            [
+                self.phi_min is not None,
+                self.phi_max is not None,
+                self.theta_min is not None,
+                self.theta_max is not None,
+                self.psi_min is not None,
+                self.psi_max is not None,
+            ]
+        )
+
+        has_multiple_ranges = self.angle_ranges is not None
+
+        if has_single_range and has_multiple_ranges:
+            raise ValueError(
+                "Cannot specify both single range (phi_min, phi_max, etc.) "
+                "and multiple ranges (angle_ranges) simultaneously"
+            )
+
+        return self
+
     @property
-    def euler_angles(self) -> torch.Tensor:
+    def _effective_angle_ranges(self) -> list[AngleRange]:
+        """Get the effective angle ranges, converting single range if needed."""
+        if self.angle_ranges is not None:
+            return self.angle_ranges
+
+        # Convert single range to list format
+        return [
+            AngleRange(
+                phi_min=self.phi_min,
+                phi_max=self.phi_max,
+                theta_min=self.theta_min,
+                theta_max=self.theta_max,
+                psi_min=self.psi_min,
+                psi_max=self.psi_max,
+            )
+        ]
+
+    @property
+    def euler_angles(self) -> torch.Tensor:  # pylint: disable=too-many-locals
         """Returns the Euler angles ('ZYZ' convention) to search over.
 
         Returns
@@ -83,68 +149,78 @@ class OrientationSearchConfig(BaseModel2DTM):
             search over. The columns represent the psi, theta, and phi angles
             respectively.
         """
-        # Get symmetry order and group
-        match = re.match(r"([A-Za-z]+)(\d*)", self.symmetry)
-        if not match:
-            raise ValueError(f"Invalid symmetry format: {self.symmetry}")
-        sym_group = match.group(1)
-        sym_order = int(match.group(2)) if match.group(2) else 1
+        angle_ranges = self._effective_angle_ranges
+        all_euler_angles = []
+        for angle_range in angle_ranges:
+            # Get symmetry order and group
+            match = re.match(r"([A-Za-z]+)(\d*)", self.symmetry)
+            if not match:
+                raise ValueError(f"Invalid symmetry format: {self.symmetry}")
+            sym_group = match.group(1)
+            sym_order = int(match.group(2)) if match.group(2) else 1
 
-        # Check if all angle parameters are None
-        all_none = all(
-            x is None
-            for x in [
-                self.phi_min,
-                self.phi_max,
-                self.theta_min,
-                self.theta_max,
-                self.psi_min,
-                self.psi_max,
-            ]
-        )
-
-        # Check if all angle parameters are set (not None)
-        all_set = all(
-            x is not None
-            for x in [
-                self.phi_min,
-                self.phi_max,
-                self.theta_min,
-                self.theta_max,
-                self.psi_min,
-                self.psi_max,
-            ]
-        )
-
-        # Error if some are None and some are not
-        if not (all_none or all_set):
-            raise ValueError(
-                "Either all angle parameters (phi_min, phi_max, theta_min, theta_max, "
-                "psi_min, psi_max) must be set or all must be None"
+            # Check if all angle parameters are None for this range
+            all_none = all(
+                x is None
+                for x in [
+                    angle_range.phi_min,
+                    angle_range.phi_max,
+                    angle_range.theta_min,
+                    angle_range.theta_max,
+                    angle_range.psi_min,
+                    angle_range.psi_max,
+                ]
             )
 
-        # If all are None, use symmetry to set them
-        if all_none:
-            (
-                self.phi_min,
-                self.phi_max,
-                self.theta_min,
-                self.theta_max,
-                self.psi_min,
-                self.psi_max,
-            ) = get_symmetry_ranges(sym_group, sym_order)
+            # Check if all angle parameters are set (not None)
+            all_set = all(
+                x is not None
+                for x in [
+                    angle_range.phi_min,
+                    angle_range.phi_max,
+                    angle_range.theta_min,
+                    angle_range.theta_max,
+                    angle_range.psi_min,
+                    angle_range.psi_max,
+                ]
+            )
 
-        return get_uniform_euler_angles(
-            psi_step=self.psi_step,
-            theta_step=self.theta_step,
-            phi_min=self.phi_min,
-            phi_max=self.phi_max,
-            theta_min=self.theta_min,
-            theta_max=self.theta_max,
-            psi_min=self.psi_min,
-            psi_max=self.psi_max,
-            base_grid_method=self.base_grid_method,
-        )
+            # Error if some are None and some are not
+            if not (all_none or all_set):
+                raise ValueError(
+                    "Either all angle parameters "
+                    "(phi_min, phi_max, theta_min, theta_max,psi_min, psi_max)"
+                    " must be set or all must be None for each range, "
+                    "or angle_ranges must be specified"
+                )
+
+            # If all are None, use symmetry to set them
+            if all_none:
+                (phi_min, phi_max, theta_min, theta_max, psi_min, psi_max) = (
+                    get_symmetry_ranges(sym_group, sym_order)
+                )
+            else:
+                phi_min, phi_max = angle_range.phi_min, angle_range.phi_max
+                theta_min, theta_max = angle_range.theta_min, angle_range.theta_max
+                psi_min, psi_max = angle_range.psi_min, angle_range.psi_max
+
+            # Generate angles for this range
+            range_angles = get_uniform_euler_angles(
+                psi_step=self.psi_step,
+                theta_step=self.theta_step,
+                phi_min=phi_min,
+                phi_max=phi_max,
+                theta_min=theta_min,
+                theta_max=theta_max,
+                psi_min=psi_min,
+                psi_max=psi_max,
+                base_grid_method=self.base_grid_method,
+            )
+
+            all_euler_angles.append(range_angles)
+
+        # Concatenate all ranges
+        return torch.cat(all_euler_angles, dim=0)
 
 
 class RefineOrientationConfig(BaseModel2DTM):
