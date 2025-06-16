@@ -17,7 +17,7 @@ sources = ["src"]
 [project]
 name = "leopard_em"
 dynamic = ["version"]
-description = "Location & Orientation of Particles using Two-Dimensional Template Matching"
+description = "Location & Orientation of Particles found using Two-Dimensional Template Matching"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "BSD-3-Clause" }
@@ -52,6 +52,7 @@ dependencies = [
     "torch-so3>=v0.2.0",
     "ttsim3d>=v0.3.0",
     "lmfit",
+    "zenodo-get",
 ]
 
 [tool.hatch.metadata]
