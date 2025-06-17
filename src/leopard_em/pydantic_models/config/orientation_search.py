@@ -5,13 +5,14 @@ from typing import Annotated, Literal, Optional
 
 import roma
 import torch
-from pydantic import Field
+from pydantic import Field, model_validator
 from torch_so3 import (
     get_local_high_resolution_angles,
     get_roll_angles,
     get_symmetry_ranges,
     get_uniform_euler_angles,
 )
+from typing_extensions import Self
 
 from leopard_em.pydantic_models.custom_types import BaseModel2DTM
 
@@ -22,24 +23,24 @@ class OrientationSearchConfig(BaseModel2DTM):
     """Serialization and validation of orientation search parameters for 2DTM.
 
     The angles -- phi, theta, and psi -- represent Euler angles in the 'ZYZ'
-    convention.
+    convention in units of degrees between 0 and 360 (for phi and psi) or
+    between 0 and 180 (for theta).
 
     This model effectively acts as a connector into the
     `torch_so3.uniform_so3_sampling.get_uniform_euler_angles` function from the
     [torch-so3](https://github.com/teamtomo/torch-so3) package.
-
-    TODO: Add parameters for template symmetry.
 
     TODO: Implement indexing to get the i-th or range of orientations in the
     search space (need to be ordered).
 
     Attributes
     ----------
-    orientation_sampling_method : str
-        Method for sampling orientations. Default is 'uniform'.
-    symmetry : str
-        Symmetry group of the template. Default is 'C1'.
-        Currently only 'C1' is supported.
+    psi_step : float
+        Angular step size for psi in degrees. Must be greater
+        than 0.
+    theta_step : float
+        Angular step size for theta in degrees. Must be
+        greater than 0.
     phi_min : float
         Minimum value for the phi angle in degrees.
     phi_max : float
@@ -52,19 +53,13 @@ class OrientationSearchConfig(BaseModel2DTM):
         Minimum value for the psi angle in degrees.
     psi_max : float
         Maximum value for the psi angle in degrees.
-    psi_step : float
-        Angular step size for psi in degrees. Must be greater
-        than 0.
-    theta_step : float
-        Angular step size for theta in degrees. Must be
-        greater than 0.
-    angle_ranges : list[AngleRange]
-        List of angular ranges to search over.
     base_grid_method : str
         Method for sampling orientations. Default is 'uniform'.
         Currently only 'uniform' is supported.
     symmetry : str
-        Symmetry group of the template. Default is 'C1'.
+        Symmetry group of the template. Default is 'C1'. Note that if symmetry is
+        provided, then the angle min/max values must be all set to None (validation
+        will set these automatically based on the symmetry group).
     """
 
     psi_step: Annotated[float, Field(ge=0.0)] = 1.5
@@ -77,28 +72,22 @@ class OrientationSearchConfig(BaseModel2DTM):
     psi_max: Optional[float] = None
 
     base_grid_method: Literal["uniform", "healpix", "cartesian"] = "uniform"
-    symmetry: str = "C1"
+    symmetry: Optional[str] = "C1"
 
-    @property
-    def euler_angles(self) -> torch.Tensor:  # pylint: disable=too-many-locals
-        """Returns the Euler angles ('ZYZ' convention) to search over.
+    @model_validator(mode="after")  # type: ignore
+    def validate_angle_ranges_and_symmetry(self) -> Self:
+        """Validate that angle ranges are consistent with symmetry.
 
-        Returns
-        -------
-        torch.Tensor
-            A tensor of shape (N, 3) where N is the number of orientations to
-            search over. The columns represent the psi, theta, and phi angles
-            respectively.
+        There should be only two valid cases for combinations of manually defined
+        angle ranges and the symmetry group:
+        1. Symmetry argument is *not* None, and all angle min/max values
+           are set to None. In this case, the angle ranges will be set based on
+           the symmetry group.
+        2. Symmetry argument is None, and all angle min/max values are not None.
+
+        If any other combination is provided, a ValueError will be raised.
         """
-        # Get symmetry order and group
-        match = re.match(r"([A-Za-z]+)(\d*)", self.symmetry)
-        if not match:
-            raise ValueError(f"Invalid symmetry format: {self.symmetry}")
-        sym_group = match.group(1)
-        sym_order = int(match.group(2)) if match.group(2) else 1
-
-        # Check if all angle parameters are None
-        all_none = all(
+        _all_none = all(
             x is None
             for x in [
                 self.phi_min,
@@ -110,36 +99,62 @@ class OrientationSearchConfig(BaseModel2DTM):
             ]
         )
 
-        # Check if all angle parameters are set (not None)
-        all_set = all(
-            x is not None
-            for x in [
-                self.phi_min,
-                self.phi_max,
-                self.theta_min,
-                self.theta_max,
-                self.psi_min,
-                self.psi_max,
-            ]
-        )
-
-        # Error if some are None and some are not
-        if not (all_none or all_set):
+        # Check that both symmetry and angle ranges are not None
+        if not self.symmetry and _all_none:
             raise ValueError(
-                "Either all angle parameters "
-                "(phi_min, phi_max, theta_min, theta_max, psi_min, psi_max)"
-                " must be set or all must be None"
+                "Either a symmetry group must be provided, or all angle ranges must "
+                "not be None. Both symmetry and angle ranges were set to None."
             )
 
-        # If all are None, use symmetry to set them
-        if all_none:
+        # Case where both symmetry and angle ranges are provided
+        if self.symmetry and not _all_none:
+            raise ValueError(
+                "Symmetry group is provided, but angle ranges are also set. "
+                "Please set all angle ranges to None when using symmetry."
+            )
+
+        # Case where symmetry group is provided, validate the symmetry
+        if self.symmetry:
+            match = re.match(r"([A-Za-z]+)(\d*)$", self.symmetry)
+            if not match:
+                raise ValueError(f"Invalid symmetry format: {self.symmetry}")
+
+        # If we reach here, it means that either symmetry is set or angle ranges are set
+        # but not both, so we can proceed.
+        return self
+
+    @property
+    def euler_angles(self) -> torch.Tensor:
+        """Returns the Euler angles ('ZYZ' convention) to search over.
+
+        Returns
+        -------
+        torch.Tensor
+            A tensor of shape (N, 3) where N is the number of orientations to
+            search over. The columns represent the psi, theta, and phi angles
+            respectively.
+        """
+        # If the symmetry used for the angular ranges, calculate the angular ranges
+        # based on the symmetry group.
+        if self.symmetry is not None:
+            match = re.match(r"([A-Za-z]+)(\d*)", self.symmetry)
+            if match is None:
+                raise ValueError(f"Invalid symmetry format: {self.symmetry}")
+
+            sym_group = match.group(1)
+            sym_order = int(match.group(2)) if match.group(2) else 1
             (phi_min, phi_max, theta_min, theta_max, psi_min, psi_max) = (
                 get_symmetry_ranges(sym_group, sym_order)
             )
+        # Otherwise, use the provided angular ranges replacing with default values if
+        # any are set to None.
         else:
-            phi_min, phi_max = self.phi_min, self.phi_max
-            theta_min, theta_max = self.theta_min, self.theta_max
-            psi_min, psi_max = self.psi_min, self.psi_max
+            phi_min = self.phi_min if self.phi_min is not None else 0.0
+            phi_max = self.phi_max if self.phi_max is not None else 360.0
+            theta_min = self.theta_min if self.theta_min is not None else 0.0
+            theta_max = self.theta_max if self.theta_max is not None else 180.0
+            psi_min = self.psi_min if self.psi_min is not None else 0.0
+            psi_max = self.psi_max if self.psi_max is not None else 360.0
 
         # Generate angles
         return get_uniform_euler_angles(
